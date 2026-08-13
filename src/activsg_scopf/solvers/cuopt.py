@@ -36,7 +36,7 @@ def solve_cuopt(
         raise ScopfError("The cuOpt adapter requires NVIDIA cuOpt in the Spark runtime") from exc
 
     objective, lower, upper, integrality = model.column_arrays()
-    problem = Problem("activsg500_preventive_scuc")
+    problem = Problem("activsg_preventive_scuc")
     variables = [
         problem.addVariable(
             lb=float(lower[index]),

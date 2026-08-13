@@ -22,7 +22,7 @@ from .network import (
 )
 from .paths import guard_runtime_environment
 from .provenance import build_source_manifest
-from .screening import add_security_pairs, screen_contingencies
+from .screening import ContingencyScreener, add_security_pairs
 from .solution import serialize_solution
 from .solvers import SolveResult, solve_canonical
 from .verify import verify_serialized_solution
@@ -71,7 +71,8 @@ def run_end_to_end(
     )
     payload: dict[str, Any] = {
         "schema_version": "1.0.0",
-        "case_name": "ACTIVSg500",
+        "case_name": config.case_name,
+        "benchmark_id": config.benchmark_id,
         "interval_hours": 1.0,
         "official": official,
         "platform": platform_name,
@@ -113,6 +114,7 @@ def run_end_to_end(
             contingency_table,
             validation_columns=int(config.model["lodf_validation_columns"]),
             validation_tolerance_pu=float(config.model["lodf_validation_tolerance_pu"]),
+            chunk_columns=int(config.model.get("lodf_build_chunk_columns", 256)),
         )
         master = build_master(case, network, segments=int(config.model["pwl_segments"]))
         payload["timings_seconds"]["model_and_factor_build"] = _seconds_since(stage)
@@ -126,6 +128,15 @@ def run_end_to_end(
         save_checkpoint()
 
         profile = config.raw["platforms"][platform_name]
+        screen_chunk_columns = int(config.model.get("screen_chunk_columns", 256))
+        stage = time.perf_counter()
+        screener = ContingencyScreener(
+            network,
+            catalog,
+            backend=profile["screening"],
+            chunk_columns=screen_chunk_columns,
+        )
+        payload["timings_seconds"]["screen_workspace_build"] = _seconds_since(stage)
         added_pair_ids: set[str] = set()
         solve_total = 0.0
         screen_total = 0.0
@@ -170,12 +181,9 @@ def run_end_to_end(
             )
             flow = last_solve.values[master.index.flow_by_active_branch]
             stage = time.perf_counter()
-            screened = screen_contingencies(
+            screened = screener.screen(
                 np.asarray(flow, dtype=np.float64),
-                network,
-                catalog,
                 tolerance_pu=float(config.model["security_violation_tolerance_pu"]),
-                backend=profile["screening"],
                 already_added=added_pair_ids,
             )
             screen_elapsed = _seconds_since(stage)
@@ -203,7 +211,6 @@ def run_end_to_end(
                 master.canonical,
                 master.index,
                 network,
-                catalog,
                 screened.violations,
             )
             new_ids = [pair.pair_id for pair in screened.violations]

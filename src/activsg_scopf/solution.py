@@ -28,7 +28,7 @@ def serialize_solution(
             commitment = float(values[master.index.commitment_by_generator[generator_index]])
             dispatch = float(values[master.index.dispatch_by_generator[generator_index]])
             segments = [
-                float(values[column])
+                0.0 if column is None else float(values[column])
                 for column in master.index.segments_by_generator[generator_index]
             ]
         else:
@@ -74,4 +74,3 @@ def base_flow_vector(solution: dict[str, Any], network: NetworkData) -> FloatArr
         [by_row[int(source_index) + 1] for source_index in network.active_branch_source_rows],
         dtype=np.float64,
     )
-

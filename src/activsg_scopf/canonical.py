@@ -30,6 +30,8 @@ class CanonicalMILP:
     row_upper: list[float] = field(default_factory=list)
     _row_indices: list[list[int]] = field(default_factory=list)
     _row_values: list[list[float]] = field(default_factory=list)
+    _variable_name_set: set[str] = field(default_factory=set, repr=False)
+    _row_name_set: set[str] = field(default_factory=set, repr=False)
 
     def add_variable(
         self,
@@ -40,12 +42,13 @@ class CanonicalMILP:
         upper: float = inf,
         integer: bool = False,
     ) -> int:
-        if name in self.variable_names:
+        if name in self._variable_name_set:
             raise ScopfError(f"Duplicate canonical variable name: {name}")
         if lower > upper:
             raise ScopfError(f"Invalid bounds for {name}: {lower} > {upper}")
         index = len(self.variable_names)
         self.variable_names.append(name)
+        self._variable_name_set.add(name)
         self.objective.append(float(objective))
         self.column_lower.append(float(lower))
         self.column_upper.append(float(upper))
@@ -60,7 +63,7 @@ class CanonicalMILP:
         lower: float = -inf,
         upper: float = inf,
     ) -> int:
-        if name in self.row_names:
+        if name in self._row_name_set:
             raise ScopfError(f"Duplicate canonical row name: {name}")
         if lower > upper:
             raise ScopfError(f"Invalid row bounds for {name}: {lower} > {upper}")
@@ -69,6 +72,7 @@ class CanonicalMILP:
             raise ScopfError(f"Row {name} references an invalid column")
         ordered = sorted(combined.items())
         self.row_names.append(name)
+        self._row_name_set.add(name)
         self.row_lower.append(float(lower))
         self.row_upper.append(float(upper))
         self._row_indices.append([item[0] for item in ordered])

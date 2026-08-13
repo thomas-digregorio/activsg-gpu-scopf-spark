@@ -24,6 +24,7 @@ from .matpower import (
     read_matpower_case,
 )
 from .network import build_contingency_catalog, build_network, solve_dc
+from .screening import ContingencyScreener
 from .solution import base_flow_vector
 
 
@@ -39,6 +40,7 @@ class VerificationResult:
     objective_difference: float
     checked_valid_outages: int
     checked_security_sides: int
+    security_check_method: str
     details: dict[str, float]
 
     def as_dict(self) -> dict[str, Any]:
@@ -53,6 +55,7 @@ class VerificationResult:
             "objective_difference": self.objective_difference,
             "checked_valid_outages": self.checked_valid_outages,
             "checked_security_sides": self.checked_security_sides,
+            "security_check_method": self.security_check_method,
             "details": self.details,
         }
 
@@ -69,6 +72,14 @@ def verify_serialized_solution(
         if isinstance(config_or_path, RunConfig)
         else load_config(config_or_path)
     )
+    reported_case = payload.get("case_name")
+    configured_case = config.raw.get("case_name")
+    if (
+        reported_case is not None
+        and configured_case is not None
+        and reported_case != configured_case
+    ):
+        raise ProvenanceError("Solution case_name does not match the verification config")
     case = read_matpower_case(
         config.case_path, expected_sha256=config.raw["raw_inputs"]["case_sha256"]
     )
@@ -83,6 +94,8 @@ def verify_serialized_solution(
         contingency_table,
         validation_columns=int(config.model["lodf_validation_columns"]),
         validation_tolerance_pu=float(config.model["lodf_validation_tolerance_pu"]),
+        chunk_columns=int(config.model.get("lodf_build_chunk_columns", 256)),
+        materialize_lodf=False,
     )
     solution = payload["solution"]
     generator_records = solution["generators"]
@@ -159,6 +172,12 @@ def verify_serialized_solution(
         np.asarray(network.incidence @ stored_angles).ravel() - network.phase_shift_rad
     )
     dc_equation_residual_mw = float(np.max(np.abs(stored_flow - dc_flow_from_angles)))
+    _, independently_solved_base_flow = solve_dc(
+        network, injection, balance_tolerance_mw=balance_tolerance_mw
+    )
+    base_dc_solution_residual_mw = float(
+        np.max(np.abs(stored_flow - independently_solved_base_flow))
+    )
     reference_angle_residual = abs(float(stored_angles[network.reference_bus_index]))
     limited = network.rate_a_mw > 0
     base_limit_violation_mw = float(
@@ -193,26 +212,16 @@ def verify_serialized_solution(
                 )
             ),
         )
-    maximum_security_mw = 0.0
-    for outage in catalog.valid:
-        _, post_flow = solve_dc(
-            network,
-            injection,
-            outage_active_index=outage.active_branch_index,
-            balance_tolerance_mw=balance_tolerance_mw,
-        )
-        monitored = limited.copy()
-        monitored[outage.active_branch_index] = False
-        maximum_security_mw = max(
-            maximum_security_mw,
-            float(
-                np.max(
-                    np.maximum(
-                        np.abs(post_flow[monitored]) - network.rate_a_mw[monitored], 0.0
-                    )
-                )
-            ),
-        )
+    exhaustive = ContingencyScreener(
+        network,
+        catalog,
+        backend="numpy",
+        chunk_columns=int(config.model.get("screen_chunk_columns", 256)),
+    ).screen(
+        independently_solved_base_flow,
+        tolerance_pu=float(config.model["security_violation_tolerance_pu"]),
+    )
+    maximum_security_mw = exhaustive.maximum_violation_pu * case.base_mva
     model_residual_mw = max(
         bound_violation_mw,
         segment_bound_violation_mw,
@@ -220,6 +229,7 @@ def verify_serialized_solution(
         global_balance_mw,
         nodal_residual_mw,
         dc_equation_residual_mw,
+        base_dc_solution_residual_mw,
         base_limit_violation_mw,
     )
     model_residual_pu = model_residual_mw / case.base_mva
@@ -235,10 +245,7 @@ def verify_serialized_solution(
         and reference_angle_residual <= model_tolerance_pu
         and objective_difference <= objective_tolerance
     )
-    checked_sides = sum(
-        2 * (int(np.count_nonzero(limited)) - int(limited[outage.active_branch_index]))
-        for outage in catalog.valid
-    )
+    checked_sides = exhaustive.evaluated_pairs
     return VerificationResult(
         passed=passed,
         elapsed_seconds=time.perf_counter() - started,
@@ -250,6 +257,10 @@ def verify_serialized_solution(
         objective_difference=objective_difference,
         checked_valid_outages=len(catalog.valid),
         checked_security_sides=checked_sides,
+        security_check_method=(
+            "independent raw-input FP64 sparse factorization, chunked LODF exhaustive "
+            "screen, and selected explicit post-outage DC solves"
+        ),
         details={
             "conditional_pmin_pmax_violation_pu": bound_violation_mw / case.base_mva,
             "segment_bound_violation_pu": segment_bound_violation_mw / case.base_mva,
@@ -259,6 +270,9 @@ def verify_serialized_solution(
             "global_balance_residual_pu": global_balance_mw / case.base_mva,
             "nodal_balance_residual_pu": nodal_residual_mw / case.base_mva,
             "dc_flow_equation_residual_pu": dc_equation_residual_mw / case.base_mva,
+            "independent_base_dc_solution_residual_pu": (
+                base_dc_solution_residual_mw / case.base_mva
+            ),
             "base_limit_violation_pu": base_limit_violation_mw / case.base_mva,
             "reference_angle_residual_rad": reference_angle_residual,
         },
