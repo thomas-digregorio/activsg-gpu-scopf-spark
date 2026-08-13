@@ -16,10 +16,10 @@ NumPy 2.4.6, and SciPy 1.17.1. The image digest—not the mutable tag—is the
 benchmark identity.
 
 The repository is mounted read-only at `/workspace`; only its ignored
-`results/` directory is mounted read-write. Raw TAMU files are never included
-in the image or Git history.
+`results/` directory is mounted read-write. Raw TAMU files are copied separately
+to the approved local Spark checkout and are never included in the image or Git
+history.
 
 cuOpt's mixed-integer solver uses both GPU and CPU components. Consequently,
 the comparison is a laptop-CPU system versus a DGX-Spark cuOpt/CuPy system,
 not a claim of pure GPU kernel speedup.
-

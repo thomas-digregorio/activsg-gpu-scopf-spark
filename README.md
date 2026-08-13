@@ -1,16 +1,19 @@
-# ACTIVSg500 GPU DC-SCOPF on DGX Spark
+# ACTIVSg GPU DC-SCOPF on DGX Spark
 
 Fresh, auditable prototype for a one-hour preventive branch-N-1 DC
 security-constrained commitment and dispatch MILP on the synthetic TAMU
-ACTIVSg500 system.
+ACTIVSg500 and ACTIVSg10k systems. ACTIVSg500 is preserved at its frozen
+`benchmark-v1` revision; the current extension applies the same contract to
+ACTIVSg10k.
 
-The registered comparison is exactly one end-to-end laptop CPU run versus
+Each registered case comparison is exactly one end-to-end laptop CPU run versus
 exactly one end-to-end DGX Spark run. The laptop uses HiGHS with NumPy/SciPy;
 the Spark uses NVIDIA cuOpt with CuPy. No custom CUDA kernels are present.
 
 ## Scope guardrails
 
-- ACTIVSg500 only. Every explicit reference to another ACTIVSg size is rejected.
+- Only ACTIVSg500 and ACTIVSg10k are registered. Every other ACTIVSg size is
+  rejected.
 - Exact source-case `PMIN` and `PMAX` are conditional on commitment. Source-offline
   generators are unavailable.
 - The interval is exactly one hour. Ramping, minimum up/down times, startup
@@ -31,17 +34,22 @@ The complete equations and conventions are in
 
 ## Immutable inputs
 
-Obtain these two files from the TAMU ACTIVSg500 distribution and place them under
+Obtain the selected pair from the TAMU distribution and place it under
 `data/raw/matpower-8.1/`:
 
 | File | SHA-256 |
 |---|---|
 | `case_ACTIVSg500.m` | `8ca6d54ea5179eeb03fe29d7b645618e7a86338c172247e81687476660f6dcbe` |
 | `contab_ACTIVSg500.m` | `f6b2e7e38fd1cf5e09e877cf04233b4d0487d6d0e99903070d519eade12b76a9` |
+| `case_ACTIVSg10k.m` | `ead10b25fecc4dcc02f88bacdfb3526fe8b8985b81f7e539c95abddb32575590` |
+| `contab_ACTIVSg10k.m` | `7e1681a960b0a2a99d824766e0e94cc291fa36a7ec33b6dee24bf12ac67ddef7` |
 
 The parser reads MATPOWER text without executing MATLAB code and refuses a hash
 mismatch. Stable identities such as `gen-row-0001` and `branch-row-0001` refer
-to immutable one-based source rows.
+to immutable one-based source rows. The tracked
+[`ACTIVSg10k source manifest`](data/source-manifests/activsg10k.json) records
+1,937 source-online generators and their aggregate exact PMIN of 85,764.93 MW;
+the detailed ingest/result manifest retains every generator row and PMIN value.
 
 ## Laptop setup
 
@@ -56,7 +64,7 @@ py -3.13 -m venv .venv
 .\.venv\Scripts\ruff check .
 ```
 
-Tests use only tiny fixtures. They do not solve ACTIVSg500.
+Tests use only tiny fixtures. They do not solve either full ACTIVSg case.
 
 ## Versioned CLI
 
@@ -67,6 +75,8 @@ activsg-scopf ingest --config configs\activsg500.json --output work\ingest.json
 activsg-scopf solve --config configs\activsg500.json --platform laptop_cpu --output work\nonofficial-solve.json
 activsg-scopf verify --config configs\activsg500.json --solution work\nonofficial-solve.json --output work\verification.json
 activsg-scopf benchmark --config configs\activsg500.json --platform laptop_cpu --output results\laptop-cpu-official.json
+activsg-scopf ingest --config configs\activsg10k.json --output work\activsg10k-ingest.json
+activsg-scopf benchmark --config configs\activsg10k.json --platform laptop_cpu --output results\activsg10k-laptop-cpu-official.json
 ```
 
 `solve` is a bounded nonofficial end-to-end run. `benchmark` is the registered
@@ -77,10 +87,11 @@ replacement even after failure.
 ## Five-minute official protocol
 
 The benchmark controller requires a clean tracked worktree and requires `HEAD`
-to equal the configured `benchmark-v1` tag. It measures worker launch through
+to equal the tag registered by the selected configuration (`benchmark-v1` for
+the preserved 500 run and `benchmark-10k-v1` for 10k). It measures worker launch through
 the first complete result serialization, including raw input loading, factor and
 model construction, every solve/screen round, and independent exhaustive
-verification. The solver receives only the time left after a 45-second
+verification. The 10k solver receives only the time left after a 75-second
 verification reserve and a 5-second serialization reserve. A parent watchdog
 terminates the worker at 300 seconds and serializes its last checkpoint.
 
@@ -97,13 +108,17 @@ are setup, outside the measured interval:
 
 ```bash
 cd /home/dgxsparktd/activsg-gpu-scopf-spark
+# Preserved ACTIVSg500 workflow
 bash scripts/spark-build.sh
 bash scripts/spark-benchmark.sh
+# ACTIVSg10k workflow
+bash scripts/spark-build-10k.sh
+bash scripts/spark-benchmark-10k.sh
 ```
 
 The repository is mounted read-only in the container, with only ignored
-`results/` mounted read-write. The laptop result must first be copied to
-`results/laptop-cpu-official.json`. Details are in
+`results/` mounted read-write. The matching laptop result must first be copied
+to the result filename expected by the selected Spark script. Details are in
 [`docs/environment-contract.md`](docs/environment-contract.md).
 
 ## Acceptance
@@ -123,4 +138,3 @@ It is a system-to-system comparison, not a pure GPU speedup claim.
 
 No license is granted for the original code at this time. See
 [`NOTICE.md`](NOTICE.md) for source-data and dependency attribution.
-

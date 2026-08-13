@@ -4,8 +4,10 @@
 
 The model contains one one-hour interval and one preventive decision vector.
 For each source-online generator `g`, it has binary commitment `u_g`, dispatch
-`p_g`, and ten incremental cost-segment variables `y_gs`. Source-offline rows do
-not receive decision variables and are serialized as unavailable.
+`p_g`, and ten incremental cost segments `y_gs`. A zero-width segment is
+represented as the constant zero rather than an unnecessary solver column.
+Source-offline rows do not receive decision variables and are serialized as
+unavailable.
 
 For each bus it has a voltage angle in radians, with the first source reference
 bus fixed to zero. For each in-service branch it has one from-to MW flow.
@@ -55,7 +57,8 @@ branch with finite nonzero reactance. Removing it must leave the active network
 connected. Every exclusion and every deferred `CT_TGEN` label is recorded with
 a reason.
 
-FP64 PTDF/LODF columns use the same tap-aware DC susceptance matrix. Three
+FP64 PTDF/LODF columns use the same tap-aware DC susceptance matrix. Columns are
+built in bounded-memory chunks with SciPy's sparse factorization. Three
 deterministically spaced columns are validated against explicit post-outage DC
 solutions before optimization. For valid outage `k` and monitored line `m`:
 
@@ -64,7 +67,8 @@ f_m_after_k = f_m + LODF_mk f_k
 ```
 
 The restricted master begins with only base constraints. After each optimal
-solve, NumPy or CuPy screens every `(outage, monitored line, lower/upper side)`.
+solve, chunked NumPy or CuPy library operations screen every
+`(outage, monitored line, lower/upper side)`.
 Every violation above `1e-5` p.u. is appended in deterministic contingency-label,
 monitored-source-row, side order. No violated pair is sampled or truncated.
 
@@ -74,6 +78,8 @@ The checker rereads and rehashes both raw files. It does not trust solver row
 activities. It verifies all generator rows, binary bounds/integrality, exact
 conditional PMIN/PMAX, all PWL segments, objective reconstruction, `PD + GS`
 balance, reference angle, DC equations, base limits, and active angle limits.
-It then performs an explicit post-outage sparse DC solve for every eligible
-branch outage and checks every applicable monitored-line side.
-
+It independently rebuilds the sparse factorization and LODF columns from the
+raw files, validates deterministically selected columns with explicit
+post-outage sparse DC solves, and exhaustively checks every applicable
+monitored-line side in chunks. This avoids thousands of serial refactorizations
+without sampling or weakening the complete N-1 check.

@@ -4,13 +4,15 @@
 
 An official run requires all of the following to agree:
 
-- clean Git `HEAD` and the configured `benchmark-v1` tag;
+- clean Git `HEAD` and the tag registered by the selected case configuration;
 - complete Git commit hash;
-- SHA-256 of `configs/activsg500.json`;
+- SHA-256 of the selected case configuration;
 - both immutable raw-input hashes; and
 - the registered platform profile.
 
-The detailed result and durable run registry live in ignored `results/`. A
+The ACTIVSg500 tag and evidence remain immutable. ACTIVSg10k uses its own tag,
+output names, checkpoints, and benchmark-ID-specific registry. The detailed
+result and durable run registry live in ignored `results/`. A
 sanitized comparison may be committed only after both one-shot runs finish.
 
 ## Boundary
@@ -28,7 +30,8 @@ two registered raw files are setup and are excluded.
 ## Deadline behavior
 
 The global limit is 300 seconds. Solver calls receive the current remaining
-budget minus 45 seconds for verification and 5 seconds for serialization. Each
+budget minus the configured verification reserve (45 seconds for ACTIVSg500,
+75 seconds for ACTIVSg10k) and 5 seconds for serialization. Each
 adapter also sets its native time limit. The parent process independently kills
 the worker at the global boundary if it has not returned.
 
@@ -50,4 +53,3 @@ cuOpt's MIP solver includes CPU and GPU work. Hardware, operating systems,
 Python versions, and solvers differ, so any ratio is labeled system-to-system.
 No isolated screening, same-host CPU, fixed-commitment LP, warmup, or repeated
 timing result belongs to the registered comparison.
-

@@ -20,6 +20,7 @@
     "pmax_sum": 170021.33000000002,
     "pmin_sum": 85764.93
   },
+  "source_release": "MATPOWER 8.1",
   "source_url": "https://electricgrids.engr.tamu.edu/electric-grid-test-cases/activsg10k/",
   "synthetic_system": true
 }
