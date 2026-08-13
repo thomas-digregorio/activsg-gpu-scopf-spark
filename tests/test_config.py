@@ -35,3 +35,21 @@ def test_activsg10k_v2_changes_runtime_identity_not_mathematical_contract() -> N
     assert v2.raw["platforms"]["laptop_cpu"]["solver_session"] == (
         "persistent_incremental"
     )
+
+
+def test_activsg10k_v3_adds_diagnostics_without_seeding_or_model_changes() -> None:
+    v2 = load_config(ROOT / "configs" / "activsg10k-v2.json")
+    v3 = load_config(ROOT / "configs" / "activsg10k-v3.json")
+    assert v3.case_name == v2.case_name == "ACTIVSg10k"
+    assert v3.model == v2.model
+    assert v3.runtime == v2.runtime
+    assert v3.raw["raw_inputs"] == v2.raw["raw_inputs"]
+    assert v3.benchmark_id == "activsg10k-v3"
+    assert v3.raw["benchmark"]["required_git_tag"] == "benchmark-10k-v3"
+    laptop = v3.raw["platforms"]["laptop_cpu"]
+    assert laptop["solver_session"] == "persistent_incremental"
+    assert laptop["diagnostics"] == {
+        "enabled": True,
+        "mip_logging_interval_seconds": 1.0,
+    }
+    assert not any("seed" in key.casefold() for key in laptop)

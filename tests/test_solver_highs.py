@@ -24,11 +24,25 @@ def test_highs_warning_is_preserved_for_model_status_extraction() -> None:
         _require_run_not_error(highspy.HighsStatus.kError)
 
 
-def test_persistent_highs_session_appends_rows_and_resolves() -> None:
+def test_persistent_highs_session_appends_rows_logs_and_resolves(
+    tmp_path: Path,
+) -> None:
     model = CanonicalMILP()
     x = model.add_variable("x", objective=1.0, lower=0.0, upper=1.0, integer=True)
+    events: list[tuple[str, dict[str, object]]] = []
+
+    def record(event: str, **fields: object) -> None:
+        events.append((event, fields))
+
+    native_log = tmp_path / "highs.log"
     session = create_solver_session(
-        model, solver="highs", mip_relative_gap=1e-6, threads=0
+        model,
+        solver="highs",
+        mip_relative_gap=1e-6,
+        threads=0,
+        diagnostic_event=record,
+        native_log_path=native_log,
+        mip_logging_interval_seconds=0.0,
     )
     first = session.solve(time_limit_seconds=5.0)
     assert first.optimal
@@ -46,6 +60,14 @@ def test_persistent_highs_session_appends_rows_and_resolves() -> None:
     assert 0.0 < second.statistics["native_time_limit_seconds"] <= 5.0
     _, configured_time_limit = session.highs.getOptionValue("time_limit")
     assert 0.0 < configured_time_limit <= 5.0
+    event_names = [event for event, _ in events]
+    assert event_names.count("highs_row_sync_started") == 2
+    assert event_names.count("highs_run_started") == 2
+    assert event_names.count("highs_run_finished") == 2
+    assert "highs_mip_start_started" in event_names
+    assert "highs_native_log" in event_names
+    assert "highs_mip_progress" in event_names
+    assert "Running HiGHS" in native_log.read_text(encoding="utf-8")
 
 
 def test_highs_adapter_and_independent_checker_use_one_tiny_solve(tmp_path: Path) -> None:

@@ -78,6 +78,7 @@ activsg-scopf benchmark --config configs\activsg500.json --platform laptop_cpu -
 activsg-scopf ingest --config configs\activsg10k.json --output work\activsg10k-ingest.json
 activsg-scopf benchmark --config configs\activsg10k.json --platform laptop_cpu --output results\activsg10k-laptop-cpu-official.json
 activsg-scopf benchmark --config configs\activsg10k-v2.json --platform laptop_cpu --output results\activsg10k-v2-laptop-cpu-official.json
+activsg-scopf benchmark --config configs\activsg10k-v3.json --platform laptop_cpu --output results\activsg10k-v3-laptop-cpu-official.json
 ```
 
 `solve` is a bounded nonofficial end-to-end run. `benchmark` is the registered
@@ -100,6 +101,12 @@ round 2 and did not reach independent verification. Do not invoke the v2
 benchmark command again. See
 [`reports/activsg10k-v2-status.md`](reports/activsg10k-v2-status.md) for the
 preserved evidence and post-run deadline correction.
+
+The explicitly authorized `activsg10k-v3` CPU run keeps the same unseeded
+dynamic constraint-generation model. It adds one-second HiGHS MIP progress,
+native solver messages, and durable phase events under `results/diagnostics/`
+so a watchdog termination still leaves internal attribution evidence. It does
+not use a preloaded or learned security-pair set.
 
 The controller measures worker launch through
 the first complete result serialization, including raw input loading, factor and

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Protocol
 
 import numpy as np
@@ -12,6 +14,7 @@ from ..canonical import CanonicalMILP
 from ..errors import ScopfError
 
 FloatArray = npt.NDArray[np.float64]
+DiagnosticEvent = Callable[..., None]
 
 
 @dataclass(frozen=True)
@@ -63,6 +66,9 @@ def create_solver_session(
     solver: str,
     mip_relative_gap: float,
     threads: int = 0,
+    diagnostic_event: DiagnosticEvent | None = None,
+    native_log_path: Path | None = None,
+    mip_logging_interval_seconds: float = 5.0,
 ) -> SolverSession:
     if solver == "highs":
         from .highs import HighsSession
@@ -71,6 +77,9 @@ def create_solver_session(
             model,
             mip_relative_gap=mip_relative_gap,
             threads=threads,
+            diagnostic_event=diagnostic_event,
+            native_log_path=native_log_path,
+            mip_logging_interval_seconds=mip_logging_interval_seconds,
         )
     if solver == "cuopt":
         return RebuildingSolverSession(model, solver, mip_relative_gap, threads)

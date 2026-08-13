@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
+from pathlib import Path
+from typing import Any
 
 import numpy as np
 
 from ..canonical import CanonicalMILP
 from ..errors import ScopfError
+from ..paths import guard_output_path
 from .common import SolveResult
 
 
@@ -38,6 +42,9 @@ class HighsSession:
         *,
         mip_relative_gap: float,
         threads: int = 0,
+        diagnostic_event: Callable[..., None] | None = None,
+        native_log_path: Path | None = None,
+        mip_logging_interval_seconds: float = 5.0,
     ) -> None:
         import highspy
 
@@ -47,10 +54,39 @@ class HighsSession:
         self.loaded_rows = 0
         self.solve_count = 0
         self.previous_values: np.ndarray | None = None
+        self.diagnostic_event = diagnostic_event
+        self._active_solve_number = 0
+        output_enabled = diagnostic_event is not None or native_log_path is not None
         _require_ok(
-            self.highs.setOptionValue("output_flag", False),
+            self.highs.setOptionValue("output_flag", output_enabled),
             "output_flag configuration",
         )
+        if output_enabled:
+            _require_ok(
+                self.highs.setOptionValue("log_to_console", False),
+                "console logging configuration",
+            )
+            _require_ok(
+                self.highs.setOptionValue(
+                    "mip_min_logging_interval",
+                    float(mip_logging_interval_seconds),
+                ),
+                "MIP logging interval",
+            )
+            _require_ok(
+                self.highs.setOptionValue("mip_report_level", 2),
+                "MIP report level",
+            )
+        if native_log_path is not None:
+            native_log_path = guard_output_path(native_log_path)
+            native_log_path.parent.mkdir(parents=True, exist_ok=True)
+            _require_ok(
+                self.highs.setOptionValue("log_file", str(native_log_path)),
+                "native log file",
+            )
+        if diagnostic_event is not None:
+            self.highs.cbLogging.subscribe(self._record_native_log)
+            self.highs.cbMipLogging.subscribe(self._record_mip_progress)
         _require_ok(
             self.highs.setOptionValue("mip_rel_gap", float(mip_relative_gap)),
             "MIP gap",
@@ -85,6 +121,32 @@ class HighsSession:
             )
         self._sync_rows()
 
+    def _emit(self, event: str, **fields: Any) -> None:
+        if self.diagnostic_event is not None:
+            self.diagnostic_event(event, **fields)
+
+    def _record_native_log(self, callback_event: Any) -> None:
+        message = str(callback_event.message).strip()
+        if message:
+            self._emit(
+                "highs_native_log",
+                solve_number=self._active_solve_number or None,
+                message=message,
+            )
+
+    def _record_mip_progress(self, callback_event: Any) -> None:
+        data = callback_event.data_out
+        self._emit(
+            "highs_mip_progress",
+            solve_number=self._active_solve_number,
+            highs_running_time_seconds=float(data.running_time),
+            mip_node_count=int(data.mip_node_count),
+            mip_primal_bound=float(data.mip_primal_bound),
+            mip_dual_bound=float(data.mip_dual_bound),
+            mip_gap=float(data.mip_gap),
+            simplex_iteration_count=int(data.simplex_iteration_count),
+        )
+
     def _sync_rows(self) -> tuple[int, float]:
         if self.model.num_columns != self.loaded_columns:
             raise ScopfError("Persistent HiGHS sessions support appended rows only")
@@ -117,19 +179,45 @@ class HighsSession:
         if time_limit_seconds <= 0:
             raise ScopfError("Solver was not started because no deadline budget remained")
         call_started = time.perf_counter()
+        solve_number = self.solve_count + 1
+        self._active_solve_number = solve_number
+        self._emit(
+            "highs_row_sync_started",
+            solve_number=solve_number,
+            loaded_rows=self.loaded_rows,
+            canonical_rows=self.model.num_rows,
+        )
         rows_added, row_add_time = self._sync_rows()
+        self._emit(
+            "highs_row_sync_finished",
+            solve_number=solve_number,
+            rows_added=rows_added,
+            wall_time_seconds=row_add_time,
+        )
         mip_start_status: str | None = None
         if (
             rows_added > 0
             and self.previous_values is not None
             and self.integer_columns.size
         ):
+            mip_start_started = time.perf_counter()
+            self._emit(
+                "highs_mip_start_started",
+                solve_number=solve_number,
+                integer_columns=int(self.integer_columns.size),
+            )
             start_values = np.rint(self.previous_values[self.integer_columns])
             status = self.highs.setSolution(
                 self.integer_columns.size, self.integer_columns, start_values
             )
             _require_run_not_error(status)
             mip_start_status = status.name.removeprefix("k")
+            self._emit(
+                "highs_mip_start_finished",
+                solve_number=solve_number,
+                return_status=mip_start_status,
+                wall_time_seconds=time.perf_counter() - mip_start_started,
+            )
         setup_time = time.perf_counter() - call_started
         native_time_limit = float(time_limit_seconds) - setup_time
         if native_time_limit <= 0:
@@ -141,6 +229,14 @@ class HighsSession:
         _require_ok(
             self.highs.setOptionValue("time_limit", native_time_limit),
             "time limit",
+        )
+        self._emit(
+            "highs_run_started",
+            solve_number=solve_number,
+            requested_call_budget_seconds=float(time_limit_seconds),
+            native_time_limit_seconds=native_time_limit,
+            session_setup_wall_time_seconds=setup_time,
+            highs_run_time_before_seconds=highs_run_time_before,
         )
         run_started = time.perf_counter()
         run_return_status = self.highs.run()
@@ -162,6 +258,19 @@ class HighsSession:
         bound = float(info.mip_dual_bound) if np.isfinite(info.mip_dual_bound) else None
         gap = float(info.mip_gap) if np.isfinite(info.mip_gap) else None
         self.solve_count += 1
+        self._emit(
+            "highs_run_finished",
+            solve_number=solve_number,
+            run_return_status=run_return_status.name.removeprefix("k"),
+            model_status=status.name.removeprefix("k"),
+            wall_time_seconds=run_wall_time,
+            has_incumbent=has_incumbent,
+            objective=objective_value,
+            bound=bound,
+            mip_gap=gap,
+            mip_node_count=int(info.mip_node_count),
+            simplex_iteration_count=int(info.simplex_iteration_count),
+        )
         return SolveResult(
             solver="highs",
             solver_version=self.highs.version(),

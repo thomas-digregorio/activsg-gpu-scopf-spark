@@ -55,6 +55,12 @@ records independent wall-clock timing. This correction does not retroactively
 change v2 and is covered only by tiny component tests unless a new benchmark is
 explicitly authorized.
 
+ACTIVSg10k v3 is a separately authorized laptop-only profiling run. Its source,
+model, deadline, reserves, tolerances, and dynamic constraint-generation loop
+match v2. It enables flushed one-second HiGHS progress callbacks plus native log
+messages and records row synchronization, MIP-start, solve, screen, and
+verification phase boundaries. No security-pair seed is loaded.
+
 The ignored registry is written as `started` before worker launch. A timeout,
 exception, infeasibility, nonoptimal solver return, verification failure, or
 successful completion all finalize the same record. The code refuses a second
