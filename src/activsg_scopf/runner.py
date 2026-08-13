@@ -81,13 +81,21 @@ def run_end_to_end(
         "constraint_generation_rounds": [],
         "added_security_pair_ids": [],
     }
+    memory_sampler = PeakMemorySampler(sample_gpu=platform_name == "dgx_spark")
 
     def save_checkpoint() -> None:
         payload["elapsed_seconds"] = deadline.elapsed
+        payload["peak_memory"] = {
+            "process_rss_bytes": memory_sampler.peak_process_rss_bytes,
+            "cupy_pool_used_bytes": memory_sampler.peak_gpu_pool_used_bytes,
+            "cuda_device_memory_delta_bytes": (
+                memory_sampler.peak_cuda_device_memory_delta_bytes
+            ),
+        }
         if checkpoint is not None:
             checkpoint(payload)
 
-    with PeakMemorySampler(sample_gpu=platform_name == "dgx_spark") as memory:
+    with memory_sampler as memory:
         guard_runtime_environment(config.root)
         validate_platform(config, platform_name)
         payload["environment"] = environment_manifest(platform_name)
@@ -146,6 +154,10 @@ def run_end_to_end(
         for round_number in range(1, maximum_rounds + 1):
             deadline.require("restricted-master solve", reserve_seconds=0.0)
             solver_budget = deadline.solver_budget()
+            payload["active_stage"] = "restricted_master_solve"
+            payload["active_constraint_generation_round"] = round_number
+            payload["active_solver_budget_seconds"] = solver_budget
+            save_checkpoint()
             stage = time.perf_counter()
             last_solve = solve_canonical(
                 master.canonical,
@@ -180,6 +192,8 @@ def run_end_to_end(
                 last_solve.values, case, network, master
             )
             flow = last_solve.values[master.index.flow_by_active_branch]
+            payload["active_stage"] = "exhaustive_contingency_screen"
+            save_checkpoint()
             stage = time.perf_counter()
             screened = screener.screen(
                 np.asarray(flow, dtype=np.float64),
@@ -238,6 +252,8 @@ def run_end_to_end(
                 reserve_seconds=float(config.runtime["serialization_reserve_seconds"]),
             )
             stage = time.perf_counter()
+            payload["active_stage"] = "independent_verification"
+            save_checkpoint()
             verification = verify_serialized_solution(config, payload)
             payload["timings_seconds"]["independent_verification"] = _seconds_since(stage)
             payload["verification"] = verification.as_dict()
@@ -253,6 +269,8 @@ def run_end_to_end(
                 "optimal_verified" if verification.passed else "failed_independent_verification"
             )
             save_checkpoint()
+
+        payload["active_stage"] = "result_serialization"
 
     payload["peak_memory"] = {
         "process_rss_bytes": memory.peak_process_rss_bytes,

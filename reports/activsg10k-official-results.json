@@ -1,0 +1,81 @@
+{
+  "schema_version": "1.0.0",
+  "benchmark": {
+    "case_name": "ACTIVSg10k",
+    "benchmark_id": "activsg10k-v1",
+    "commit": "e957c09027a2f17eafcabd957272f3c4e6afcea6",
+    "config_sha256": "b73964691b3829aefd484bfa68e285197cee3e7f498f22dc810d94b0609e3bf1",
+    "tag": "benchmark-10k-v1"
+  },
+  "source": {
+    "buses": 10000,
+    "generators": 2485,
+    "source_online_generators": 1937,
+    "source_offline_generators": 548,
+    "branches": 12706,
+    "contingency_change_rows": 11806,
+    "source_online_pmin_sum_mw": 85764.93,
+    "source_online_pmax_sum_mw": 170021.33000000002
+  },
+  "contingencies": {
+    "valid_non_islanding_branch_outages": 8371,
+    "excluded_islanding_bridges": 3435,
+    "deferred_generator_outages": 0,
+    "lodf_fp64_bytes": 850895408,
+    "lodf_selected_validation_columns": [0, 4185, 8370],
+    "lodf_selected_validation_maximum_error_pu": 2.7755272838214152e-13
+  },
+  "laptop_cpu": {
+    "official_run_count": 1,
+    "status": "failed_exception",
+    "total_wall_time_seconds": 220.8240823999986,
+    "error_type": "ScopfError",
+    "error": "HiGHS solve failed with HighsStatus.kWarning",
+    "base_model": {
+      "columns": 35840,
+      "rows": 33913,
+      "nonzeros": 97141
+    },
+    "last_completed_round": {
+      "round": 1,
+      "solver": "HiGHS 1.15.1",
+      "solver_status": "Optimal",
+      "objective": 2201957.0404112316,
+      "bound": 2201955.1956132306,
+      "mip_gap": 8.377992699850948e-7,
+      "committed_generators": 1520,
+      "solve_time_seconds": 59.080604000000676,
+      "screen_time_seconds": 2.0306629999995494,
+      "evaluated_security_sides": 171488782,
+      "new_security_pairs": 322,
+      "maximum_security_violation_pu": 8.2869999999999
+    },
+    "completed_stage_timings_seconds": {
+      "raw_input_loading": 0.09956109999984619,
+      "model_and_factor_build": 8.839172400001189,
+      "first_restricted_master_solve": 59.11364700000013,
+      "first_exhaustive_screen": 2.0306629999995494,
+      "failure_result_serialization": 0.05348990000129561
+    },
+    "round_2": {
+      "started": true,
+      "completed": false,
+      "inferred_time_limit_seconds": 149.7,
+      "incumbent": null,
+      "bound": null,
+      "mip_gap": null,
+      "note": "The frozen adapter raised on HighsStatus.kWarning before extracting round-2 model status or solution evidence. The warning timing is consistent with the configured remaining solver budget."
+    },
+    "peak_memory_bytes": null,
+    "final_independent_verification": null,
+    "acceptance_passed": false
+  },
+  "dgx_spark": {
+    "official_run_count": 0,
+    "status": "not_run_laptop_gate_closed"
+  },
+  "comparison": {
+    "status": "not_available",
+    "reason": "The laptop did not return optimal_verified, so the Spark gate remained closed."
+  }
+}

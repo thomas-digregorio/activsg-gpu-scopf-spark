@@ -16,6 +16,15 @@ def _require_ok(status: object, operation: str) -> None:
         raise ScopfError(f"HiGHS {operation} failed with {status}")
 
 
+def _require_run_not_error(status: object) -> None:
+    """Allow kWarning so model status/incumbent evidence can still be extracted."""
+
+    import highspy
+
+    if status == highspy.HighsStatus.kError:
+        raise ScopfError(f"HiGHS solve failed with {status}")
+
+
 def solve_highs(
     model: CanonicalMILP,
     *,
@@ -63,7 +72,8 @@ def solve_highs(
         ),
         "constraint loading",
     )
-    _require_ok(highs.run(), "solve")
+    run_return_status = highs.run()
+    _require_run_not_error(run_return_status)
     status = highs.getModelStatus()
     info = highs.getInfo()
     solution = highs.getSolution()
@@ -84,10 +94,10 @@ def solve_highs(
         solve_time_seconds=float(highs.getRunTime()),
         values=values,
         statistics={
+            "run_return_status": run_return_status.name.removeprefix("k"),
             "mip_node_count": int(info.mip_node_count),
             "max_integrality_violation": float(info.max_integrality_violation),
             "max_primal_infeasibility": float(info.max_primal_infeasibility),
             "simplex_iteration_count": int(info.simplex_iteration_count),
         },
     )
-

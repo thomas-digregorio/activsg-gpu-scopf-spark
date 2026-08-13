@@ -3,14 +3,24 @@ from pathlib import Path
 import pytest
 
 from activsg_scopf.config import RunConfig
+from activsg_scopf.errors import ScopfError
 from activsg_scopf.matpower import sha256_file
 from activsg_scopf.model import build_master
 from activsg_scopf.network import build_network
 from activsg_scopf.solution import serialize_solution
 from activsg_scopf.solvers import solve_canonical
+from activsg_scopf.solvers.highs import _require_run_not_error
 from activsg_scopf.verify import verify_serialized_solution
 
 from .helpers import triangle_case, write_triangle_matpower
+
+
+def test_highs_warning_is_preserved_for_model_status_extraction() -> None:
+    import highspy
+
+    _require_run_not_error(highspy.HighsStatus.kWarning)
+    with pytest.raises(ScopfError, match="HiGHS"):
+        _require_run_not_error(highspy.HighsStatus.kError)
 
 
 def test_highs_adapter_and_independent_checker_use_one_tiny_solve(tmp_path: Path) -> None:
