@@ -2,8 +2,10 @@ import json
 from pathlib import Path
 
 from activsg_scopf.config import RunConfig
+from activsg_scopf.errors import MipStartSolveError
 from activsg_scopf.matpower import sha256_file
-from activsg_scopf.runner import run_end_to_end
+from activsg_scopf.runner import _solve_with_mip_start_fallback, run_end_to_end
+from activsg_scopf.solvers import SolveResult
 
 from .helpers import write_triangle_matpower
 
@@ -124,3 +126,46 @@ def test_tiny_unbounded_gap_run_reaches_fixed_commitment_prices(tmp_path: Path) 
     assert result["pricing"]["status"] == "optimal_secure_fixed_commitment_lp"
     assert len(result["pricing"]["bus_prices"]) == 3
     assert result["constraint_generation_rounds"][0]["solver_budget_seconds"] is None
+
+
+def test_partial_mip_start_internal_error_rebuilds_same_master_cold() -> None:
+    class FailedStartSession:
+        mode = "persistent_incremental"
+
+        def solve(self, *, time_limit_seconds: float | None) -> SolveResult:
+            raise MipStartSolveError("synthetic partial-start failure")
+
+    class ColdSession:
+        mode = "persistent_incremental"
+
+        def solve(self, *, time_limit_seconds: float | None) -> SolveResult:
+            return SolveResult(
+                solver="highs",
+                solver_version="test",
+                status="Optimal",
+                optimal=True,
+                has_incumbent=True,
+                objective=1.0,
+                bound=1.0,
+                mip_gap=0.0,
+                solve_time_seconds=0.0,
+                values=None,
+                statistics={},
+            )
+
+    cold = ColdSession()
+    events: list[str] = []
+    session, result, fallback = _solve_with_mip_start_fallback(
+        FailedStartSession(),
+        time_limit_seconds=None,
+        rebuild_session=lambda: cold,
+        emit_diagnostic=lambda event, **fields: events.append(event),
+    )
+    assert session is cold
+    assert result.optimal
+    assert fallback is not None and fallback["used"] is True
+    assert result.statistics["mip_start_cold_fallback"] == fallback
+    assert events == [
+        "mip_start_cold_fallback_started",
+        "mip_start_cold_fallback_finished",
+    ]

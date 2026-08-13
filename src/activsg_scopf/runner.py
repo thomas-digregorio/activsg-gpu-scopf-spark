@@ -14,6 +14,7 @@ from .costs import pwl_approximation_report
 from .deadline import Deadline, PeakMemorySampler
 from .diagnostics import DiagnosticEventWriter
 from .environment import environment_manifest, validate_platform
+from .errors import DeadlineExceeded, MipStartSolveError
 from .matpower import read_contingency_table, read_matpower_case
 from .model import build_master
 from .network import (
@@ -26,7 +27,7 @@ from .pricing import run_fixed_commitment_pricing
 from .provenance import build_source_manifest
 from .screening import ContingencyScreener, add_security_pairs
 from .solution import serialize_solution
-from .solvers import SolveResult, create_solver_session
+from .solvers import SolveResult, SolverSession, create_solver_session
 from .verify import verify_serialized_solution
 
 Checkpoint = Callable[[dict[str, Any]], None]
@@ -49,6 +50,55 @@ def _solve_summary(result: SolveResult) -> dict[str, Any]:
         "solve_time_seconds": result.solve_time_seconds,
         "statistics": result.statistics,
     }
+
+
+def _solve_with_mip_start_fallback(
+    session: SolverSession,
+    *,
+    time_limit_seconds: float | None,
+    rebuild_session: Callable[[], SolverSession],
+    emit_diagnostic: Callable[..., None],
+) -> tuple[SolverSession, SolveResult, dict[str, Any] | None]:
+    """Retry the same master cold only after a HiGHS partial-start internal error."""
+
+    started = time.perf_counter()
+    try:
+        return session, session.solve(time_limit_seconds=time_limit_seconds), None
+    except MipStartSolveError as exc:
+        failed_attempt_wall = time.perf_counter() - started
+        emit_diagnostic(
+            "mip_start_cold_fallback_started",
+            error_type=type(exc).__name__,
+            error=str(exc),
+            failed_attempt_wall_time_seconds=failed_attempt_wall,
+        )
+        rebuild_started = time.perf_counter()
+        replacement = rebuild_session()
+        rebuild_wall = time.perf_counter() - rebuild_started
+        fallback_budget = (
+            None
+            if time_limit_seconds is None
+            else time_limit_seconds - (time.perf_counter() - started)
+        )
+        if fallback_budget is not None and fallback_budget <= 0:
+            raise DeadlineExceeded(
+                "No solver budget remained for the cold MIP-start fallback"
+            ) from exc
+        fallback_started = time.perf_counter()
+        result = replacement.solve(time_limit_seconds=fallback_budget)
+        fallback_solve_wall = time.perf_counter() - fallback_started
+        fallback = {
+            "used": True,
+            "trigger_error_type": type(exc).__name__,
+            "trigger_error": str(exc),
+            "failed_mip_start_attempt_wall_time_seconds": failed_attempt_wall,
+            "cold_session_rebuild_wall_time_seconds": rebuild_wall,
+            "cold_solve_wall_time_seconds": fallback_solve_wall,
+            "cold_solve_budget_seconds": fallback_budget,
+        }
+        result.statistics["mip_start_cold_fallback"] = fallback
+        emit_diagnostic("mip_start_cold_fallback_finished", **fallback)
+        return replacement, result, fallback
 
 
 def run_end_to_end(
@@ -212,23 +262,28 @@ def run_end_to_end(
         )
         stage = time.perf_counter()
         emit_diagnostic("solver_session_build_started")
-        solver_session = create_solver_session(
-            master.canonical,
-            solver=profile["solver"],
-            mip_relative_gap=float(config.model["mip_relative_gap_tolerance"]),
-            threads=int(profile["solver_threads"]),
-            diagnostic_event=(
-                emit_diagnostic if diagnostics_enabled and profile["solver"] == "highs" else None
-            ),
-            native_log_path=(
-                native_log_path
-                if diagnostics_enabled and profile["solver"] == "highs"
-                else None
-            ),
-            mip_logging_interval_seconds=float(
-                diagnostics_profile.get("mip_logging_interval_seconds", 1.0)
-            ),
-        )
+        def build_solver_session() -> SolverSession:
+            return create_solver_session(
+                master.canonical,
+                solver=profile["solver"],
+                mip_relative_gap=float(config.model["mip_relative_gap_tolerance"]),
+                threads=int(profile["solver_threads"]),
+                diagnostic_event=(
+                    emit_diagnostic
+                    if diagnostics_enabled and profile["solver"] == "highs"
+                    else None
+                ),
+                native_log_path=(
+                    native_log_path
+                    if diagnostics_enabled and profile["solver"] == "highs"
+                    else None
+                ),
+                mip_logging_interval_seconds=float(
+                    diagnostics_profile.get("mip_logging_interval_seconds", 1.0)
+                ),
+            )
+
+        solver_session = build_solver_session()
         expected_session_mode = profile.get("solver_session")
         if expected_session_mode and solver_session.mode != expected_session_mode:
             raise ValueError(
@@ -263,7 +318,14 @@ def run_end_to_end(
                 solver_budget_seconds=solver_budget,
             )
             stage = time.perf_counter()
-            last_solve = solver_session.solve(time_limit_seconds=solver_budget)
+            solver_session, last_solve, mip_start_fallback = (
+                _solve_with_mip_start_fallback(
+                    solver_session,
+                    time_limit_seconds=solver_budget,
+                    rebuild_session=build_solver_session,
+                    emit_diagnostic=emit_diagnostic,
+                )
+            )
             solve_elapsed = _seconds_since(stage)
             emit_diagnostic(
                 "restricted_master_solve_finished",
@@ -282,6 +344,11 @@ def run_end_to_end(
                 "adapter_wall_time_seconds": solve_elapsed,
                 "solve": _solve_summary(last_solve),
             }
+            if mip_start_fallback is not None:
+                round_payload["mip_start_cold_fallback"] = mip_start_fallback
+                payload.setdefault("mip_start_cold_fallbacks", []).append(
+                    {"round": round_number, **mip_start_fallback}
+                )
             payload["constraint_generation_rounds"].append(round_payload)
             payload.update(
                 {

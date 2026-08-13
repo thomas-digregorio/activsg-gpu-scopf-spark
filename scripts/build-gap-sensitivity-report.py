@@ -12,11 +12,11 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 GAPS = ("1e-3", "1e-4", "1e-5", "1e-6", "1e-7")
 RESULT_DIR = ROOT / "results" / "experiments"
-REPORT_DIR = ROOT / "reports" / "activsg10k-gap-sensitivity-v1"
+REPORT_DIR = ROOT / "reports" / "activsg10k-gap-sensitivity-v2"
 
 
 def _read(label: str) -> dict[str, Any]:
-    path = RESULT_DIR / f"activsg10k-gap-{label}-laptop.json"
+    path = RESULT_DIR / f"activsg10k-gap-v2-{label}-laptop.json"
     payload = json.loads(path.read_text(encoding="utf-8"))
     if payload.get("gap_label") != label:
         raise ValueError(f"{path} has the wrong gap label")
@@ -218,7 +218,7 @@ def main() -> None:
     ]
     comparison = {
         "schema_version": "1.0.0",
-        "experiment_suite_id": "activsg10k-gap-sensitivity-v1",
+        "experiment_suite_id": "activsg10k-gap-sensitivity-v2",
         "commit": next(iter(commits)),
         "tag": next(iter(tags)),
         "source_hashes": {
@@ -237,13 +237,19 @@ def main() -> None:
     )
 
     lines = [
-        "# ACTIVSg10k MIP-gap sensitivity",
+        "# ACTIVSg10k MIP-gap sensitivity v2",
         "",
         "Each gap level is one independent, unbounded laptop MIP run from the base "
         "master. Within each run, dynamic N-1 constraint generation retains the "
         "previous commitment as a partial MIP start. Gap levels are not seeded from "
         "one another. Prices are from a separately identified fixed-commitment, "
         "N-1-secure LP and are not MILP duals.",
+        "",
+        "V2 is the explicitly authorized replacement campaign. The v1 `1e-3` "
+        "attempt remains preserved as a failed result; HiGHS returned an internal "
+        "error while processing its round-2 partial MIP start. V2 still attempts "
+        "that start and rebuilds the same restricted master cold only on that "
+        "specific internal error.",
         "",
         (
             "| Requested gap | Achieved gap | Objective | Bound | Committed | "

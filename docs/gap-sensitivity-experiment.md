@@ -2,7 +2,7 @@
 
 ## Question and controlled variables
 
-This experiment measures how the requested HiGHS relative MIP gap changes the
+The v2 experiment measures how the requested HiGHS relative MIP gap changes the
 final preventive ACTIVSg10k solution. The five levels are `1e-3`, `1e-4`,
 `1e-5`, `1e-6`, and `1e-7`. Every other mathematical input is identical:
 immutable source hashes, exact source PMIN/PMAX, ten equal-MW PWL segments,
@@ -18,6 +18,13 @@ one run.
 
 The runs have no wall-clock deadline. A durable ignored registry is written
 before each worker starts and prevents a retry for the same gap label.
+
+The preserved v1 `1e-3` attempt failed when HiGHS returned `kError` while
+processing a round-2 partial commitment start. The user explicitly authorized
+the v2 replacement. V2 still supplies the prior commitment. If and only if
+HiGHS returns that internal start-processing error, the adapter records the
+failed attempt, rebuilds the identical restricted master without the hint, and
+continues cold. Other failures remain terminal.
 
 ## Recorded MIP quantities
 
@@ -55,4 +62,4 @@ primal commitment and dispatch do not guarantee bitwise-identical duals.
 Ignored raw results live under `results/experiments/`. After all five one-shot
 runs finish, `scripts/build-gap-sensitivity-report.py` produces a tracked
 summary, full generator table, all-bus price table, and exact pairwise metrics
-under `reports/activsg10k-gap-sensitivity-v1/`.
+under `reports/activsg10k-gap-sensitivity-v2/`.

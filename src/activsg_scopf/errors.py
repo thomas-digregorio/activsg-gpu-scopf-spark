@@ -16,3 +16,6 @@ class ProvenanceError(ScopfError):
 class DeadlineExceeded(ScopfError):
     """The global end-to-end deadline no longer permits more work."""
 
+
+class MipStartSolveError(ScopfError):
+    """HiGHS errored while attempting to process a supplied partial MIP start."""

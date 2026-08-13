@@ -38,11 +38,11 @@
     }
   },
   "benchmark": {
-    "id": "activsg10k-gap-1e-4",
-    "required_git_tag": "experiment-10k-gap-v1",
+    "id": "activsg10k-gap-v2-1e-4",
+    "required_git_tag": "experiment-10k-gap-v2",
     "official": false,
     "kind": "gap_sensitivity_experiment",
-    "experiment_suite_id": "activsg10k-gap-sensitivity-v1",
+    "experiment_suite_id": "activsg10k-gap-sensitivity-v2",
     "gap_label": "1e-4",
     "pricing": {
       "enabled": true,

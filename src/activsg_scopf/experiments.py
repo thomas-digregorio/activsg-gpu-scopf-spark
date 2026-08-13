@@ -46,7 +46,7 @@ def _experiment_identity(config: RunConfig) -> tuple[str, str]:
     if gap not in GAP_LABELS or label != GAP_LABELS[gap]:
         raise ScopfError(f"Unregistered gap experiment identity: gap={gap}, label={label!r}")
     suite_id = str(config.raw["benchmark"].get("experiment_suite_id", ""))
-    if suite_id != "activsg10k-gap-sensitivity-v1":
+    if suite_id != "activsg10k-gap-sensitivity-v2":
         raise ScopfError(f"Unregistered experiment suite {suite_id!r}")
     pricing = config.raw["benchmark"].get("pricing", {})
     if not bool(pricing.get("enabled", False)):

@@ -64,7 +64,10 @@ def test_activsg10k_gap_experiment_registers_exact_unbounded_levels() -> None:
         assert config.runtime["deadline_seconds"] is None
         assert config.raw["benchmark"]["gap_label"] == label
         assert config.raw["benchmark"]["required_git_tag"] == (
-            "experiment-10k-gap-v1"
+            "experiment-10k-gap-v2"
+        )
+        assert config.raw["benchmark"]["experiment_suite_id"] == (
+            "activsg10k-gap-sensitivity-v2"
         )
         assert config.raw["benchmark"]["pricing"]["enabled"] is True
         assert config.raw["platforms"]["laptop_cpu"]["solver_session"] == (

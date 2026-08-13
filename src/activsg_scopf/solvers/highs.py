@@ -10,7 +10,7 @@ from typing import Any
 import numpy as np
 
 from ..canonical import CanonicalMILP
-from ..errors import ScopfError
+from ..errors import MipStartSolveError, ScopfError
 from ..paths import guard_output_path
 from .common import SolveResult
 
@@ -248,6 +248,10 @@ class HighsSession:
         run_started = time.perf_counter()
         run_return_status = self.highs.run()
         run_wall_time = time.perf_counter() - run_started
+        if run_return_status == highspy.HighsStatus.kError and mip_start_status is not None:
+            raise MipStartSolveError(
+                "HiGHS returned kError while processing the partial commitment MIP start"
+            )
         _require_run_not_error(run_return_status)
         highs_run_time_after = float(self.highs.getRunTime())
         status = self.highs.getModelStatus()
