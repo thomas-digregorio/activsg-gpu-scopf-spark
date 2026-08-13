@@ -1,0 +1,104 @@
+{
+  "schema_version": "1.0.0",
+  "case_name": "ACTIVSg500",
+  "interval_hours": 1.0,
+  "comparison_type": "system-to-system, not pure GPU speedup",
+  "acceptance": {
+    "overall_passed": true,
+    "both_under_300_seconds": true,
+    "both_optimal": true,
+    "both_independently_verified": true
+  },
+  "frozen_identity": {
+    "git_commit": "08b06fc2d76b1df4472da690a2d01dedefc14815",
+    "git_tag": "benchmark-v1",
+    "config_sha256": "61a147a74c73970860bf3b9f00f29100e520c97946f1f0e4b05cd249c6a5fdbf",
+    "case_sha256": "8ca6d54ea5179eeb03fe29d7b645618e7a86338c172247e81687476660f6dcbe",
+    "contingency_sha256": "f6b2e7e38fd1cf5e09e877cf04233b4d0487d6d0e99903070d519eade12b76a9"
+  },
+  "shared_model": {
+    "base_columns": 1769,
+    "base_rows": 1713,
+    "base_nonzeros": 4833,
+    "final_rows": 1882,
+    "final_nonzeros": 5171,
+    "source_online_generators": 56,
+    "source_offline_generators": 34,
+    "source_online_pmin_sum_mw": 2659.06,
+    "source_online_pmax_sum_mw": 8863.65,
+    "total_dispatch_mw": 7750.66,
+    "pwl_segments_per_eligible_generator": 10,
+    "pwl_maximum_absolute_error_source_cost_units": 1.4594043380020594,
+    "valid_non_islanding_branch_outages": 337,
+    "excluded_islanding_bridges": 254,
+    "deferred_generator_outages": 90,
+    "checked_contingency_sides": 401704,
+    "lodf_selected_column_validation_maximum_error_pu": 5.04615372832349e-17
+  },
+  "laptop_cpu": {
+    "status": "optimal_verified",
+    "system": "Windows 11, Intel Core Ultra 9 275HX, 24 physical/logical CPUs",
+    "stack": "Python 3.13.5, HiGHS 1.15.1, NumPy 2.5.2, SciPy 1.18.0",
+    "gpu_used": false,
+    "objective_source_cost_units": 79410.651432182,
+    "bound": 79410.651432182,
+    "mip_gap": 0.0,
+    "committed_generators": 50,
+    "constraint_generation_rounds": 3,
+    "new_pairs_by_round": [167, 2, 0],
+    "added_security_pairs": 169,
+    "maximum_model_residual_pu": 1.21151089160776e-12,
+    "conditional_pmin_pmax_violation_pu": 2.78532752417959e-14,
+    "final_exhaustive_violation_pu": 0.0,
+    "peak_process_rss_bytes": 98136064,
+    "total_wall_time_seconds": 3.005204799999774,
+    "timings_seconds": {
+      "raw_input_loading": 0.005740000000514556,
+      "model_and_factor_build": 0.1482700999986264,
+      "solver_rounds": 1.9935647000002064,
+      "screening": 0.011860500000693719,
+      "independent_verification": 0.3597534000000451,
+      "result_serialization": 0.013333099999726983
+    },
+    "detailed_result_sha256": "ec673b6dcf0ecc80133a3e3b858c5d74f1dc5b8702dd9810e71926a9cba78c21"
+  },
+  "dgx_spark": {
+    "status": "optimal_verified",
+    "system": "DGX Spark, NVIDIA GB10 compute capability 12.1, 20 ARM64 CPUs",
+    "stack": "Python 3.14.5, cuOpt 26.06.00, CuPy 14.1.1, NumPy 2.4.6, SciPy 1.17.1",
+    "gpu_used": true,
+    "objective_source_cost_units": 79410.65143218225,
+    "bound": 79410.65143218229,
+    "mip_gap": 0.0,
+    "committed_generators": 50,
+    "constraint_generation_rounds": 3,
+    "new_pairs_by_round": [167, 2, 0],
+    "added_security_pairs": 169,
+    "maximum_model_residual_pu": 3.71045416613924e-13,
+    "final_exhaustive_violation_pu": 4.20641299569979e-14,
+    "peak_process_rss_bytes": 1130700800,
+    "peak_cuda_device_memory_delta_bytes": 6315429888,
+    "total_wall_time_seconds": 4.571722299002431,
+    "timings_seconds": {
+      "raw_input_loading": 0.003413773996726377,
+      "model_and_factor_build": 0.09131561699905433,
+      "solver_rounds": 2.6951576870051213,
+      "screening": 0.7963654430022871,
+      "independent_verification": 0.2062878959986847,
+      "result_serialization": 0.0013638460004585795
+    },
+    "detailed_result_sha256": "a4bd65e935efe8d32806b94e44be1a04e6fa551d27270bf2ec2824b0a78c2ffe"
+  },
+  "cross_system_agreement": {
+    "objective_absolute_difference": 2.47382558882236e-10,
+    "maximum_dispatch_difference_mw": 6.59383658785373e-12,
+    "maximum_base_flow_difference_mw": 3.33919558670459e-11,
+    "security_pair_id_differences": 0
+  },
+  "timing_comparison": {
+    "spark_over_laptop_ratio": 1.52126813420595,
+    "laptop_over_spark_ratio": 0.65734631358854,
+    "faster_system_for_this_one_shot": "laptop_cpu"
+  }
+}
+
