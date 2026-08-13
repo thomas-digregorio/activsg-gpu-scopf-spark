@@ -1,0 +1,27 @@
+# Local Python environments and caches
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Immutable benchmark inputs are copied locally but never published
+data/raw/**
+!data/raw/.gitkeep
+
+# Derived matrices, solver work, and benchmark evidence
+data/cache/
+work/
+results/
+logs/
+*.mps
+*.lp
+*.sol
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
