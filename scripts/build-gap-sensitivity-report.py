@@ -311,6 +311,71 @@ def main() -> None:
             f"{item['bus_price_per_mwh']['mean_absolute']:,.6f} | "
             f"{item['bus_price_per_mwh']['maximum_absolute']:,.6f} |"
         )
+    identical_grid_results = all(
+        item["commitment_flip_count"] == 0
+        and item["mip_dispatch_mw"]["maximum_absolute"] == 0.0
+        and item["pricing_dispatch_mw"]["maximum_absolute"] == 0.0
+        and item["bus_price_per_mwh"]["maximum_absolute"] == 0.0
+        for item in versus_strictest
+    )
+    all_gaps_proven_zero = all(
+        float(result["mip_gap"]) == 0.0 for result in results.values()
+    )
+    if identical_grid_results and all_gaps_proven_zero:
+        reference = results[GAPS[-1]]
+        mip_generators = reference["solution"]["generators"]
+        pricing = reference["pricing"]
+        total_dispatch_mw = sum(
+            float(record["dispatch_mw"]) for record in mip_generators
+        )
+        total_dispatch_pu = sum(
+            float(record["dispatch_pu"]) for record in mip_generators
+        )
+        online_uncommitted = [
+            int(record["source_row"])
+            for record in mip_generators
+            if int(record["source_status"]) > 0
+            and round(float(record["commitment"])) == 0
+        ]
+        source_dimensions = reference["source_manifest"]["dimensions"]
+        price_mw = pricing["bus_price_summary_per_mwh"]
+        price_pu = pricing["bus_price_summary_per_pu_hour"]
+        pricing_difference = pricing["pricing_dispatch_difference"]
+        lines.extend(
+            [
+                "",
+                "## Interpretation",
+                "",
+                f"For this {reference['case_name']} formulation, the requested MIP-gap "
+                "setting never became binding. HiGHS proved objective equal to bound "
+                "with a reported zero gap in every restricted-master round at every "
+                "requested setting. Consequently, `1e-3` produced exactly the same "
+                "generator commitment, MIP dispatch, fixed-commitment pricing dispatch, "
+                "and all nodal prices as `1e-7`.",
+                "",
+                f"The common solution commits {reference['commitment_count']} of the "
+                f"{source_dimensions['source_online_generators']} source-online "
+                f"generators and dispatches {total_dispatch_mw:,.6f} MW "
+                f"({total_dispatch_pu:,.6f} p.u.). Source-online rows "
+                f"{', '.join(str(row) for row in online_uncommitted)} are uncommitted; "
+                f"all {source_dimensions['source_offline_generators']} source-offline "
+                "generators remain unavailable. The fixed-commitment pricing dispatch "
+                f"differs from the MIP dispatch by at most "
+                f"{pricing_difference['maximum_absolute_mw']:.3e} MW.",
+                "",
+                f"Prices range from ${price_mw['minimum']:,.8f}/MWh to "
+                f"${price_mw['maximum']:,.8f}/MWh, with a mean of "
+                f"${price_mw['mean']:,.8f}/MWh. On the "
+                f"{pricing['base_mva']:g} MVA base, the minimum, maximum, and mean are "
+                f"${price_pu['minimum']:,.8f}, ${price_pu['maximum']:,.8f}, and "
+                f"${price_pu['mean']:,.8f} per p.u.-hour, respectively.",
+                "",
+                f"Thus `1e-3` is sufficient for this specific {reference['case_name']} "
+                "instance and solver path. This does not establish that `1e-3` is "
+                "sufficient for a larger ACTIVSg case or a different unit-commitment "
+                "formulation.",
+            ]
+        )
     lines.extend(
         [
             "",
