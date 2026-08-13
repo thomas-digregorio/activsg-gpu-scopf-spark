@@ -15,6 +15,10 @@ output names, checkpoints, and benchmark-ID-specific registry. The detailed
 result and durable run registry live in ignored `results/`. A
 sanitized comparison may be committed only after both one-shot runs finish.
 
+The failed `activsg10k-v1` laptop evidence also remains immutable. The
+explicitly authorized second laptop run is registered as `activsg10k-v2` with
+tag `benchmark-10k-v2`; it has a separate registry, checkpoint, and output.
+
 ## Boundary
 
 The measured boundary starts immediately before launching the isolated worker
@@ -34,6 +38,14 @@ budget minus the configured verification reserve (45 seconds for ACTIVSg500,
 75 seconds for ACTIVSg10k) and 5 seconds for serialization. Each
 adapter also sets its native time limit. The parent process independently kills
 the worker at the global boundary if it has not returned.
+
+ACTIVSg10k v2 restores the verification reserve to 45 seconds using the v1
+measurements (8.84 seconds for model/factor construction and 2.03 seconds per
+complete screen). Its HiGHS adapter loads the canonical model once, appends only
+new security rows, and passes the prior integer assignment as a partial MIP
+start. HiGHS warnings are inspected through model status rather than promoted
+to exceptions. These are runtime changes only; all mathematical inputs and
+acceptance tolerances match v1.
 
 The ignored registry is written as `started` before worker launch. A timeout,
 exception, infeasibility, nonoptimal solver return, verification failure, or

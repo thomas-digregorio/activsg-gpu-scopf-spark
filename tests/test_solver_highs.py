@@ -2,13 +2,14 @@ from pathlib import Path
 
 import pytest
 
+from activsg_scopf.canonical import CanonicalMILP
 from activsg_scopf.config import RunConfig
 from activsg_scopf.errors import ScopfError
 from activsg_scopf.matpower import sha256_file
 from activsg_scopf.model import build_master
 from activsg_scopf.network import build_network
 from activsg_scopf.solution import serialize_solution
-from activsg_scopf.solvers import solve_canonical
+from activsg_scopf.solvers import create_solver_session, solve_canonical
 from activsg_scopf.solvers.highs import _require_run_not_error
 from activsg_scopf.verify import verify_serialized_solution
 
@@ -21,6 +22,27 @@ def test_highs_warning_is_preserved_for_model_status_extraction() -> None:
     _require_run_not_error(highspy.HighsStatus.kWarning)
     with pytest.raises(ScopfError, match="HiGHS"):
         _require_run_not_error(highspy.HighsStatus.kError)
+
+
+def test_persistent_highs_session_appends_rows_and_resolves() -> None:
+    model = CanonicalMILP()
+    x = model.add_variable("x", objective=1.0, lower=0.0, upper=1.0, integer=True)
+    session = create_solver_session(
+        model, solver="highs", mip_relative_gap=1e-6, threads=0
+    )
+    first = session.solve(time_limit_seconds=5.0)
+    assert first.optimal
+    assert first.values is not None
+    assert first.values[x] == pytest.approx(0.0)
+    model.add_row("force_x_on", {x: 1.0}, lower=1.0)
+    second = session.solve(time_limit_seconds=5.0)
+    assert second.optimal
+    assert second.values is not None
+    assert second.values[x] == pytest.approx(1.0)
+    assert second.statistics["session_mode"] == "persistent_incremental"
+    assert second.statistics["session_solve_number"] == 2
+    assert second.statistics["incremental_rows_added"] == 1
+    assert second.statistics["partial_integer_mip_start_return_status"] is not None
 
 
 def test_highs_adapter_and_independent_checker_use_one_tiny_solve(tmp_path: Path) -> None:

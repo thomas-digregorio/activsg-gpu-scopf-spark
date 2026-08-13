@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol
 
 import numpy as np
 import numpy.typing as npt
@@ -27,6 +27,54 @@ class SolveResult:
     solve_time_seconds: float
     values: FloatArray | None
     statistics: dict[str, Any]
+
+
+class SolverSession(Protocol):
+    """A solver adapter that observes append-only changes to one canonical model."""
+
+    mode: str
+
+    def solve(self, *, time_limit_seconds: float) -> SolveResult: ...
+
+
+@dataclass
+class RebuildingSolverSession:
+    """Compatibility session for adapters without registered incremental support."""
+
+    model: CanonicalMILP
+    solver: str
+    mip_relative_gap: float
+    threads: int
+    mode: str = "rebuild_each_round"
+
+    def solve(self, *, time_limit_seconds: float) -> SolveResult:
+        return solve_canonical(
+            self.model,
+            solver=self.solver,
+            time_limit_seconds=time_limit_seconds,
+            mip_relative_gap=self.mip_relative_gap,
+            threads=self.threads,
+        )
+
+
+def create_solver_session(
+    model: CanonicalMILP,
+    *,
+    solver: str,
+    mip_relative_gap: float,
+    threads: int = 0,
+) -> SolverSession:
+    if solver == "highs":
+        from .highs import HighsSession
+
+        return HighsSession(
+            model,
+            mip_relative_gap=mip_relative_gap,
+            threads=threads,
+        )
+    if solver == "cuopt":
+        return RebuildingSolverSession(model, solver, mip_relative_gap, threads)
+    raise ScopfError(f"Unknown canonical solver adapter: {solver}")
 
 
 def solve_canonical(
@@ -58,4 +106,3 @@ def solve_canonical(
             threads=threads,
         )
     raise ScopfError(f"Unknown canonical solver adapter: {solver}")
-

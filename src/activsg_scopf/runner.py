@@ -24,7 +24,7 @@ from .paths import guard_runtime_environment
 from .provenance import build_source_manifest
 from .screening import ContingencyScreener, add_security_pairs
 from .solution import serialize_solution
-from .solvers import SolveResult, solve_canonical
+from .solvers import SolveResult, create_solver_session
 from .verify import verify_serialized_solution
 
 Checkpoint = Callable[[dict[str, Any]], None]
@@ -145,6 +145,22 @@ def run_end_to_end(
             chunk_columns=screen_chunk_columns,
         )
         payload["timings_seconds"]["screen_workspace_build"] = _seconds_since(stage)
+        stage = time.perf_counter()
+        solver_session = create_solver_session(
+            master.canonical,
+            solver=profile["solver"],
+            mip_relative_gap=float(config.model["mip_relative_gap_tolerance"]),
+            threads=int(profile["solver_threads"]),
+        )
+        expected_session_mode = profile.get("solver_session")
+        if expected_session_mode and solver_session.mode != expected_session_mode:
+            raise ValueError(
+                f"Configured solver session {expected_session_mode!r} does not match "
+                f"adapter mode {solver_session.mode!r}"
+            )
+        payload["timings_seconds"]["solver_session_build"] = _seconds_since(stage)
+        payload["solver_session_mode"] = solver_session.mode
+        save_checkpoint()
         added_pair_ids: set[str] = set()
         solve_total = 0.0
         screen_total = 0.0
@@ -159,13 +175,7 @@ def run_end_to_end(
             payload["active_solver_budget_seconds"] = solver_budget
             save_checkpoint()
             stage = time.perf_counter()
-            last_solve = solve_canonical(
-                master.canonical,
-                solver=profile["solver"],
-                time_limit_seconds=solver_budget,
-                mip_relative_gap=float(config.model["mip_relative_gap_tolerance"]),
-                threads=int(profile["solver_threads"]),
-            )
+            last_solve = solver_session.solve(time_limit_seconds=solver_budget)
             solve_elapsed = _seconds_since(stage)
             solve_total += solve_elapsed
             round_payload: dict[str, Any] = {

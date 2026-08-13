@@ -77,6 +77,7 @@ activsg-scopf verify --config configs\activsg500.json --solution work\nonofficia
 activsg-scopf benchmark --config configs\activsg500.json --platform laptop_cpu --output results\laptop-cpu-official.json
 activsg-scopf ingest --config configs\activsg10k.json --output work\activsg10k-ingest.json
 activsg-scopf benchmark --config configs\activsg10k.json --platform laptop_cpu --output results\activsg10k-laptop-cpu-official.json
+activsg-scopf benchmark --config configs\activsg10k-v2.json --platform laptop_cpu --output results\activsg10k-v2-laptop-cpu-official.json
 ```
 
 `solve` is a bounded nonofficial end-to-end run. `benchmark` is the registered
@@ -88,11 +89,18 @@ replacement even after failure.
 
 The benchmark controller requires a clean tracked worktree and requires `HEAD`
 to equal the tag registered by the selected configuration (`benchmark-v1` for
-the preserved 500 run and `benchmark-10k-v1` for 10k). It measures worker launch through
+the preserved 500 run and `benchmark-10k-v1` for the first 10k run).
+For the explicitly authorized second 10k laptop run, `activsg10k-v2` uses
+`benchmark-10k-v2`, a persistent incremental HiGHS session, and a 45-second
+verification reserve. It does not replace the failed v1 evidence or change the
+model, source hashes, tolerances, exact PMIN, or ten-segment costs.
+
+The controller measures worker launch through
 the first complete result serialization, including raw input loading, factor and
 model construction, every solve/screen round, and independent exhaustive
 verification. The 10k solver receives only the time left after a 75-second
-verification reserve and a 5-second serialization reserve. A parent watchdog
+verification reserve in v1 or a 45-second reserve in v2, plus a 5-second
+serialization reserve. A parent watchdog
 terminates the worker at 300 seconds and serializes its last checkpoint.
 
 Run the laptop first. A Spark run is rejected unless its `--laptop-result` is an
@@ -114,6 +122,9 @@ bash scripts/spark-benchmark.sh
 # ACTIVSg10k workflow
 bash scripts/spark-build-10k.sh
 bash scripts/spark-benchmark-10k.sh
+# ACTIVSg10k v2 workflow (only after a passing matching laptop result)
+bash scripts/spark-build-10k-v2.sh
+bash scripts/spark-benchmark-10k-v2.sh
 ```
 
 The repository is mounted read-only in the container, with only ignored

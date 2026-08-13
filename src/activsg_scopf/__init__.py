@@ -1,3 +1,3 @@
 """Preventive DC-SCOPF prototype for explicitly registered ACTIVSg cases."""
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
