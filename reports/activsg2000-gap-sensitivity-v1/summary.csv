@@ -1,0 +1,6 @@
+gap_label,requested_mip_gap,status,objective,bound,achieved_mip_gap,commitment_count,recorded_rounds,accepted_added_security_pairs,last_screen_new_violated_pairs,last_screen_maximum_violation_pu,independent_verification_passed,pricing_status,total_wall_seconds,raw_result_sha256
+1e-3,0.001,optimal_verified,1133479.3855011363,1132599.3522354912,0.0007763998859633739,327,3,106,0,0.0,True,optimal_secure_fixed_commitment_lp,1007.3702709000063,5573425a8e625c0c964b2c61d33ca80666de74a350e9431a96e5ce9b90e02e3f
+1e-4,0.0001,incomplete_restricted_master_not_optimal,1131340.3834095951,1131175.0591730701,0.00014613129607089713,325,2,87,18,0.20398906276083464,,,1665.8506764000049,7116d7ca26f3a7beb11a7f824e4f46c38f29566df43fc4065440e4a5664f8a25
+1e-5,1e-05,not_started_after_1e-4_failure,,,,,,,,,,,,
+1e-6,1e-06,not_started_after_1e-4_failure,,,,,,,,,,,,
+1e-7,1e-07,not_started_after_1e-4_failure,,,,,,,,,,,,

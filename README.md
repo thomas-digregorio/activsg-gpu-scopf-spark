@@ -114,6 +114,14 @@ gap cannot start after any timeout, failure, verification failure, or missing
 fixed-commitment pricing. It uses the exact source-case PMIN values and does not
 reuse a solution or contingency-pair list from another gap.
 
+That ACTIVSg2000 campaign is now closed. The `1e-3` run completed
+`optimal_verified` with accepted fixed-commitment pricing; the `1e-4` run hit
+its restricted-master solver budget above the requested gap and its provisional
+screen still found 18 violated pairs. Accordingly, `1e-5`, `1e-6`, and `1e-7`
+were not started. The tracked [ACTIVSg2000 gap report](reports/activsg2000-gap-sensitivity-v1/README.md)
+contains all accepted generator/pricing records and the labeled incomplete
+incumbent evidence.
+
 Use `gap-experiment`, not `solve` or `benchmark`. The command writes a durable
 one-shot registry before worker launch and refuses a second run for that gap:
 

@@ -78,3 +78,12 @@ pairwise metrics under the corresponding directory in `reports/`. The
 generator table includes exact source PMIN/PMAX, commitment, MIP dispatch,
 fixed-commitment pricing dispatch, and nodal price for every gap level in both
 MW-based and p.u.-based units.
+
+## ACTIVSg2000 v1 outcome
+
+The bounded ACTIVSg2000 campaign stopped after `1e-4` did not meet its requested
+gap before the solver budget ended. Its provisional screen retained 18 security
+violations, so it was not independently verified or priced. The ordered gate
+therefore prevented `1e-5`, `1e-6`, and `1e-7` from starting. The accepted
+`1e-3` generator, dispatch, and price records and the clearly labeled partial
+`1e-4` evidence are under `reports/activsg2000-gap-sensitivity-v1/`.
