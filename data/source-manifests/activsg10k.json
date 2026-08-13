@@ -1,0 +1,25 @@
+{
+  "case_name": "ACTIVSg10k",
+  "case_sha256": "ead10b25fecc4dcc02f88bacdfb3526fe8b8985b81f7e539c95abddb32575590",
+  "contingency_sha256": "7e1681a960b0a2a99d824766e0e94cc291fa36a7ec33b6dee24bf12ac67ddef7",
+  "expected_dimensions": {
+    "branches": 12706,
+    "buses": 10000,
+    "contingency_branch_rows": 11806,
+    "contingency_change_rows": 11806,
+    "generators": 2485,
+    "source_offline_generators": 548,
+    "source_online_generators": 1937
+  },
+  "row_identity": {
+    "branch": "branch-row-NNNN maps to the immutable one-based mpc.branch row",
+    "contingency": "contingency source_row maps to the immutable one-based chgtab row",
+    "generator": "gen-row-NNNN maps to the immutable one-based mpc.gen row"
+  },
+  "source_online_capacity_mw": {
+    "pmax_sum": 170021.33000000002,
+    "pmin_sum": 85764.93
+  },
+  "source_url": "https://electricgrids.engr.tamu.edu/electric-grid-test-cases/activsg10k/",
+  "synthetic_system": true
+}

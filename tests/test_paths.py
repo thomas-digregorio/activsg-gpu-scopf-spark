@@ -4,7 +4,7 @@ import pytest
 
 from activsg_scopf.errors import ScopeViolation
 from activsg_scopf.paths import (
-    assert_activsg500_name,
+    assert_approved_activsg_name,
     assert_not_onedrive,
     guard_runtime_environment,
 )
@@ -15,14 +15,17 @@ def test_onedrive_is_rejected_before_any_write() -> None:
         assert_not_onedrive(Path("C:/Users/example/OneDrive/output.json"), purpose="test")
 
 
-@pytest.mark.parametrize("name", ["case_ACTIVSg501.m", "ACTIVSg999", "activsg-42.m"])
+@pytest.mark.parametrize(
+    "name", ["case_ACTIVSg501.m", "ACTIVSg2k", "ACTIVSg2000", "activsg-42.m"]
+)
 def test_larger_or_other_cases_are_rejected(name: str) -> None:
-    with pytest.raises(ScopeViolation, match="Only ACTIVSg500"):
-        assert_activsg500_name(name)
+    with pytest.raises(ScopeViolation, match="Only ACTIVSg500 and ACTIVSg10k"):
+        assert_approved_activsg_name(name)
 
 
-def test_activsg500_scope_name_is_accepted() -> None:
-    assert_activsg500_name("case_ACTIVSg500.m")
+@pytest.mark.parametrize("name", ["case_ACTIVSg500.m", "contab_ACTIVSg10k.m"])
+def test_explicitly_approved_scope_names_are_accepted(name: str) -> None:
+    assert_approved_activsg_name(name)
 
 
 def test_synced_cache_environment_is_rejected(

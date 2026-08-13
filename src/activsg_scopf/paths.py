@@ -10,7 +10,8 @@ from pathlib import Path
 
 from .errors import ScopeViolation
 
-_ACTIVSG_TOKEN = re.compile(r"activsg[_-]?(\d+)", re.IGNORECASE)
+_ACTIVSG_TOKEN = re.compile(r"activsg[_-]?(\d+(?:k)?)", re.IGNORECASE)
+_APPROVED_CASE_TOKENS = {"500", "10k"}
 
 
 def resolved(path: str | os.PathLike[str]) -> Path:
@@ -28,22 +29,27 @@ def assert_not_onedrive(path: str | os.PathLike[str], *, purpose: str = "path") 
     return target
 
 
-def assert_activsg500_name(path_or_name: str | os.PathLike[str]) -> None:
-    """Reject any explicit ACTIVSg case token other than ACTIVSg500."""
+def assert_approved_activsg_name(path_or_name: str | os.PathLike[str]) -> None:
+    """Reject any explicit ACTIVSg token other than the two approved cases."""
 
     text = str(path_or_name)
     for match in _ACTIVSG_TOKEN.finditer(text):
-        if match.group(1) != "500":
+        if match.group(1).casefold() not in _APPROVED_CASE_TOKENS:
             raise ScopeViolation(
-                f"Only ACTIVSg500 is approved; rejected scope token {match.group(0)!r}"
+                "Only ACTIVSg500 and ACTIVSg10k are approved; "
+                f"rejected scope token {match.group(0)!r}"
             )
+
+
+# Kept as a compatibility alias for the frozen ACTIVSg500 revision.
+assert_activsg500_name = assert_approved_activsg_name
 
 
 def guard_input_path(path: str | os.PathLike[str]) -> Path:
     """Validate an immutable input path under the local-only policy."""
 
     target = assert_not_onedrive(path, purpose="input path")
-    assert_activsg500_name(target)
+    assert_approved_activsg_name(target)
     if not target.is_file():
         raise ScopeViolation(f"Input file does not exist: {target}")
     return target
@@ -53,7 +59,7 @@ def guard_output_path(path: str | os.PathLike[str]) -> Path:
     """Validate a writable output path without creating it."""
 
     target = assert_not_onedrive(path, purpose="output path")
-    assert_activsg500_name(target)
+    assert_approved_activsg_name(target)
     assert_not_onedrive(target.parent, purpose="output parent")
     return target
 
