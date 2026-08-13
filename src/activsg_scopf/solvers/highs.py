@@ -116,6 +116,7 @@ class HighsSession:
 
         if time_limit_seconds <= 0:
             raise ScopfError("Solver was not started because no deadline budget remained")
+        call_started = time.perf_counter()
         rows_added, row_add_time = self._sync_rows()
         mip_start_status: str | None = None
         if (
@@ -129,16 +130,23 @@ class HighsSession:
             )
             _require_run_not_error(status)
             mip_start_status = status.name.removeprefix("k")
-        cumulative_before = float(self.highs.getRunTime())
+        setup_time = time.perf_counter() - call_started
+        native_time_limit = float(time_limit_seconds) - setup_time
+        if native_time_limit <= 0:
+            raise ScopfError(
+                "Solver was not started because incremental session setup exhausted "
+                "the remaining deadline budget"
+            )
+        highs_run_time_before = float(self.highs.getRunTime())
         _require_ok(
-            self.highs.setOptionValue(
-                "time_limit", cumulative_before + float(time_limit_seconds)
-            ),
+            self.highs.setOptionValue("time_limit", native_time_limit),
             "time limit",
         )
+        run_started = time.perf_counter()
         run_return_status = self.highs.run()
+        run_wall_time = time.perf_counter() - run_started
         _require_run_not_error(run_return_status)
-        cumulative_after = float(self.highs.getRunTime())
+        highs_run_time_after = float(self.highs.getRunTime())
         status = self.highs.getModelStatus()
         info = self.highs.getInfo()
         solution = self.highs.getSolution()
@@ -163,7 +171,7 @@ class HighsSession:
             objective=objective_value,
             bound=bound,
             mip_gap=gap,
-            solve_time_seconds=max(0.0, cumulative_after - cumulative_before),
+            solve_time_seconds=run_wall_time,
             values=values,
             statistics={
                 "session_mode": self.mode,
@@ -172,7 +180,11 @@ class HighsSession:
                 "incremental_rows_added": rows_added,
                 "incremental_row_load_wall_time_seconds": row_add_time,
                 "partial_integer_mip_start_return_status": mip_start_status,
-                "cumulative_run_time_seconds": cumulative_after,
+                "requested_call_budget_seconds": float(time_limit_seconds),
+                "native_time_limit_seconds": native_time_limit,
+                "session_setup_wall_time_seconds": setup_time,
+                "highs_run_time_before_seconds": highs_run_time_before,
+                "highs_run_time_after_seconds": highs_run_time_after,
                 "mip_node_count": int(info.mip_node_count),
                 "max_integrality_violation": float(info.max_integrality_violation),
                 "max_primal_infeasibility": float(info.max_primal_infeasibility),

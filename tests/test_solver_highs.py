@@ -43,6 +43,9 @@ def test_persistent_highs_session_appends_rows_and_resolves() -> None:
     assert second.statistics["session_solve_number"] == 2
     assert second.statistics["incremental_rows_added"] == 1
     assert second.statistics["partial_integer_mip_start_return_status"] is not None
+    assert 0.0 < second.statistics["native_time_limit_seconds"] <= 5.0
+    _, configured_time_limit = session.highs.getOptionValue("time_limit")
+    assert 0.0 < configured_time_limit <= 5.0
 
 
 def test_highs_adapter_and_independent_checker_use_one_tiny_solve(tmp_path: Path) -> None:

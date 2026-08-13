@@ -17,7 +17,8 @@ sanitized comparison may be committed only after both one-shot runs finish.
 
 The failed `activsg10k-v1` laptop evidence also remains immutable. The
 explicitly authorized second laptop run is registered as `activsg10k-v2` with
-tag `benchmark-10k-v2`; it has a separate registry, checkpoint, and output.
+tag `benchmark-10k-v2`; it has a separate registry, checkpoint, and output. It
+also failed at the parent deadline during round 2 and is closed to reruns.
 
 ## Boundary
 
@@ -46,6 +47,13 @@ new security rows, and passes the prior integer assignment as a partial MIP
 start. HiGHS warnings are inspected through model status rather than promoted
 to exceptions. These are runtime changes only; all mathematical inputs and
 acceptance tolerances match v1.
+
+The frozen v2 adapter incorrectly added prior HiGHS runtime to the current
+call's remaining budget when setting the native limit. A post-v2 correction
+caps the native limit at the remaining call budget after incremental setup and
+records independent wall-clock timing. This correction does not retroactively
+change v2 and is covered only by tiny component tests unless a new benchmark is
+explicitly authorized.
 
 The ignored registry is written as `started` before worker launch. A timeout,
 exception, infeasibility, nonoptimal solver return, verification failure, or

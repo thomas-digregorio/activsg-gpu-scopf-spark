@@ -95,6 +95,12 @@ For the explicitly authorized second 10k laptop run, `activsg10k-v2` uses
 verification reserve. It does not replace the failed v1 evidence or change the
 model, source hashes, tolerances, exact PMIN, or ten-segment costs.
 
+That v2 run is now closed: it reached the 300-second parent watchdog during
+round 2 and did not reach independent verification. Do not invoke the v2
+benchmark command again. See
+[`reports/activsg10k-v2-status.md`](reports/activsg10k-v2-status.md) for the
+preserved evidence and post-run deadline correction.
+
 The controller measures worker launch through
 the first complete result serialization, including raw input loading, factor and
 model construction, every solve/screen round, and independent exhaustive
