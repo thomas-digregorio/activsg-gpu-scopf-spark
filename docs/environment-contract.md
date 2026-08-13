@@ -20,6 +20,11 @@ The repository is mounted read-only at `/workspace`; only its ignored
 to the approved local Spark checkout and are never included in the image or Git
 history.
 
+The derived image installs `git` so the controller can bind every result to the
+mounted checkout commit. Runtime scripts place CuPy and CUDA caches only under
+the ignored, writable `results/` mount; the repository and raw inputs remain
+read-only inside the container.
+
 cuOpt's mixed-integer solver uses both GPU and CPU components. Consequently,
 the comparison is a laptop-CPU system versus a DGX-Spark cuOpt/CuPy system,
 not a claim of pure GPU kernel speedup.

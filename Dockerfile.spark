@@ -9,9 +9,11 @@ ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 
 WORKDIR /workspace
+RUN apt-get update \
+    && apt-get install --yes --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
 COPY pyproject.toml README.md NOTICE.md ./
 COPY src ./src
 RUN python -m pip install --no-cache-dir --no-deps .
 
 ENTRYPOINT ["activsg-scopf"]
-

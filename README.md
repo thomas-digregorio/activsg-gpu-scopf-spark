@@ -144,6 +144,9 @@ bash scripts/spark-benchmark-10k.sh
 # ACTIVSg10k v2 workflow (only after a passing matching laptop result)
 bash scripts/spark-build-10k-v2.sh
 bash scripts/spark-benchmark-10k-v2.sh
+# Explicitly authorized nonofficial v3 diagnostic after the laptop gate failed
+bash scripts/spark-build-10k-v3-diagnostic.sh
+bash scripts/spark-solve-10k-v3-diagnostic.sh
 ```
 
 The repository is mounted read-only in the container, with only ignored
