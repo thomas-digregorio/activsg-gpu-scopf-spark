@@ -11,7 +11,7 @@ from pathlib import Path
 
 from . import __version__
 from .config import load_config
-from .errors import ScopfError
+from .errors import DeadlineExceeded, ScopfError
 from .matpower import read_contingency_table, read_matpower_case
 from .official import run_controlled
 from .paths import guard_input_path, guard_output_path, guard_runtime_environment
@@ -86,6 +86,15 @@ def _worker(args: argparse.Namespace) -> dict[str, object]:
             deadline_seconds=args.deadline_seconds,
             official=args.official,
             checkpoint=checkpoint,
+        )
+    except DeadlineExceeded as exc:
+        result = _read_json(checkpoint_path) if checkpoint_path.exists() else {}
+        result.update(
+            {
+                "status": "deadline_budget_exhausted",
+                "error_type": type(exc).__name__,
+                "error": str(exc),
+            }
         )
     except Exception as exc:  # worker must serialize any partial failure once
         result = _read_json(checkpoint_path) if checkpoint_path.exists() else {}

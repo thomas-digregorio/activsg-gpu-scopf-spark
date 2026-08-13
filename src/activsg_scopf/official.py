@@ -15,7 +15,7 @@ from .config import RunConfig
 from .environment import validate_platform
 from .errors import ProvenanceError, ScopfError
 from .matpower import sha256_file
-from .paths import guard_output_path
+from .paths import guard_input_path, guard_output_path
 from .provenance import write_json_atomic
 
 
@@ -36,9 +36,9 @@ def frozen_identity(config: RunConfig) -> dict[str, str]:
     root = Path(_git(config, "rev-parse", "--show-toplevel")).resolve()
     if root != config.root.resolve():
         raise ScopfError(f"Configuration root {config.root} is not Git root {root}")
-    dirty = _git(config, "status", "--porcelain", "--untracked-files=no")
+    dirty = _git(config, "status", "--porcelain", "--untracked-files=normal")
     if dirty:
-        raise ScopfError("Official benchmark requires a clean tracked worktree")
+        raise ScopfError("Official benchmark requires a completely clean worktree")
     commit = _git(config, "rev-parse", "HEAD")
     tag = str(config.raw["benchmark"]["required_git_tag"])
     try:
@@ -68,6 +68,7 @@ def _read_json(path: Path) -> dict[str, Any]:
 
 
 def validate_laptop_gate(path: Path, identity: dict[str, str]) -> None:
+    path = guard_input_path(path)
     result = _read_json(path)
     if result.get("official") is not True or result.get("platform") != "laptop_cpu":
         raise ScopfError("Spark gate requires the official laptop_cpu result")
@@ -129,6 +130,8 @@ def run_controlled(
 ) -> dict[str, Any]:
     validate_platform(config, platform_name)
     output = guard_output_path(output_path)
+    if official and not output.is_relative_to((config.root / "results").resolve()):
+        raise ScopfError("Official output must be inside the repository results directory")
     if official and output.exists():
         raise ScopfError(f"Official output already exists and will not be overwritten: {output}")
     identity = frozen_identity(config) if official else {
@@ -189,12 +192,18 @@ def run_controlled(
     except subprocess.TimeoutExpired as exc:
         wall_time = time.perf_counter() - started
         result = _read_json(checkpoint) if checkpoint.exists() else {}
+
+        def tail(value: str | bytes | None) -> str:
+            if isinstance(value, bytes):
+                value = value.decode(errors="replace")
+            return (value or "")[-4000:]
+
         result.update(
             {
                 "status": "hard_deadline_exceeded",
                 "worker_timeout_seconds": deadline_seconds,
-                "worker_stdout": (exc.stdout or "")[-4000:],
-                "worker_stderr": (exc.stderr or "")[-4000:],
+                "worker_stdout": tail(exc.stdout),
+                "worker_stderr": tail(exc.stderr),
             }
         )
     result.update(
@@ -215,4 +224,3 @@ def run_controlled(
     if official:
         register_finish(config, platform_name, result)
     return result
-

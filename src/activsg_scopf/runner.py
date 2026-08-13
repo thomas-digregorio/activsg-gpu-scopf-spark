@@ -216,6 +216,9 @@ def run_end_to_end(
 
         payload["timings_seconds"]["solver_rounds"] = solve_total
         payload["timings_seconds"]["screening"] = screen_total
+        payload["constraint_generation_round_count"] = len(
+            payload["constraint_generation_rounds"]
+        )
         payload["final_model_dimensions"] = {
             "columns": master.canonical.num_columns,
             "rows": master.canonical.num_rows,

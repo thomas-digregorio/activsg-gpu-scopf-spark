@@ -11,6 +11,10 @@ from ..errors import ScopfError
 from .common import SolveResult
 
 
+def _native(value: object) -> object:
+    return value.item() if isinstance(value, np.generic) else value
+
+
 def solve_cuopt(
     model: CanonicalMILP,
     *,
@@ -109,6 +113,6 @@ def solve_cuopt(
                 "num_simplex_iterations",
                 "presolve_time",
             )
-            if (value := getattr(stats, key, None)) is not None
+            if (value := _native(getattr(stats, key, None))) is not None
         },
     )

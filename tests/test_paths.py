@@ -3,7 +3,11 @@ from pathlib import Path
 import pytest
 
 from activsg_scopf.errors import ScopeViolation
-from activsg_scopf.paths import assert_activsg500_name, assert_not_onedrive
+from activsg_scopf.paths import (
+    assert_activsg500_name,
+    assert_not_onedrive,
+    guard_runtime_environment,
+)
 
 
 def test_onedrive_is_rejected_before_any_write() -> None:
@@ -11,7 +15,7 @@ def test_onedrive_is_rejected_before_any_write() -> None:
         assert_not_onedrive(Path("C:/Users/example/OneDrive/output.json"), purpose="test")
 
 
-@pytest.mark.parametrize("name", ["case_ACTIVSg2000.m", "ACTIVSg10k", "activsg-200.m"])
+@pytest.mark.parametrize("name", ["case_ACTIVSg501.m", "ACTIVSg999", "activsg-42.m"])
 def test_larger_or_other_cases_are_rejected(name: str) -> None:
     with pytest.raises(ScopeViolation, match="Only ACTIVSg500"):
         assert_activsg500_name(name)
@@ -20,3 +24,10 @@ def test_larger_or_other_cases_are_rejected(name: str) -> None:
 def test_activsg500_scope_name_is_accepted() -> None:
     assert_activsg500_name("case_ACTIVSg500.m")
 
+
+def test_synced_cache_environment_is_rejected(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("CUPY_CACHE_DIR", "C:/Users/example/OneDrive/cupy-cache")
+    with pytest.raises(ScopeViolation, match="CUPY_CACHE_DIR"):
+        guard_runtime_environment(tmp_path)

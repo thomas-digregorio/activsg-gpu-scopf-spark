@@ -329,14 +329,13 @@ def validate_lodf_columns(
     lodf: FloatArray,
     selected_columns: tuple[int, ...],
 ) -> float:
-    injection = np.zeros(len(network.bus_ids), dtype=np.float64)
-    injection[network.reference_bus_index] = -1.0
-    target = 0 if network.reference_bus_index != 0 else 1
-    injection[target] = 1.0
-    _, base_flow = solve_dc(network, injection)
     maximum = 0.0
     for column in selected_columns:
         outage_index = outages[column].active_branch_index
+        injection = np.zeros(len(network.bus_ids), dtype=np.float64)
+        injection[network.from_bus_index[outage_index]] = 1.0
+        injection[network.to_bus_index[outage_index]] = -1.0
+        _, base_flow = solve_dc(network, injection)
         _, explicit_flow = solve_dc(network, injection, outage_active_index=outage_index)
         predicted = base_flow + lodf[:, column] * base_flow[outage_index]
         maximum = max(

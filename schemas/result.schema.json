@@ -24,7 +24,7 @@
     "objective": {"type": ["number", "null"]},
     "bound": {"type": ["number", "null"]},
     "mip_gap": {"type": ["number", "null"]},
-    "total_wall_time_seconds": {"type": "number", "maximum": 300},
+    "total_wall_time_seconds": {"type": "number"},
     "timings_seconds": {"type": "object"},
     "constraint_generation_rounds": {"type": "array"},
     "added_security_pair_ids": {"type": "array", "items": {"type": "string"}},
@@ -33,4 +33,3 @@
   },
   "additionalProperties": true
 }
-

@@ -54,6 +54,7 @@ class PeakMemorySampler:
         self._thread = threading.Thread(target=self._sample_loop, daemon=True)
 
     def __enter__(self) -> PeakMemorySampler:
+        self._sample()
         self._thread.start()
         return self
 

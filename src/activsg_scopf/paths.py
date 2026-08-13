@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import os
 import re
+import sys
+import tempfile
 from pathlib import Path
 
 from .errors import ScopeViolation
@@ -61,10 +63,13 @@ def guard_runtime_environment(repo_root: str | os.PathLike[str]) -> Path:
 
     root = assert_not_onedrive(repo_root, purpose="repository root")
     for key in (
+        "CONDA_PREFIX",
         "TMP",
         "TEMP",
         "TMPDIR",
+        "VIRTUAL_ENV",
         "PIP_CACHE_DIR",
+        "PYTHONUSERBASE",
         "PYTHONPYCACHEPREFIX",
         "XDG_CACHE_HOME",
         "CUDA_CACHE_PATH",
@@ -73,5 +78,7 @@ def guard_runtime_environment(repo_root: str | os.PathLike[str]) -> Path:
         value = os.environ.get(key)
         if value:
             assert_not_onedrive(value, purpose=f"environment variable {key}")
+    assert_not_onedrive(sys.executable, purpose="Python executable")
+    assert_not_onedrive(sys.prefix, purpose="Python environment prefix")
+    assert_not_onedrive(tempfile.gettempdir(), purpose="system temporary directory")
     return root
-

@@ -13,6 +13,25 @@ from .config import RunConfig
 from .errors import ScopfError
 
 
+def _cpu_model() -> str:
+    if os.name == "nt":
+        try:
+            import winreg
+
+            key_path = r"HARDWARE\DESCRIPTION\System\CentralProcessor\0"
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key_path) as key:
+                return str(winreg.QueryValueEx(key, "ProcessorNameString")[0]).strip()
+        except OSError:
+            pass
+    cpuinfo = "/proc/cpuinfo"
+    if os.path.isfile(cpuinfo):
+        with open(cpuinfo, encoding="utf-8") as stream:
+            for line in stream:
+                if line.casefold().startswith(("model name", "hardware")):
+                    return line.split(":", 1)[-1].strip()
+    return platform.processor()
+
+
 def validate_platform(config: RunConfig, platform_name: str) -> None:
     profile = config.raw["platforms"].get(platform_name)
     if profile is None:
@@ -58,7 +77,7 @@ def environment_manifest(platform_name: str) -> dict[str, Any]:
         "system": platform.system(),
         "release": platform.release(),
         "machine": platform.machine(),
-        "processor": platform.processor(),
+        "processor": _cpu_model(),
         "python": platform.python_version(),
         "logical_cpu_count": psutil.cpu_count(logical=True),
         "physical_cpu_count": psutil.cpu_count(logical=False),
