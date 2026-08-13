@@ -110,6 +110,51 @@ def test_activsg500_gap_experiment_registers_exact_bounded_levels() -> None:
         }
 
 
+def test_activsg500_gpu_gap_experiment_registers_exact_bounded_levels() -> None:
+    expected = ("1e-3", "1e-4", "1e-5", "1e-6", "1e-7")
+    baseline = load_config(ROOT / "configs" / "activsg500-gpu-gap-1e-3.json")
+    for label in expected:
+        config = load_config(ROOT / "configs" / f"activsg500-gpu-gap-{label}.json")
+        assert config.case_name == "ACTIVSg500"
+        assert config.benchmark_kind == "gap_sensitivity_experiment"
+        assert config.runtime["deadline_seconds"] == 1800.0
+        assert config.runtime["verification_reserve_seconds"] == 120.0
+        assert config.runtime["serialization_reserve_seconds"] == 15.0
+        assert config.raw["benchmark"]["gap_label"] == label
+        assert config.raw["benchmark"]["required_git_tag"] == (
+            "experiment-500-gpu-gap-v1"
+        )
+        assert config.raw["benchmark"]["experiment_suite_id"] == (
+            "activsg500-gpu-gap-sensitivity-v1"
+        )
+        assert config.raw["benchmark"]["pricing"] == {
+            "enabled": True,
+            "solver": "highs",
+            "maximum_constraint_generation_rounds": 100,
+        }
+        assert set(config.raw["platforms"]) == {"dgx_spark"}
+        spark = config.raw["platforms"]["dgx_spark"]
+        assert spark["solver"] == "cuopt"
+        assert spark["screening"] == "cupy"
+        assert spark["solver_session"] == (
+            "rebuild_each_round_with_partial_mip_start"
+        )
+        assert spark["pricing_solver"] == "highs"
+        assert spark["highspy_version"] == "1.15.1"
+        assert config.raw["raw_inputs"] == baseline.raw["raw_inputs"]
+        assert config.runtime == baseline.runtime
+        assert config.raw["platforms"] == baseline.raw["platforms"]
+        assert {
+            key: value
+            for key, value in config.model.items()
+            if key != "mip_relative_gap_tolerance"
+        } == {
+            key: value
+            for key, value in baseline.model.items()
+            if key != "mip_relative_gap_tolerance"
+        }
+
+
 def test_activsg2000_gap_experiment_registers_exact_bounded_levels() -> None:
     expected = ("1e-3", "1e-4", "1e-5", "1e-6", "1e-7")
     baseline = load_config(ROOT / "configs" / "activsg2000-gap-1e-3.json")

@@ -108,6 +108,15 @@ controller refuses to start a later gap unless every earlier gap completed as
 work and 15 seconds for serialization; the parent watchdog remains the hard
 30-minute boundary.
 
+The separately frozen `activsg500-gpu-gap-sensitivity-v1` suite repeats those
+five ACTIVSg500 gap levels on the DGX Spark, once each and in the same strict
+order. Its MIP uses cuOpt, exhaustive contingency screening uses CuPy, and each
+rebuilt restricted master receives the prior round's integer commitment as a
+partial MIP start. Fixed-commitment nodal pricing uses HiGHS 1.15.1 inside the
+same Spark container because the cuOpt adapter does not expose the required
+nodal row duals. Every level retains the same hard 1,800-second end-to-end
+boundary, and the GPU suite has its own registry and result namespace.
+
 The `activsg2000-gap-sensitivity-v1` suite applies that same bounded, ordered,
 one-shot design to ACTIVSg2000. Each gap is limited to 1,800 seconds and a later
 gap cannot start after any timeout, failure, verification failure, or missing
@@ -130,6 +139,17 @@ activsg-scopf gap-experiment --config configs\activsg10k-gap-1e-3.json --output 
 activsg-scopf gap-experiment --config configs\activsg500-gap-1e-3.json --output results\experiments\activsg500-gap-v1-1e-3-laptop.json
 activsg-scopf gap-experiment --config configs\activsg2000-gap-1e-3.json --output results\experiments\activsg2000-gap-v1-1e-3-laptop.json
 ```
+
+On the Spark checkout, use the guarded scripts after checking out the frozen
+GPU experiment tag:
+
+```bash
+bash scripts/spark-build-500-gpu-gap.sh
+bash scripts/spark-gap-500-gpu.sh 1e-3
+```
+
+Continue with `1e-4` through `1e-7` only after the prior level finishes
+`optimal_verified` with accepted pricing. Each label can be launched only once.
 
 The v1 `1e-3` attempt is preserved as failed evidence. HiGHS returned an
 internal error while checking its round-2 partial MIP start. The explicitly
@@ -180,8 +200,9 @@ pairs and no solver budget remained for round 3 before the verification
 reserve. See
 [`reports/activsg10k-v3-spark-diagnostic.md`](reports/activsg10k-v3-spark-diagnostic.md)
 for the evidence and bounded system-to-system comparison. The laptop partial
-commitment MIP start remains implemented; the Spark adapter currently rebuilds
-each round without one.
+commitment MIP start remains implemented. That frozen v3 Spark evidence used the
+older adapter that rebuilt each round without a start; the new ACTIVSg500 GPU
+gap suite rebuilds each round while carrying the prior integer commitment.
 
 The controller measures worker launch through
 the first complete result serialization, including raw input loading, factor and
@@ -216,6 +237,9 @@ bash scripts/spark-benchmark-10k-v2.sh
 # Explicitly authorized nonofficial v3 diagnostic after the laptop gate failed
 bash scripts/spark-build-10k-v3-diagnostic.sh
 bash scripts/spark-solve-10k-v3-diagnostic.sh
+# Frozen ACTIVSg500 GPU gap experiment
+bash scripts/spark-build-500-gpu-gap.sh
+bash scripts/spark-gap-500-gpu.sh 1e-3
 ```
 
 The repository is mounted read-only in the container, with only ignored

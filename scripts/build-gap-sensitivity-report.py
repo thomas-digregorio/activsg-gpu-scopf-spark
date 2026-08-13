@@ -16,27 +16,64 @@ RESULT_DIR = ROOT / "results" / "experiments"
 SUITES = {
     "activsg10k-gap-sensitivity-v2": {
         "result_prefix": "activsg10k-gap-v2",
+        "result_suffix": "laptop",
         "report_directory": "activsg10k-gap-sensitivity-v2",
         "title": "ACTIVSg10k MIP-gap sensitivity v2",
         "run_boundary": "independent, unbounded laptop MIP run",
+        "solver_note": (
+            "The laptop uses a persistent incremental HiGHS MIP session and "
+            "NumPy exhaustive screening."
+        ),
     },
     "activsg500-gap-sensitivity-v1": {
         "result_prefix": "activsg500-gap-v1",
+        "result_suffix": "laptop",
         "report_directory": "activsg500-gap-sensitivity-v1",
         "title": "ACTIVSg500 MIP-gap sensitivity v1",
         "run_boundary": "independent laptop MIP run with a hard 1,800-second limit",
+        "solver_note": (
+            "The laptop uses a persistent incremental HiGHS MIP session and "
+            "NumPy exhaustive screening."
+        ),
     },
     "activsg2000-gap-sensitivity-v1": {
         "result_prefix": "activsg2000-gap-v1",
+        "result_suffix": "laptop",
         "report_directory": "activsg2000-gap-sensitivity-v1",
         "title": "ACTIVSg2000 MIP-gap sensitivity v1",
         "run_boundary": "independent laptop MIP run with a hard 1,800-second limit",
+        "solver_note": (
+            "The laptop uses a persistent incremental HiGHS MIP session and "
+            "NumPy exhaustive screening."
+        ),
+    },
+    "activsg500-gpu-gap-sensitivity-v1": {
+        "result_prefix": "activsg500-gpu-gap-v1",
+        "result_suffix": "dgx-spark",
+        "report_directory": "activsg500-gpu-gap-sensitivity-v1",
+        "title": "ACTIVSg500 DGX Spark MIP-gap sensitivity v1",
+        "run_boundary": (
+            "independent DGX Spark cuOpt/CuPy MIP run with a hard "
+            "1,800-second limit"
+        ),
+        "solver_note": (
+            "The DGX Spark uses cuOpt for each rebuilt restricted master, carries "
+            "the prior integer commitment as a partial MIP start, and uses CuPy "
+            "for exhaustive screening. Its fixed-commitment pricing LP uses HiGHS "
+            "inside the same Spark container because cuOpt does not expose the "
+            "needed nodal row duals."
+        ),
     },
 }
 
 
-def _read(label: str, *, result_prefix: str) -> dict[str, Any]:
-    path = RESULT_DIR / f"{result_prefix}-{label}-laptop.json"
+def _read(
+    label: str,
+    *,
+    result_prefix: str,
+    result_suffix: str,
+) -> dict[str, Any]:
+    path = RESULT_DIR / f"{result_prefix}-{label}-{result_suffix}.json"
     payload = json.loads(path.read_text(encoding="utf-8"))
     if payload.get("gap_label") != label:
         raise ValueError(f"{path} has the wrong gap label")
@@ -131,7 +168,11 @@ def main() -> None:
     suite = SUITES[suite_id]
     report_dir = ROOT / "reports" / str(suite["report_directory"])
     results = {
-        label: _read(label, result_prefix=str(suite["result_prefix"]))
+        label: _read(
+            label,
+            result_prefix=str(suite["result_prefix"]),
+            result_suffix=str(suite["result_suffix"]),
+        )
         for label in GAPS
     }
     commits = {result["frozen_identity"]["commit"] for result in results.values()}
@@ -154,6 +195,10 @@ def main() -> None:
         summary_rows.append(
             {
                 "gap_label": label,
+                "platform": result["platform"],
+                "mip_solver": result["constraint_generation_rounds"][-1]["solve"][
+                    "solver"
+                ],
                 "requested_mip_gap": float(label),
                 "achieved_mip_gap": result["mip_gap"],
                 "objective": result["objective"],
@@ -189,6 +234,12 @@ def main() -> None:
                 "price_median_per_mwh": pricing["bus_price_summary_per_mwh"]["median"],
                 "price_max_per_mwh": pricing["bus_price_summary_per_mwh"]["maximum"],
                 "peak_process_rss_bytes": result["peak_memory"]["process_rss_bytes"],
+                "peak_cupy_pool_used_bytes": result["peak_memory"].get(
+                    "cupy_pool_used_bytes"
+                ),
+                "peak_cuda_device_memory_delta_bytes": result["peak_memory"].get(
+                    "cuda_device_memory_delta_bytes"
+                ),
                 "raw_result_sha256": result["_sha256"],
             }
         )
@@ -278,6 +329,8 @@ def main() -> None:
         "one another. Prices are from a separately identified fixed-commitment, "
         "N-1-secure LP and are not MILP duals.",
         "",
+        str(suite["solver_note"]),
+        "",
         "Every completed result passes independent exhaustive branch-N-1 verification "
         "and includes accepted fixed-commitment pricing. The controller prevents a "
         "later gap from starting if an earlier gap times out, fails, or lacks pricing.",
@@ -347,13 +400,14 @@ def main() -> None:
         price_mw = pricing["bus_price_summary_per_mwh"]
         price_pu = pricing["bus_price_summary_per_pu_hour"]
         pricing_difference = pricing["pricing_dispatch_difference"]
+        mip_solver = reference["constraint_generation_rounds"][-1]["solve"]["solver"]
         lines.extend(
             [
                 "",
                 "## Interpretation",
                 "",
                 f"For this {reference['case_name']} formulation, the requested MIP-gap "
-                "setting never became binding. HiGHS proved objective equal to bound "
+                f"setting never became binding. {mip_solver} proved objective equal to bound "
                 "with a reported zero gap in every restricted-master round at every "
                 "requested setting. Consequently, `1e-3` produced exactly the same "
                 "generator commitment, MIP dispatch, fixed-commitment pricing dispatch, "

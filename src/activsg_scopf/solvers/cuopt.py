@@ -21,6 +21,7 @@ def solve_cuopt(
     time_limit_seconds: float,
     mip_relative_gap: float,
     threads: int = 0,
+    mip_start_values: np.ndarray | None = None,
 ) -> SolveResult:
     try:
         import cuopt
@@ -47,6 +48,20 @@ def solve_cuopt(
         )
         for index, name in enumerate(model.variable_names)
     ]
+    mip_start_columns = np.empty(0, dtype=np.int64)
+    if mip_start_values is not None:
+        candidate = np.asarray(mip_start_values, dtype=np.float64)
+        if candidate.shape != objective.shape:
+            raise ScopfError(
+                "cuOpt partial MIP start has the wrong vector shape: "
+                f"expected {objective.shape}, observed {candidate.shape}"
+            )
+        mip_start_columns = np.flatnonzero(integrality)
+        for index in mip_start_columns:
+            value = float(np.rint(candidate[index]))
+            if not np.isfinite(value):
+                raise ScopfError("cuOpt partial MIP start contains a nonfinite value")
+            variables[int(index)].setMIPStart(value)
     objective_columns = np.flatnonzero(objective)
     objective_expression = LinearExpression(
         [variables[int(index)] for index in objective_columns],
@@ -92,27 +107,44 @@ def solve_cuopt(
     objective_value = float(problem.ObjValue) if has_incumbent else None
     raw_bound = getattr(stats, "solution_bound", None)
     raw_gap = getattr(stats, "mip_gap", None)
+    reported_gap = (
+        float(raw_gap) if raw_gap is not None and np.isfinite(raw_gap) else None
+    )
+    meets_requested_gap = (
+        reported_gap is not None
+        and reported_gap <= float(mip_relative_gap) * (1.0 + 1e-9) + 1e-12
+    )
+    accepted_optimal = status == "Optimal" and meets_requested_gap
+    reported_status = (
+        "OptimalGapMismatch" if status == "Optimal" and not meets_requested_gap else status
+    )
     return SolveResult(
         solver="cuopt",
         solver_version=str(getattr(cuopt, "__version__", "unknown")),
-        status=status,
-        optimal=status == "Optimal",
+        status=reported_status,
+        optimal=accepted_optimal,
         has_incumbent=has_incumbent,
         objective=objective_value,
         bound=float(raw_bound) if raw_bound is not None and np.isfinite(raw_bound) else None,
-        mip_gap=float(raw_gap) if raw_gap is not None and np.isfinite(raw_gap) else None,
+        mip_gap=reported_gap,
         solve_time_seconds=float(problem.SolveTime),
         values=values,
         statistics={
-            key: value
-            for key in (
-                "max_constraint_violation",
-                "max_int_violation",
-                "max_variable_bound_violation",
-                "num_nodes",
-                "num_simplex_iterations",
-                "presolve_time",
-            )
-            if (value := _native(getattr(stats, key, None))) is not None
+            **{
+                key: value
+                for key in (
+                    "max_constraint_violation",
+                    "max_int_violation",
+                    "max_variable_bound_violation",
+                    "num_nodes",
+                    "num_simplex_iterations",
+                    "presolve_time",
+                )
+                if (value := _native(getattr(stats, key, None))) is not None
+            },
+            "native_status": status,
+            "requested_mip_relative_gap": float(mip_relative_gap),
+            "reported_gap_meets_request": meets_requested_gap,
+            "partial_integer_mip_start_columns": int(mip_start_columns.size),
         },
     )

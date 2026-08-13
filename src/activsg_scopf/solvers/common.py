@@ -42,24 +42,29 @@ class SolverSession(Protocol):
 
 @dataclass
 class RebuildingSolverSession:
-    """Compatibility session for adapters without registered incremental support."""
+    """Rebuild each round while retaining the prior integer solution as a MIP start."""
 
     model: CanonicalMILP
     solver: str
     mip_relative_gap: float
     threads: int
-    mode: str = "rebuild_each_round"
+    mode: str = "rebuild_each_round_with_partial_mip_start"
+    previous_values: FloatArray | None = None
 
     def solve(self, *, time_limit_seconds: float | None) -> SolveResult:
         if time_limit_seconds is None:
             raise ScopfError(f"Unbounded solves are not implemented for {self.solver}")
-        return solve_canonical(
+        result = solve_canonical(
             self.model,
             solver=self.solver,
             time_limit_seconds=time_limit_seconds,
             mip_relative_gap=self.mip_relative_gap,
             threads=self.threads,
+            mip_start_values=self.previous_values,
         )
+        if result.values is not None:
+            self.previous_values = result.values.copy()
+        return result
 
 
 def create_solver_session(
@@ -95,10 +100,13 @@ def solve_canonical(
     time_limit_seconds: float,
     mip_relative_gap: float,
     threads: int = 0,
+    mip_start_values: FloatArray | None = None,
 ) -> SolveResult:
     if time_limit_seconds <= 0:
         raise ScopfError("Solver was not started because no deadline budget remained")
     if solver == "highs":
+        if mip_start_values is not None:
+            raise ScopfError("Direct HiGHS solves do not accept external MIP starts")
         from .highs import solve_highs
 
         return solve_highs(
@@ -115,5 +123,6 @@ def solve_canonical(
             time_limit_seconds=time_limit_seconds,
             mip_relative_gap=mip_relative_gap,
             threads=threads,
+            mip_start_values=mip_start_values,
         )
     raise ScopfError(f"Unknown canonical solver adapter: {solver}")

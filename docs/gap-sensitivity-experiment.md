@@ -2,7 +2,7 @@
 
 ## Question and controlled variables
 
-The registered experiments measure how the requested HiGHS relative MIP gap
+The registered experiments measure how the requested solver relative MIP gap
 changes the final preventive solution. The five levels are `1e-3`, `1e-4`,
 `1e-5`, `1e-6`, and `1e-7`. Within each case, every other mathematical input is
 identical:
@@ -10,26 +10,31 @@ immutable source hashes, exact source PMIN/PMAX, ten equal-MW PWL segments,
 single-hour demand, DC network equations, outage catalog, model residual
 tolerance, and contingency-security tolerance.
 
-Three identities are registered: the preserved unbounded
+Four identities are registered: the preserved unbounded
 `activsg10k-gap-sensitivity-v2` suite and the bounded
-`activsg500-gap-sensitivity-v1` and `activsg2000-gap-sensitivity-v1` suites.
+`activsg500-gap-sensitivity-v1`, `activsg2000-gap-sensitivity-v1`, and
+`activsg500-gpu-gap-sensitivity-v1` suites. The first three use laptop HiGHS
+and NumPy. The last uses DGX Spark cuOpt and CuPy.
 Results never cross-seed between cases or gap levels.
 
 Each level is one independent MIP run starting with only base-case constraints.
 No learned or preloaded contingency-pair set is used, and results from one gap
 do not seed another. Within a run, every violated pair is added in deterministic
-order and the persistent HiGHS session supplies the prior round commitment as a
-partial MIP start. Constraint-generation LP or MIP rounds are internal to that
-one run.
+order. The laptop's persistent HiGHS session and the Spark adapter both supply
+the prior round commitment as a partial MIP start; Spark rebuilds the cuOpt
+restricted master around that hint. Constraint-generation LP or MIP rounds are
+internal to that one run.
 
-The ACTIVSg10k v2 runs have no wall-clock deadline. Each ACTIVSg500 v1 and
-ACTIVSg2000 v1 run has a hard 1,800-second end-to-end limit. Its solver receives
+The ACTIVSg10k v2 runs have no wall-clock deadline. Each bounded laptop or Spark
+run has a hard 1,800-second end-to-end limit. Its solver receives
 the decreasing global budget, with 120 seconds reserved for verification and
 pricing and 15 seconds reserved for serialization. The parent worker watchdog
 is the hard boundary. A durable ignored registry is written before each worker
 starts and prevents a retry for the same gap label. A later bounded-suite gap is
 blocked unless all prior gaps completed as `optimal_verified` with accepted
-fixed-commitment pricing.
+fixed-commitment pricing. The CPU and GPU suites have separate registries and
+raw-result names, so new Spark evidence cannot overwrite completed laptop
+evidence.
 
 The preserved v1 `1e-3` attempt failed when HiGHS returned `kError` while
 processing a round-2 partial commitment start. The user explicitly authorized
@@ -69,6 +74,11 @@ fully optimizing the continuous variables can improve upon the MIP incumbent's
 dispatch. Price comparisons can also reflect LP dual degeneracy, so identical
 primal commitment and dispatch do not guarantee bitwise-identical duals.
 
+For the GPU suite, this LP runs with HiGHS 1.15.1 inside the same DGX Spark
+container after the cuOpt/CuPy stages. Its time and memory remain inside the
+same end-to-end Spark boundary. This is necessary for nodal row duals and does
+not reclassify the MIP stage as a CPU solve.
+
 ## Evidence outputs
 
 Ignored raw results live under `results/experiments/`. After all five one-shot
@@ -78,6 +88,11 @@ pairwise metrics under the corresponding directory in `reports/`. The
 generator table includes exact source PMIN/PMAX, commitment, MIP dispatch,
 fixed-commitment pricing dispatch, and nodal price for every gap level in both
 MW-based and p.u.-based units.
+
+After the Spark suite finishes, `scripts/build-activsg500-cpu-gpu-comparison.py`
+builds a paired report against the already completed laptop suite. That report
+is explicitly a laptop-system versus Spark-system comparison, not a pure GPU
+speedup claim.
 
 ## ACTIVSg2000 v1 outcome
 

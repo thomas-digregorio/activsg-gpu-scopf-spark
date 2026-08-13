@@ -60,6 +60,20 @@ def validate_platform(config: RunConfig, platform_name: str) -> None:
                 f"cuOpt version mismatch: expected {profile['cuopt_version']}, "
                 f"observed {observed_version}"
             )
+        if profile.get("pricing_solver") == "highs":
+            try:
+                import highspy
+            except ImportError as exc:
+                raise ScopfError(
+                    "DGX Spark fixed-commitment pricing requires HiGHS"
+                ) from exc
+            observed_highs = highspy.Highs().version()
+            expected_highs = str(profile.get("highspy_version", ""))
+            if observed_highs != expected_highs:
+                raise ScopfError(
+                    "HiGHS pricing version mismatch: "
+                    f"expected {expected_highs}, observed {observed_highs}"
+                )
         expected_image = profile["container_image"]
         observed_image = os.environ.get("ACTIVSG_CUOPT_IMAGE")
         if observed_image != expected_image:

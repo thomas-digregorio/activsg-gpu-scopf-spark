@@ -20,6 +20,14 @@ def test_activsg500_gap_identity_is_bounded_and_registered() -> None:
     assert _experiment_identity(config) == ("activsg500-gap-sensitivity-v1", "1e-3")
 
 
+def test_activsg500_gpu_gap_identity_is_bounded_and_registered() -> None:
+    config = load_config(ROOT / "configs" / "activsg500-gpu-gap-1e-3.json")
+    assert _experiment_identity(config) == (
+        "activsg500-gpu-gap-sensitivity-v1",
+        "1e-3",
+    )
+
+
 def test_activsg2000_gap_identity_is_bounded_and_registered() -> None:
     config = load_config(ROOT / "configs" / "activsg2000-gap-1e-3.json")
     assert _experiment_identity(config) == (
@@ -97,3 +105,53 @@ def test_bounded_gap_controller_serializes_hard_timeout(
     assert serialized["worker_timeout_seconds"] == 1800.0
     assert serialized["worker_stdout"] == "partial"
     assert registry["runs"]["1e-3"]["status"] == "hard_deadline_exceeded"
+
+
+def test_gpu_gap_controller_launches_registered_spark_platform(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = load_config(ROOT / "configs" / "activsg500-gpu-gap-1e-3.json")
+    config_path = tmp_path / "configs" / "activsg500-gpu-gap-1e-3.json"
+    config_path.parent.mkdir(parents=True)
+    config_path.write_text(json.dumps(source.raw), encoding="utf-8")
+    config = RunConfig(path=config_path, root=tmp_path, raw=source.raw)
+    output = (
+        tmp_path
+        / "results"
+        / "experiments"
+        / "activsg500-gpu-gap-v1-1e-3-dgx-spark.json"
+    )
+    output.parent.mkdir(parents=True)
+    validated_platforms: list[str] = []
+    worker_commands: list[list[str]] = []
+
+    def validate(_config: RunConfig, platform_name: str) -> None:
+        validated_platforms.append(platform_name)
+
+    monkeypatch.setattr("activsg_scopf.experiments.validate_platform", validate)
+    monkeypatch.setattr(
+        "activsg_scopf.experiments.frozen_identity",
+        lambda *_: {
+            "commit": "frozen",
+            "tag": "experiment-500-gpu-gap-v1",
+            "config_sha256": "x",
+        },
+    )
+
+    def timeout(command: list[str], **kwargs: object) -> None:
+        worker_commands.append(command)
+        raise subprocess.TimeoutExpired(cmd=command, timeout=1800.0)
+
+    monkeypatch.setattr("activsg_scopf.experiments.subprocess.run", timeout)
+    result = run_one_shot_gap_experiment(config, output_path=output)
+
+    assert validated_platforms == ["dgx_spark"]
+    assert result["platform"] == "dgx_spark"
+    assert result["status"] == "hard_deadline_exceeded"
+    assert worker_commands
+    platform_index = worker_commands[0].index("--platform")
+    assert worker_commands[0][platform_index + 1] == "dgx_spark"
+    checkpoint_index = worker_commands[0].index("--checkpoint")
+    assert worker_commands[0][checkpoint_index + 1].endswith(
+        "activsg500-gpu-gap-v1-1e-3-dgx_spark.json"
+    )

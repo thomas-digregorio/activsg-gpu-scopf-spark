@@ -1,4 +1,4 @@
-"""One-shot, frozen laptop gap-sensitivity experiment controller."""
+"""One-shot, frozen gap-sensitivity experiment controller."""
 
 from __future__ import annotations
 
@@ -27,26 +27,60 @@ GAP_LABELS = {
 }
 
 EXPERIMENT_SUITES: dict[str, dict[str, Any]] = {
-    "ACTIVSg10k": {
-        "suite_id": "activsg10k-gap-sensitivity-v2",
+    "activsg10k-gap-sensitivity-v2": {
+        "case_name": "ACTIVSg10k",
         "benchmark_prefix": "activsg10k-gap-v2",
         "required_git_tag": "experiment-10k-gap-v2",
+        "platform": "laptop_cpu",
+        "required_profile": {
+            "solver": "highs",
+            "screening": "numpy",
+            "solver_session": "persistent_incremental",
+        },
         "deadline_seconds": None,
         "verification_reserve_seconds": 0.0,
         "serialization_reserve_seconds": 0.0,
     },
-    "ACTIVSg500": {
-        "suite_id": "activsg500-gap-sensitivity-v1",
+    "activsg500-gap-sensitivity-v1": {
+        "case_name": "ACTIVSg500",
         "benchmark_prefix": "activsg500-gap-v1",
         "required_git_tag": "experiment-500-gap-v1",
+        "platform": "laptop_cpu",
+        "required_profile": {
+            "solver": "highs",
+            "screening": "numpy",
+            "solver_session": "persistent_incremental",
+        },
         "deadline_seconds": 1800.0,
         "verification_reserve_seconds": 120.0,
         "serialization_reserve_seconds": 15.0,
     },
-    "ACTIVSg2000": {
-        "suite_id": "activsg2000-gap-sensitivity-v1",
+    "activsg2000-gap-sensitivity-v1": {
+        "case_name": "ACTIVSg2000",
         "benchmark_prefix": "activsg2000-gap-v1",
         "required_git_tag": "experiment-2000-gap-v1",
+        "platform": "laptop_cpu",
+        "required_profile": {
+            "solver": "highs",
+            "screening": "numpy",
+            "solver_session": "persistent_incremental",
+        },
+        "deadline_seconds": 1800.0,
+        "verification_reserve_seconds": 120.0,
+        "serialization_reserve_seconds": 15.0,
+    },
+    "activsg500-gpu-gap-sensitivity-v1": {
+        "case_name": "ACTIVSg500",
+        "benchmark_prefix": "activsg500-gpu-gap-v1",
+        "required_git_tag": "experiment-500-gpu-gap-v1",
+        "platform": "dgx_spark",
+        "required_profile": {
+            "solver": "cuopt",
+            "screening": "cupy",
+            "solver_session": "rebuild_each_round_with_partial_mip_start",
+            "pricing_solver": "highs",
+            "highspy_version": "1.15.1",
+        },
         "deadline_seconds": 1800.0,
         "verification_reserve_seconds": 120.0,
         "serialization_reserve_seconds": 15.0,
@@ -62,9 +96,15 @@ def _read_json(path: Path) -> dict[str, Any]:
 
 
 def _experiment_identity(config: RunConfig) -> tuple[str, str]:
-    suite = EXPERIMENT_SUITES.get(config.case_name)
+    suite_id = str(config.raw["benchmark"].get("experiment_suite_id", ""))
+    suite = EXPERIMENT_SUITES.get(suite_id)
     if suite is None:
-        raise ScopfError(f"Gap sensitivity is not registered for {config.case_name}")
+        raise ScopfError(f"Unregistered experiment suite {suite_id!r}")
+    if config.case_name != suite["case_name"]:
+        raise ScopfError(
+            f"Experiment suite {suite_id!r} requires {suite['case_name']}, "
+            f"observed {config.case_name}"
+        )
     if config.benchmark_kind != "gap_sensitivity_experiment":
         raise ScopfError("Configuration is not a gap-sensitivity experiment")
     expected_deadline = suite["deadline_seconds"]
@@ -88,9 +128,6 @@ def _experiment_identity(config: RunConfig) -> tuple[str, str]:
     label = str(config.raw["benchmark"].get("gap_label", ""))
     if gap not in GAP_LABELS or label != GAP_LABELS[gap]:
         raise ScopfError(f"Unregistered gap experiment identity: gap={gap}, label={label!r}")
-    suite_id = str(config.raw["benchmark"].get("experiment_suite_id", ""))
-    if suite_id != suite["suite_id"]:
-        raise ScopfError(f"Unregistered experiment suite {suite_id!r}")
     expected_benchmark_id = f"{suite['benchmark_prefix']}-{label}"
     if config.benchmark_id != expected_benchmark_id:
         raise ScopfError(
@@ -121,18 +158,23 @@ def _experiment_identity(config: RunConfig) -> tuple[str, str]:
                 f"Gap experiment changed registered model value {key}: "
                 f"expected {expected!r}, observed {config.model.get(key)!r}"
             )
-    profile = config.raw["platforms"].get("laptop_cpu", {})
-    required_profile = {
-        "solver": "highs",
-        "screening": "numpy",
-        "solver_session": "persistent_incremental",
-    }
+    platform_name = str(suite["platform"])
+    profile = config.raw["platforms"].get(platform_name, {})
+    required_profile = suite["required_profile"]
     for key, expected in required_profile.items():
         if profile.get(key) != expected:
             raise ScopfError(
-                f"Gap experiment changed laptop profile {key}: "
+                f"Gap experiment changed {platform_name} profile {key}: "
                 f"expected {expected!r}, observed {profile.get(key)!r}"
             )
+    expected_pricing_solver = required_profile.get("pricing_solver", "highs")
+    observed_pricing_solver = pricing.get("solver", "highs")
+    if observed_pricing_solver != expected_pricing_solver:
+        raise ScopfError(
+            "Gap experiment changed the fixed-commitment pricing solver: "
+            f"expected {expected_pricing_solver!r}, observed "
+            f"{observed_pricing_solver!r}"
+        )
     return suite_id, label
 
 
@@ -173,7 +215,9 @@ def run_one_shot_gap_experiment(
     """Launch one immutable gap-level experiment under its registered deadline."""
 
     suite_id, gap_label = _experiment_identity(config)
-    validate_platform(config, "laptop_cpu")
+    suite = EXPERIMENT_SUITES[suite_id]
+    platform_name = str(suite["platform"])
+    validate_platform(config, platform_name)
     output = guard_output_path(output_path)
     experiment_root = (config.root / "results" / "experiments").resolve()
     if not output.resolve().is_relative_to(experiment_root):
@@ -204,14 +248,14 @@ def run_one_shot_gap_experiment(
         config.root
         / "results"
         / "checkpoints"
-        / f"{config.benchmark_id}-laptop_cpu.json"
+        / f"{config.benchmark_id}-{platform_name}.json"
     )
     if checkpoint.exists():
         raise ScopfError(f"Gap-experiment checkpoint already exists: {checkpoint}")
     diagnostic_root = config.root / "results" / "diagnostics"
     stale_diagnostics = [
-        diagnostic_root / f"{config.benchmark_id}-laptop_cpu-events.jsonl",
-        diagnostic_root / f"{config.benchmark_id}-laptop_cpu-highs.log",
+        diagnostic_root / f"{config.benchmark_id}-{platform_name}-events.jsonl",
+        diagnostic_root / f"{config.benchmark_id}-{platform_name}-highs.log",
     ]
     if any(path.exists() for path in stale_diagnostics):
         raise ScopfError("Gap-experiment diagnostic output already exists")
@@ -240,7 +284,7 @@ def run_one_shot_gap_experiment(
         "--checkpoint",
         str(checkpoint),
         "--platform",
-        "laptop_cpu",
+        platform_name,
     ]
     deadline_value = config.runtime.get("deadline_seconds")
     deadline_seconds = None if deadline_value is None else float(deadline_value)
@@ -293,7 +337,7 @@ def run_one_shot_gap_experiment(
             "official": False,
             "experiment": True,
             "one_shot": True,
-            "platform": "laptop_cpu",
+            "platform": platform_name,
             "experiment_suite_id": suite_id,
             "gap_label": gap_label,
             "frozen_identity": identity,
