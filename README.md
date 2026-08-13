@@ -114,6 +114,16 @@ HiGHS `TimeLimit` at a `5.57e-4` gap and its provisional exhaustive screen found
 [`reports/activsg10k-v3-profile.md`](reports/activsg10k-v3-profile.md) for the
 internal timing attribution.
 
+The subsequently authorized DGX Spark v3 diagnostic is also closed. It ran
+once as a nonofficial `solve` because the laptop result had not passed the
+official gate. It stopped after 253.750 seconds when round 2 exposed 6 more
+pairs and no solver budget remained for round 3 before the verification
+reserve. See
+[`reports/activsg10k-v3-spark-diagnostic.md`](reports/activsg10k-v3-spark-diagnostic.md)
+for the evidence and bounded system-to-system comparison. The laptop partial
+commitment MIP start remains implemented; the Spark adapter currently rebuilds
+each round without one.
+
 The controller measures worker launch through
 the first complete result serialization, including raw input loading, factor and
 model construction, every solve/screen round, and independent exhaustive
