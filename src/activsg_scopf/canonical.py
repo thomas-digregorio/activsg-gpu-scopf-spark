@@ -107,6 +107,9 @@ class CanonicalMILP:
             np.asarray(self.row_upper, dtype=np.float64),
         )
 
+    def row_entries(self, row: int) -> tuple[list[int], list[float]]:
+        return self._row_indices[row], self._row_values[row]
+
     def max_row_violation(self, values: FloatArray) -> float:
         activity = self.matrix_csr() @ values
         lower, upper = self.row_bound_arrays()

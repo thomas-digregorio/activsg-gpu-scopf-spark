@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -12,8 +13,11 @@ from . import __version__
 from .config import load_config
 from .errors import ScopfError
 from .matpower import read_contingency_table, read_matpower_case
-from .paths import guard_output_path, guard_runtime_environment
+from .official import run_controlled
+from .paths import guard_input_path, guard_output_path, guard_runtime_environment
 from .provenance import build_source_manifest, write_json_atomic
+from .runner import run_end_to_end
+from .verify import verify_serialized_solution
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -30,7 +34,20 @@ def _parser() -> argparse.ArgumentParser:
             )
         if name == "verify":
             command.add_argument("--solution", type=Path, required=True)
+        if name == "benchmark":
+            command.add_argument("--laptop-result", type=Path)
     return parser
+
+
+def _worker_parser() -> argparse.ArgumentParser:
+    worker = argparse.ArgumentParser(prog="activsg-scopf _worker")
+    worker.add_argument("--config", type=Path, required=True)
+    worker.add_argument("--output", type=Path, required=True)
+    worker.add_argument("--checkpoint", type=Path, required=True)
+    worker.add_argument("--platform", choices=("laptop_cpu", "dgx_spark"), required=True)
+    worker.add_argument("--deadline-seconds", type=float, required=True)
+    worker.add_argument("--official", action="store_true")
+    return worker
 
 
 def _ingest(config_path: Path, output_path: Path) -> dict[str, object]:
@@ -49,13 +66,88 @@ def _ingest(config_path: Path, output_path: Path) -> dict[str, object]:
     return {"status": "ok", "command": "ingest", "output": str(output)}
 
 
+def _read_json(path: Path) -> dict[str, object]:
+    source = guard_input_path(path)
+    return json.loads(source.read_text(encoding="utf-8"))
+
+
+def _worker(args: argparse.Namespace) -> dict[str, object]:
+    config = load_config(args.config)
+    output = guard_output_path(args.output)
+    checkpoint_path = guard_output_path(args.checkpoint)
+
+    def checkpoint(payload: dict[str, object]) -> None:
+        write_json_atomic(payload, checkpoint_path)
+
+    try:
+        result = run_end_to_end(
+            config,
+            platform_name=args.platform,
+            deadline_seconds=args.deadline_seconds,
+            official=args.official,
+            checkpoint=checkpoint,
+        )
+    except Exception as exc:  # worker must serialize any partial failure once
+        result = _read_json(checkpoint_path) if checkpoint_path.exists() else {}
+        result.update(
+            {
+                "status": "failed_exception",
+                "error_type": type(exc).__name__,
+                "error": str(exc),
+            }
+        )
+    serialization_started = time.perf_counter()
+    write_json_atomic(result, output)
+    result.setdefault("timings_seconds", {})["result_serialization"] = (
+        time.perf_counter() - serialization_started
+    )
+    write_json_atomic(result, output)
+    return {"status": str(result.get("status")), "output": str(output)}
+
+
 def main(argv: Sequence[str] | None = None) -> int:
-    args = _parser().parse_args(argv)
+    raw_arguments = list(argv) if argv is not None else sys.argv[1:]
+    if raw_arguments and raw_arguments[0] == "_worker":
+        args = _worker_parser().parse_args(raw_arguments[1:])
+        args.command = "_worker"
+    else:
+        args = _parser().parse_args(raw_arguments)
     try:
         if args.command == "ingest":
             response = _ingest(args.config, args.output)
+        elif args.command == "_worker":
+            response = _worker(args)
+        elif args.command == "solve":
+            config = load_config(args.config)
+            result = run_controlled(
+                config,
+                platform_name=args.platform,
+                output_path=args.output,
+                official=False,
+            )
+            response = {"status": result["status"], "output": str(args.output)}
+        elif args.command == "verify":
+            config = load_config(args.config)
+            result_payload = _read_json(args.solution)
+            verification = verify_serialized_solution(config, result_payload)
+            output = guard_output_path(args.output)
+            write_json_atomic(verification.as_dict(), output)
+            response = {
+                "status": "verified" if verification.passed else "failed_verification",
+                "output": str(output),
+            }
+        elif args.command == "benchmark":
+            config = load_config(args.config)
+            result = run_controlled(
+                config,
+                platform_name=args.platform,
+                output_path=args.output,
+                official=True,
+                laptop_result=args.laptop_result,
+            )
+            response = {"status": result["status"], "output": str(args.output)}
         else:
-            raise ScopfError(f"{args.command} is reserved for the next implementation milestone")
+            raise ScopfError(f"Unknown command {args.command}")
     except (ScopfError, OSError, ValueError) as exc:
         print(json.dumps({"status": "error", "error": str(exc)}, sort_keys=True), file=sys.stderr)
         return 2

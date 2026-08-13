@@ -168,8 +168,9 @@ def solve_dc(
     net_injection_mw: FloatArray,
     *,
     outage_active_index: int | None = None,
+    balance_tolerance_mw: float = 1e-8,
 ) -> tuple[FloatArray, FloatArray]:
-    if abs(float(np.sum(net_injection_mw))) > 1e-8:
+    if abs(float(np.sum(net_injection_mw))) > balance_tolerance_mw:
         raise ProvenanceError("DC net injections must sum to zero")
     keep_lines = np.ones(len(network.active_branch_source_rows), dtype=bool)
     if outage_active_index is not None:

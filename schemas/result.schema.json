@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/thomas-digregorio/activsg-gpu-scopf-spark/result.schema.json",
+  "title": "ACTIVSg500 end-to-end result",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "case_name",
+    "interval_hours",
+    "official",
+    "platform",
+    "status",
+    "timings_seconds",
+    "constraint_generation_rounds",
+    "added_security_pair_ids"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "case_name": {"const": "ACTIVSg500"},
+    "interval_hours": {"const": 1.0},
+    "official": {"type": "boolean"},
+    "platform": {"enum": ["laptop_cpu", "dgx_spark"]},
+    "status": {"type": "string"},
+    "objective": {"type": ["number", "null"]},
+    "bound": {"type": ["number", "null"]},
+    "mip_gap": {"type": ["number", "null"]},
+    "total_wall_time_seconds": {"type": "number", "maximum": 300},
+    "timings_seconds": {"type": "object"},
+    "constraint_generation_rounds": {"type": "array"},
+    "added_security_pair_ids": {"type": "array", "items": {"type": "string"}},
+    "verification": {"type": "object"},
+    "solution": {"type": "object"}
+  },
+  "additionalProperties": true
+}
+

@@ -9,19 +9,21 @@ description = "Auditable single-hour preventive DC-SCOPF prototype for ACTIVSg50
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-  "highspy>=1.11,<2",
   "numpy>=2.0,<3",
   "psutil>=6,<8",
   "scipy>=1.14,<2",
 ]
 
 [project.optional-dependencies]
+cpu = [
+  "highspy>=1.11,<2",
+]
 dev = [
   "pytest>=8.3,<9",
   "ruff>=0.12,<1",
 ]
 gpu = [
-  "cupy-cuda13x>=13.6,<14",
+  "cupy-cuda13x>=14.1,<15",
 ]
 
 [project.scripts]
@@ -40,4 +42,3 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
-

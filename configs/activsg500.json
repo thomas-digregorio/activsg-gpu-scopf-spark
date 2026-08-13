@@ -11,6 +11,7 @@
   "model": {
     "interval_hours": 1.0,
     "pwl_segments": 10,
+    "mip_relative_gap_tolerance": 1e-6,
     "model_residual_tolerance_pu": 1e-6,
     "security_violation_tolerance_pu": 1e-5,
     "lodf_validation_tolerance_pu": 1e-9,
@@ -31,7 +32,9 @@
     "dgx_spark": {
       "solver": "cuopt",
       "screening": "cupy",
-      "solver_threads": 0
+      "solver_threads": 0,
+      "container_image": "nvidia/cuopt@sha256:0faac7182b32f5be747e30f081427e80e8dfeccd8f49613814d3d217167fe1ad",
+      "cuopt_version": "26.06.00"
     }
   },
   "benchmark": {
@@ -40,4 +43,3 @@
     "official": true
   }
 }
-
