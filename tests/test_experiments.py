@@ -20,6 +20,14 @@ def test_activsg500_gap_identity_is_bounded_and_registered() -> None:
     assert _experiment_identity(config) == ("activsg500-gap-sensitivity-v1", "1e-3")
 
 
+def test_activsg2000_gap_identity_is_bounded_and_registered() -> None:
+    config = load_config(ROOT / "configs" / "activsg2000-gap-1e-3.json")
+    assert _experiment_identity(config) == (
+        "activsg2000-gap-sensitivity-v1",
+        "1e-3",
+    )
+
+
 def test_next_gap_requires_prior_success_and_pricing() -> None:
     successful = {
         "runs": {

@@ -10,10 +10,10 @@ immutable source hashes, exact source PMIN/PMAX, ten equal-MW PWL segments,
 single-hour demand, DC network equations, outage catalog, model residual
 tolerance, and contingency-security tolerance.
 
-Two identities are registered: the preserved unbounded
+Three identities are registered: the preserved unbounded
 `activsg10k-gap-sensitivity-v2` suite and the bounded
-`activsg500-gap-sensitivity-v1` suite. Results never cross-seed between cases or
-gap levels.
+`activsg500-gap-sensitivity-v1` and `activsg2000-gap-sensitivity-v1` suites.
+Results never cross-seed between cases or gap levels.
 
 Each level is one independent MIP run starting with only base-case constraints.
 No learned or preloaded contingency-pair set is used, and results from one gap
@@ -22,13 +22,14 @@ order and the persistent HiGHS session supplies the prior round commitment as a
 partial MIP start. Constraint-generation LP or MIP rounds are internal to that
 one run.
 
-The ACTIVSg10k v2 runs have no wall-clock deadline. Each ACTIVSg500 v1 run has a
-hard 1,800-second end-to-end limit. Its solver receives the decreasing global
-budget, with 120 seconds reserved for verification and pricing and 15 seconds
-reserved for serialization. The parent worker watchdog is the hard boundary.
-A durable ignored registry is written before each worker starts and prevents a
-retry for the same gap label. A later ACTIVSg500 gap is blocked unless all prior
-gaps completed as `optimal_verified` with accepted fixed-commitment pricing.
+The ACTIVSg10k v2 runs have no wall-clock deadline. Each ACTIVSg500 v1 and
+ACTIVSg2000 v1 run has a hard 1,800-second end-to-end limit. Its solver receives
+the decreasing global budget, with 120 seconds reserved for verification and
+pricing and 15 seconds reserved for serialization. The parent worker watchdog
+is the hard boundary. A durable ignored registry is written before each worker
+starts and prevents a retry for the same gap label. A later bounded-suite gap is
+blocked unless all prior gaps completed as `optimal_verified` with accepted
+fixed-commitment pricing.
 
 The preserved v1 `1e-3` attempt failed when HiGHS returned `kError` while
 processing a round-2 partial commitment start. The user explicitly authorized

@@ -26,6 +26,12 @@ SUITES = {
         "title": "ACTIVSg500 MIP-gap sensitivity v1",
         "run_boundary": "independent laptop MIP run with a hard 1,800-second limit",
     },
+    "activsg2000-gap-sensitivity-v1": {
+        "result_prefix": "activsg2000-gap-v1",
+        "report_directory": "activsg2000-gap-sensitivity-v1",
+        "title": "ACTIVSg2000 MIP-gap sensitivity v1",
+        "run_boundary": "independent laptop MIP run with a hard 1,800-second limit",
+    },
 }
 
 

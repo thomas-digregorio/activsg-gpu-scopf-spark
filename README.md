@@ -2,9 +2,9 @@
 
 Fresh, auditable prototype for a one-hour preventive branch-N-1 DC
 security-constrained commitment and dispatch MILP on the synthetic TAMU
-ACTIVSg500 and ACTIVSg10k systems. ACTIVSg500 is preserved at its frozen
-`benchmark-v1` revision; the current extension applies the same contract to
-ACTIVSg10k.
+ACTIVSg500, ACTIVSg2000, and ACTIVSg10k systems. The bounded MIP-gap studies
+apply the same mathematical contract to ACTIVSg500 and ACTIVSg2000; the earlier
+ACTIVSg10k benchmark and experiment evidence remains preserved.
 
 Each registered case comparison is exactly one end-to-end laptop CPU run versus
 exactly one end-to-end DGX Spark run. The laptop uses HiGHS with NumPy/SciPy;
@@ -12,8 +12,8 @@ the Spark uses NVIDIA cuOpt with CuPy. No custom CUDA kernels are present.
 
 ## Scope guardrails
 
-- Only ACTIVSg500 and ACTIVSg10k are registered. Every other ACTIVSg size is
-  rejected.
+- Only ACTIVSg500, ACTIVSg2000, and ACTIVSg10k are registered. Every other
+  ACTIVSg size is rejected.
 - Exact source-case `PMIN` and `PMAX` are conditional on commitment. Source-offline
   generators are unavailable.
 - The interval is exactly one hour. Ramping, minimum up/down times, startup
@@ -41,12 +41,16 @@ Obtain the selected pair from the TAMU distribution and place it under
 |---|---|
 | `case_ACTIVSg500.m` | `8ca6d54ea5179eeb03fe29d7b645618e7a86338c172247e81687476660f6dcbe` |
 | `contab_ACTIVSg500.m` | `f6b2e7e38fd1cf5e09e877cf04233b4d0487d6d0e99903070d519eade12b76a9` |
+| `case_ACTIVSg2000.m` | `8d00618de8fd10bf35a599f59d2deebfecd0d86e28fcff73219ad7c4ebab860b` |
+| `contab_ACTIVSg2000.m` | `198b39f0381925a4ddacbe2148973cb1d93ddfe220303829cf87b16d45190bba` |
 | `case_ACTIVSg10k.m` | `ead10b25fecc4dcc02f88bacdfb3526fe8b8985b81f7e539c95abddb32575590` |
 | `contab_ACTIVSg10k.m` | `7e1681a960b0a2a99d824766e0e94cc291fa36a7ec33b6dee24bf12ac67ddef7` |
 
 The parser reads MATPOWER text without executing MATLAB code and refuses a hash
 mismatch. Stable identities such as `gen-row-0001` and `branch-row-0001` refer
 to immutable one-based source rows. The tracked
+[`ACTIVSg2000 source manifest`](data/source-manifests/activsg2000.json) records
+the original source-online PMIN/PMAX totals and case dimensions. The tracked
 [`ACTIVSg10k source manifest`](data/source-manifests/activsg10k.json) records
 1,937 source-online generators and their aggregate exact PMIN of 85,764.93 MW;
 the detailed ingest/result manifest retains every generator row and PMIN value.
@@ -64,7 +68,7 @@ py -3.13 -m venv .venv
 .\.venv\Scripts\ruff check .
 ```
 
-Tests use only tiny fixtures. They do not solve either full ACTIVSg case.
+Tests use only tiny fixtures. They do not solve any full ACTIVSg case.
 
 ## Versioned CLI
 
@@ -104,12 +108,19 @@ controller refuses to start a later gap unless every earlier gap completed as
 work and 15 seconds for serialization; the parent watchdog remains the hard
 30-minute boundary.
 
+The `activsg2000-gap-sensitivity-v1` suite applies that same bounded, ordered,
+one-shot design to ACTIVSg2000. Each gap is limited to 1,800 seconds and a later
+gap cannot start after any timeout, failure, verification failure, or missing
+fixed-commitment pricing. It uses the exact source-case PMIN values and does not
+reuse a solution or contingency-pair list from another gap.
+
 Use `gap-experiment`, not `solve` or `benchmark`. The command writes a durable
 one-shot registry before worker launch and refuses a second run for that gap:
 
 ```powershell
 activsg-scopf gap-experiment --config configs\activsg10k-gap-1e-3.json --output results\experiments\activsg10k-gap-v2-1e-3-laptop.json
 activsg-scopf gap-experiment --config configs\activsg500-gap-1e-3.json --output results\experiments\activsg500-gap-v1-1e-3-laptop.json
+activsg-scopf gap-experiment --config configs\activsg2000-gap-1e-3.json --output results\experiments\activsg2000-gap-v1-1e-3-laptop.json
 ```
 
 The v1 `1e-3` attempt is preserved as failed evidence. HiGHS returned an

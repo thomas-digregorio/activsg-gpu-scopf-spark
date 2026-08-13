@@ -43,6 +43,14 @@ EXPERIMENT_SUITES: dict[str, dict[str, Any]] = {
         "verification_reserve_seconds": 120.0,
         "serialization_reserve_seconds": 15.0,
     },
+    "ACTIVSg2000": {
+        "suite_id": "activsg2000-gap-sensitivity-v1",
+        "benchmark_prefix": "activsg2000-gap-v1",
+        "required_git_tag": "experiment-2000-gap-v1",
+        "deadline_seconds": 1800.0,
+        "verification_reserve_seconds": 120.0,
+        "serialization_reserve_seconds": 15.0,
+    },
 }
 
 

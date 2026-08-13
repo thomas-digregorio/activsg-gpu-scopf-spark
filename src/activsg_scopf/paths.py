@@ -11,7 +11,7 @@ from pathlib import Path
 from .errors import ScopeViolation
 
 _ACTIVSG_TOKEN = re.compile(r"activsg[_-]?(\d+(?:k)?)", re.IGNORECASE)
-_APPROVED_CASE_TOKENS = {"500", "10k"}
+_APPROVED_CASE_TOKENS = {"500", "2000", "10k"}
 
 
 def resolved(path: str | os.PathLike[str]) -> Path:
@@ -30,13 +30,13 @@ def assert_not_onedrive(path: str | os.PathLike[str], *, purpose: str = "path") 
 
 
 def assert_approved_activsg_name(path_or_name: str | os.PathLike[str]) -> None:
-    """Reject any explicit ACTIVSg token other than the two approved cases."""
+    """Reject any explicit ACTIVSg token other than the approved cases."""
 
     text = str(path_or_name)
     for match in _ACTIVSG_TOKEN.finditer(text):
         if match.group(1).casefold() not in _APPROVED_CASE_TOKENS:
             raise ScopeViolation(
-                "Only ACTIVSg500 and ACTIVSg10k are approved; "
+                "Only ACTIVSg500, ACTIVSg2000, and ACTIVSg10k are approved; "
                 f"rejected scope token {match.group(0)!r}"
             )
 

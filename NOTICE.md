@@ -2,9 +2,12 @@
 
 ## ACTIVSg input data
 
-The benchmarks consume the synthetic ACTIVSg500 and ACTIVSg10k cases published by the Texas A&M University Electric Grid Test Case Repository. Raw cases are not tracked in this repository.
+The benchmarks consume the synthetic ACTIVSg500, ACTIVSg2000, and ACTIVSg10k
+cases published by the Texas A&M University Electric Grid Test Case Repository.
+Raw cases are not tracked in this repository.
 
 - ACTIVSg500: https://electricgrids.engr.tamu.edu/electric-grid-test-cases/activsg500/
+- ACTIVSg2000: https://electricgrids.engr.tamu.edu/electric-grid-test-cases/activsg2000/
 - ACTIVSg10k: https://electricgrids.engr.tamu.edu/electric-grid-test-cases/activsg10k/
 - MATPOWER case format: https://matpower.org/docs/ref/matpower7.1/lib/caseformat.html
 

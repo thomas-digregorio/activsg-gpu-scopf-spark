@@ -1,0 +1,29 @@
+{
+  "case_name": "ACTIVSg2000",
+  "case_sha256": "8d00618de8fd10bf35a599f59d2deebfecd0d86e28fcff73219ad7c4ebab860b",
+  "contingency_sha256": "198b39f0381925a4ddacbe2148973cb1d93ddfe220303829cf87b16d45190bba",
+  "expected_dimensions": {
+    "branches": 3206,
+    "buses": 2000,
+    "contingency_branch_rows": 3190,
+    "contingency_change_rows": 3734,
+    "contingency_generator_rows": 544,
+    "gencost_rows": 544,
+    "generators": 544,
+    "source_offline_generators": 112,
+    "source_online_generators": 432,
+    "source_online_nonzero_pmin_generators": 430
+  },
+  "row_identity": {
+    "branch": "branch-row-NNNN maps to the immutable one-based mpc.branch row",
+    "contingency": "contingency source_row maps to the immutable one-based chgtab row",
+    "generator": "gen-row-NNNN maps to the immutable one-based mpc.gen row"
+  },
+  "source_online_capacity_mw": {
+    "pmax_sum": 81201.89,
+    "pmin_sum": 32613.680000000004
+  },
+  "source_release": "MATPOWER 8.1",
+  "source_url": "https://electricgrids.engr.tamu.edu/electric-grid-test-cases/activsg2000/",
+  "synthetic_system": true
+}

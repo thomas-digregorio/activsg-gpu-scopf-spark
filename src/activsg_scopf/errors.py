@@ -6,7 +6,7 @@ class ScopfError(RuntimeError):
 
 
 class ScopeViolation(ScopfError):
-    """The request escaped the approved ACTIVSg500-only scope."""
+    """The request escaped the explicitly approved ACTIVSg case scope."""
 
 
 class ProvenanceError(ScopfError):

@@ -32,6 +32,18 @@ CASE_REGISTRY: dict[str, CaseRegistration] = {
         expected_generators=90,
         expected_branches=597,
     ),
+    "ACTIVSg2000": CaseRegistration(
+        case_name="ACTIVSg2000",
+        case_file="case_ACTIVSg2000.m",
+        case_sha256="8d00618de8fd10bf35a599f59d2deebfecd0d86e28fcff73219ad7c4ebab860b",
+        contingency_file="contab_ACTIVSg2000.m",
+        contingency_sha256=(
+            "198b39f0381925a4ddacbe2148973cb1d93ddfe220303829cf87b16d45190bba"
+        ),
+        expected_buses=2_000,
+        expected_generators=544,
+        expected_branches=3_206,
+    ),
     "ACTIVSg10k": CaseRegistration(
         case_name="ACTIVSg10k",
         case_file="case_ACTIVSg10k.m",
