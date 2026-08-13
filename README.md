@@ -108,6 +108,12 @@ native solver messages, and durable phase events under `results/diagnostics/`
 so a watchdog termination still leaves internal attribution evidence. It does
 not use a preloaded or learned security-pair set.
 
+That v3 run is now closed. It finished inside 300 seconds, but round 2 reached
+HiGHS `TimeLimit` at a `5.57e-4` gap and its provisional exhaustive screen found
+8 additional pairs. See
+[`reports/activsg10k-v3-profile.md`](reports/activsg10k-v3-profile.md) for the
+internal timing attribution.
+
 The controller measures worker launch through
 the first complete result serialization, including raw input loading, factor and
 model construction, every solve/screen round, and independent exhaustive

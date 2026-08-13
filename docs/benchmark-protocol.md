@@ -61,6 +61,12 @@ match v2. It enables flushed one-second HiGHS progress callbacks plus native log
 messages and records row synchronization, MIP-start, solve, screen, and
 verification phase boundaries. No security-pair seed is loaded.
 
+The v3 laptop run is closed after one execution. It returned
+`incomplete_restricted_master_not_optimal` in 283.648 seconds. Its durable logs
+show that round-2 row loading and MIP-start installation were negligible, while
+the infeasible partial-start LP attempt used about 30.73 seconds and the main
+MIP exhausted 178.49 native seconds. No v3 retry or Spark run is permitted.
+
 The ignored registry is written as `started` before worker launch. A timeout,
 exception, infeasibility, nonoptimal solver return, verification failure, or
 successful completion all finalize the same record. The code refuses a second

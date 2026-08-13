@@ -1,0 +1,145 @@
+{
+  "schema_version": "1.0.0",
+  "benchmark": {
+    "case_name": "ACTIVSg10k",
+    "benchmark_id": "activsg10k-v3",
+    "commit": "3687dea52997f9551fa4f1b1ba4e15c88070b37f",
+    "tag": "benchmark-10k-v3",
+    "config_sha256": "3f3bcbfec96a7c018d062c385d8867c907dfe69a14dd4b2d3603175e985a6fb8",
+    "mathematical_model_equal_to_v2": true,
+    "seeded_security_pairs": 0,
+    "official_laptop_run_count": 1
+  },
+  "result": {
+    "status": "incomplete_restricted_master_not_optimal",
+    "total_wall_time_seconds": 283.6480296000009,
+    "solver_status": "TimeLimit",
+    "objective": 2224833.4773079273,
+    "bound": 2223593.923441618,
+    "mip_gap": 0.0005571445588858126,
+    "commitment_count": 1576,
+    "peak_process_rss_bytes": 1555017728,
+    "final_independent_verification": null,
+    "acceptance_passed": false
+  },
+  "end_to_end_timing_seconds": {
+    "raw_input_loading": 0.10092109999823151,
+    "model_and_factor_build": 8.844245000000228,
+    "solver_session_build": 0.03524920000199927,
+    "solver_rounds": 269.4966366000008,
+    "screening": 4.006868399999803,
+    "result_serialization": 0.052561200005584396
+  },
+  "round_1": {
+    "rows": 33913,
+    "solve_wall_time_seconds": 60.23898460000055,
+    "status": "Optimal",
+    "objective": 2201957.0404112316,
+    "bound": 2201955.1956132306,
+    "mip_gap": 8.377992699850948e-7,
+    "mip_nodes": 35,
+    "lp_iterations": 52891,
+    "native_breakdown_seconds": {
+      "presolve": 0.88,
+      "solve": 59.34,
+      "main_mip": 18.01,
+      "submip": 41.33,
+      "submip_calls": 10
+    },
+    "lp_iteration_attribution": {
+      "strong_branching": 227,
+      "separation": 8,
+      "heuristics": 19243,
+      "repair_lp_iterations": 10701,
+      "repair_lp_count": 2
+    },
+    "screen": {
+      "wall_time_seconds": 1.948451500000374,
+      "evaluated_sides": 171488782,
+      "new_violated_pairs": 322,
+      "maximum_violation_pu": 8.2869999999999
+    }
+  },
+  "round_2": {
+    "rows": 34235,
+    "new_rows": 322,
+    "row_sync_wall_time_seconds": 0.01690450000023702,
+    "partial_mip_start_install_wall_time_seconds": 0.0004465000019990839,
+    "partial_mip_start_result": "infeasible_after_fixed-integer_LP_attempt",
+    "fixed_integer_lp_attempt_wall_time_seconds_approx": 30.727,
+    "requested_solver_budget_seconds": 178.49165170000197,
+    "native_time_limit_seconds": 178.474163699997,
+    "highs_run_wall_time_seconds": 209.2368753999981,
+    "status": "TimeLimit",
+    "objective": 2224833.4773079273,
+    "bound": 2223593.923441618,
+    "mip_gap": 0.0005571445588858126,
+    "mip_nodes": 473,
+    "lp_iterations": 87567,
+    "native_breakdown_seconds": {
+      "reported_total": 178.49,
+      "presolve": 0.74,
+      "solve": 177.75,
+      "main_mip": 104.17,
+      "submip": 73.58,
+      "submip_calls": 8
+    },
+    "lp_iteration_attribution": {
+      "strong_branching": 9922,
+      "separation": 30,
+      "heuristics": 42854,
+      "repair_lp_iterations": 0,
+      "repair_lp_count": 0
+    },
+    "progress": [
+      {
+        "native_mip_time_seconds": 15.99022519999562,
+        "nodes": 0,
+        "incumbent": 2227629.01818912,
+        "bound": 2222558.594711747,
+        "mip_gap": 0.002276152553217737
+      },
+      {
+        "native_mip_time_seconds": 90.26881290000165,
+        "nodes": 0,
+        "incumbent": 2224833.4773079273,
+        "bound": 2222558.594711747,
+        "mip_gap": 0.001022495669623302
+      },
+      {
+        "native_mip_time_seconds": 116.13911319999897,
+        "nodes": 100,
+        "incumbent": 2224833.4773079273,
+        "bound": 2223333.129667612,
+        "mip_gap": 0.0006743640167312536
+      },
+      {
+        "native_mip_time_seconds": 178.49057750000065,
+        "nodes": 473,
+        "incumbent": 2224833.4773079273,
+        "bound": 2223593.923441618,
+        "mip_gap": 0.0005571445588858126
+      }
+    ],
+    "provisional_screen_of_time_limited_incumbent": {
+      "wall_time_seconds": 2.058416899999429,
+      "evaluated_sides": 171488782,
+      "new_violated_pairs": 8,
+      "maximum_violation_pu": 0.23325374212559893
+    }
+  },
+  "attribution": {
+    "primary_bottleneck": "round-2 HiGHS MILP search and proof",
+    "screening_bottleneck": false,
+    "row_construction_bottleneck": false,
+    "partial_mip_start_overhead_material": true,
+    "native_time_limit_is_not_a_complete_highs_run_wall_cap": true,
+    "note": "The native MIP timer excluded about 30.73 seconds spent attempting a fixed-integer LP for the infeasible partial MIP start."
+  },
+  "evidence_sha256": {
+    "official_result": "5c1ed01dfdaf7bf4c4d3fcda382c980b57604159a094a05140958bf4dcd6f439",
+    "official_registry": "3867d6db4e57d807e6ea1064160dc98b115ca2608436ed3de0503fa0a7d41a8e",
+    "diagnostic_events": "822d49bb3e12f79ad1fc5b5bca03811fc157d610916ed843e16b9fbc3281f0c7",
+    "native_highs_log": "8b29f044b6cadc0c247fba4f958f2a34e558f74ac2d64fdb3f59f53f079f87bf"
+  }
+}
