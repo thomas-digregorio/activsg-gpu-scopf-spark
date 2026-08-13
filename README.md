@@ -86,7 +86,7 @@ one-shot run. Do not invoke `benchmark` casually: before starting work it writes
 an ignored, durable registry entry, and it refuses an automatic retry or
 replacement even after failure.
 
-## ACTIVSg10k MIP-gap sensitivity experiment
+## MIP-gap sensitivity experiments
 
 The separately registered `activsg10k-gap-sensitivity-v2` experiment runs the
 unchanged model once at each requested HiGHS relative MIP gap: `1e-3`, `1e-4`,
@@ -95,11 +95,21 @@ starts independently from the base restricted master; gap levels do not seed
 one another. The persistent HiGHS session still passes the previous round's
 commitment as a partial MIP start after new contingency rows are added.
 
+The separately frozen `activsg500-gap-sensitivity-v1` suite uses the same five
+gap levels on ACTIVSg500. Every level has a hard 1,800-second end-to-end limit,
+including raw loading, all dynamic constraint-generation rounds, independent
+verification, fixed-commitment pricing, and worker result serialization. The
+controller refuses to start a later gap unless every earlier gap completed as
+`optimal_verified` with accepted pricing. It reserves 120 seconds for post-MIP
+work and 15 seconds for serialization; the parent watchdog remains the hard
+30-minute boundary.
+
 Use `gap-experiment`, not `solve` or `benchmark`. The command writes a durable
 one-shot registry before worker launch and refuses a second run for that gap:
 
 ```powershell
 activsg-scopf gap-experiment --config configs\activsg10k-gap-1e-3.json --output results\experiments\activsg10k-gap-v2-1e-3-laptop.json
+activsg-scopf gap-experiment --config configs\activsg500-gap-1e-3.json --output results\experiments\activsg500-gap-v1-1e-3-laptop.json
 ```
 
 The v1 `1e-3` attempt is preserved as failed evidence. HiGHS returned an

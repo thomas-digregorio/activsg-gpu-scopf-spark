@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import csv
 import hashlib
 import json
@@ -12,11 +13,24 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 GAPS = ("1e-3", "1e-4", "1e-5", "1e-6", "1e-7")
 RESULT_DIR = ROOT / "results" / "experiments"
-REPORT_DIR = ROOT / "reports" / "activsg10k-gap-sensitivity-v2"
+SUITES = {
+    "activsg10k-gap-sensitivity-v2": {
+        "result_prefix": "activsg10k-gap-v2",
+        "report_directory": "activsg10k-gap-sensitivity-v2",
+        "title": "ACTIVSg10k MIP-gap sensitivity v2",
+        "run_boundary": "independent, unbounded laptop MIP run",
+    },
+    "activsg500-gap-sensitivity-v1": {
+        "result_prefix": "activsg500-gap-v1",
+        "report_directory": "activsg500-gap-sensitivity-v1",
+        "title": "ACTIVSg500 MIP-gap sensitivity v1",
+        "run_boundary": "independent laptop MIP run with a hard 1,800-second limit",
+    },
+}
 
 
-def _read(label: str) -> dict[str, Any]:
-    path = RESULT_DIR / f"activsg10k-gap-v2-{label}-laptop.json"
+def _read(label: str, *, result_prefix: str) -> dict[str, Any]:
+    path = RESULT_DIR / f"{result_prefix}-{label}-laptop.json"
     payload = json.loads(path.read_text(encoding="utf-8"))
     if payload.get("gap_label") != label:
         raise ValueError(f"{path} has the wrong gap label")
@@ -100,7 +114,20 @@ def _comparison(
 
 
 def main() -> None:
-    results = {label: _read(label) for label in GAPS}
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--suite",
+        choices=tuple(SUITES),
+        default="activsg10k-gap-sensitivity-v2",
+    )
+    args = parser.parse_args()
+    suite_id = str(args.suite)
+    suite = SUITES[suite_id]
+    report_dir = ROOT / "reports" / str(suite["report_directory"])
+    results = {
+        label: _read(label, result_prefix=str(suite["result_prefix"]))
+        for label in GAPS
+    }
     commits = {result["frozen_identity"]["commit"] for result in results.values()}
     tags = {result["frozen_identity"]["tag"] for result in results.values()}
     source_hashes = {
@@ -113,7 +140,7 @@ def main() -> None:
     if len(commits) != 1 or len(tags) != 1 or len(source_hashes) != 1:
         raise ValueError("Experiment identity differs across gap levels")
 
-    REPORT_DIR.mkdir(parents=True, exist_ok=True)
+    report_dir.mkdir(parents=True, exist_ok=True)
     summary_rows: list[dict[str, Any]] = []
     for label in GAPS:
         result = results[label]
@@ -159,7 +186,7 @@ def main() -> None:
                 "raw_result_sha256": result["_sha256"],
             }
         )
-    _write_csv(REPORT_DIR / "summary.csv", summary_rows)
+    _write_csv(report_dir / "summary.csv", summary_rows)
 
     first_generators = results[GAPS[0]]["solution"]["generators"]
     generator_rows: list[dict[str, Any]] = []
@@ -194,7 +221,7 @@ def main() -> None:
                 }
             )
         generator_rows.append(row)
-    _write_csv(REPORT_DIR / "generator-detail.csv", generator_rows)
+    _write_csv(report_dir / "generator-detail.csv", generator_rows)
 
     first_buses = results[GAPS[0]]["pricing"]["bus_prices"]
     bus_rows: list[dict[str, Any]] = []
@@ -207,7 +234,7 @@ def main() -> None:
             row[f"gap_{label}_price_per_mwh"] = price["price_per_mwh"]
             row[f"gap_{label}_price_per_pu_hour"] = price["price_per_pu_hour"]
         bus_rows.append(row)
-    _write_csv(REPORT_DIR / "bus-prices.csv", bus_rows)
+    _write_csv(report_dir / "bus-prices.csv", bus_rows)
 
     adjacent = [
         _comparison(left, right, results)
@@ -218,7 +245,7 @@ def main() -> None:
     ]
     comparison = {
         "schema_version": "1.0.0",
-        "experiment_suite_id": "activsg10k-gap-sensitivity-v2",
+        "experiment_suite_id": suite_id,
         "commit": next(iter(commits)),
         "tag": next(iter(tags)),
         "source_hashes": {
@@ -231,25 +258,23 @@ def main() -> None:
         "adjacent_comparisons": adjacent,
         "comparisons_to_1e-7": versus_strictest,
     }
-    (REPORT_DIR / "comparison.json").write_text(
+    (report_dir / "comparison.json").write_text(
         json.dumps(comparison, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
 
     lines = [
-        "# ACTIVSg10k MIP-gap sensitivity v2",
+        f"# {suite['title']}",
         "",
-        "Each gap level is one independent, unbounded laptop MIP run from the base "
-        "master. Within each run, dynamic N-1 constraint generation retains the "
+        f"Each gap level is one {suite['run_boundary']} from the base master. "
+        "Within each run, dynamic N-1 constraint generation retains the "
         "previous commitment as a partial MIP start. Gap levels are not seeded from "
         "one another. Prices are from a separately identified fixed-commitment, "
         "N-1-secure LP and are not MILP duals.",
         "",
-        "V2 is the explicitly authorized replacement campaign. The v1 `1e-3` "
-        "attempt remains preserved as a failed result; HiGHS returned an internal "
-        "error while processing its round-2 partial MIP start. V2 still attempts "
-        "that start and rebuilds the same restricted master cold only on that "
-        "specific internal error.",
+        "Every completed result passes independent exhaustive branch-N-1 verification "
+        "and includes accepted fixed-commitment pricing. The controller prevents a "
+        "later gap from starting if an earlier gap times out, fails, or lacks pricing.",
         "",
         (
             "| Requested gap | Achieved gap | Objective | Bound | Committed | "
@@ -289,13 +314,13 @@ def main() -> None:
     lines.extend(
         [
             "",
-            "Full source-row generator data are in `generator-detail.csv`; all 10,000 "
-            "bus prices are in `bus-prices.csv`; exact metrics and evidence hashes are "
-            "in `comparison.json`.",
+            "Full source-row generator data are in `generator-detail.csv`; all "
+            f"{len(bus_rows):,} bus prices are in `bus-prices.csv`; exact metrics and "
+            "evidence hashes are in `comparison.json`.",
             "",
         ]
     )
-    (REPORT_DIR / "README.md").write_text("\n".join(lines), encoding="utf-8")
+    (report_dir / "README.md").write_text("\n".join(lines), encoding="utf-8")
 
 
 if __name__ == "__main__":

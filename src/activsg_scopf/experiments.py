@@ -1,4 +1,4 @@
-"""One-shot, frozen, unbounded laptop experiment controller."""
+"""One-shot, frozen laptop gap-sensitivity experiment controller."""
 
 from __future__ import annotations
 
@@ -26,6 +26,25 @@ GAP_LABELS = {
     1e-7: "1e-7",
 }
 
+EXPERIMENT_SUITES: dict[str, dict[str, Any]] = {
+    "ACTIVSg10k": {
+        "suite_id": "activsg10k-gap-sensitivity-v2",
+        "benchmark_prefix": "activsg10k-gap-v2",
+        "required_git_tag": "experiment-10k-gap-v2",
+        "deadline_seconds": None,
+        "verification_reserve_seconds": 0.0,
+        "serialization_reserve_seconds": 0.0,
+    },
+    "ACTIVSg500": {
+        "suite_id": "activsg500-gap-sensitivity-v1",
+        "benchmark_prefix": "activsg500-gap-v1",
+        "required_git_tag": "experiment-500-gap-v1",
+        "deadline_seconds": 1800.0,
+        "verification_reserve_seconds": 120.0,
+        "serialization_reserve_seconds": 15.0,
+    },
+}
+
 
 def _read_json(path: Path) -> dict[str, Any]:
     try:
@@ -35,19 +54,46 @@ def _read_json(path: Path) -> dict[str, Any]:
 
 
 def _experiment_identity(config: RunConfig) -> tuple[str, str]:
-    if config.case_name != "ACTIVSg10k":
-        raise ScopfError("Gap sensitivity is registered only for ACTIVSg10k")
+    suite = EXPERIMENT_SUITES.get(config.case_name)
+    if suite is None:
+        raise ScopfError(f"Gap sensitivity is not registered for {config.case_name}")
     if config.benchmark_kind != "gap_sensitivity_experiment":
         raise ScopfError("Configuration is not a gap-sensitivity experiment")
-    if config.runtime.get("deadline_seconds") is not None:
-        raise ScopfError("Gap-sensitivity experiment must have no deadline")
+    expected_deadline = suite["deadline_seconds"]
+    observed_deadline = config.runtime.get("deadline_seconds")
+    if expected_deadline is None:
+        if observed_deadline is not None:
+            raise ScopfError("This gap-sensitivity suite must have no deadline")
+    elif observed_deadline is None or float(observed_deadline) != expected_deadline:
+        raise ScopfError(
+            "Gap-sensitivity deadline changed: expected "
+            f"{expected_deadline}, observed {observed_deadline!r}"
+        )
+    for key in ("verification_reserve_seconds", "serialization_reserve_seconds"):
+        expected = suite[key]
+        if float(config.runtime.get(key, -1.0)) != expected:
+            raise ScopfError(
+                f"Gap experiment changed registered runtime value {key}: "
+                f"expected {expected!r}, observed {config.runtime.get(key)!r}"
+            )
     gap = float(config.model["mip_relative_gap_tolerance"])
     label = str(config.raw["benchmark"].get("gap_label", ""))
     if gap not in GAP_LABELS or label != GAP_LABELS[gap]:
         raise ScopfError(f"Unregistered gap experiment identity: gap={gap}, label={label!r}")
     suite_id = str(config.raw["benchmark"].get("experiment_suite_id", ""))
-    if suite_id != "activsg10k-gap-sensitivity-v2":
+    if suite_id != suite["suite_id"]:
         raise ScopfError(f"Unregistered experiment suite {suite_id!r}")
+    expected_benchmark_id = f"{suite['benchmark_prefix']}-{label}"
+    if config.benchmark_id != expected_benchmark_id:
+        raise ScopfError(
+            f"Expected benchmark id {expected_benchmark_id!r}, "
+            f"observed {config.benchmark_id!r}"
+        )
+    required_tag = str(config.raw["benchmark"].get("required_git_tag", ""))
+    if required_tag != suite["required_git_tag"]:
+        raise ScopfError(
+            f"Expected frozen tag {suite['required_git_tag']!r}, observed {required_tag!r}"
+        )
     pricing = config.raw["benchmark"].get("pricing", {})
     if not bool(pricing.get("enabled", False)):
         raise ScopfError("Gap sensitivity requires fixed-commitment pricing")
@@ -82,6 +128,29 @@ def _experiment_identity(config: RunConfig) -> tuple[str, str]:
     return suite_id, label
 
 
+def _require_prior_success(registry: dict[str, Any], gap_label: str) -> None:
+    """Fail closed if an earlier gap is absent, incomplete, or unpriced."""
+
+    ordered_labels = list(GAP_LABELS.values())
+    requested_index = ordered_labels.index(gap_label)
+    for prior_label in ordered_labels[:requested_index]:
+        prior = registry["runs"].get(prior_label)
+        if prior is None:
+            raise ScopfError(
+                f"Gap {gap_label} is blocked because prior gap {prior_label} was not run"
+            )
+        if prior.get("status") != "optimal_verified":
+            raise ScopfError(
+                f"Gap {gap_label} is blocked because prior gap {prior_label} ended as "
+                f"{prior.get('status', 'unknown')}"
+            )
+        if prior.get("pricing_status") != "optimal_secure_fixed_commitment_lp":
+            raise ScopfError(
+                f"Gap {gap_label} is blocked because prior gap {prior_label} "
+                "does not have accepted fixed-commitment pricing"
+            )
+
+
 def _registry_path(config: RunConfig, suite_id: str) -> Path:
     return guard_output_path(
         config.root / "results" / "experiments" / f"{suite_id}-run-registry.json"
@@ -93,7 +162,7 @@ def run_one_shot_gap_experiment(
     *,
     output_path: Path,
 ) -> dict[str, Any]:
-    """Launch one immutable gap-level experiment with no wall-clock timeout."""
+    """Launch one immutable gap-level experiment under its registered deadline."""
 
     suite_id, gap_label = _experiment_identity(config)
     validate_platform(config, "laptop_cpu")
@@ -115,6 +184,7 @@ def run_one_shot_gap_experiment(
             "runs": {},
         }
     )
+    _require_prior_success(registry, gap_label)
     if gap_label in registry["runs"]:
         prior = registry["runs"][gap_label]
         raise ScopfError(
@@ -164,25 +234,50 @@ def run_one_shot_gap_experiment(
         "--platform",
         "laptop_cpu",
     ]
+    deadline_value = config.runtime.get("deadline_seconds")
+    deadline_seconds = None if deadline_value is None else float(deadline_value)
+    if deadline_seconds is not None:
+        command.extend(["--deadline-seconds", str(deadline_seconds)])
     started = time.perf_counter()
-    completed = subprocess.run(
-        command,
-        cwd=config.root,
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    total_wall = time.perf_counter() - started
-    if output.exists():
-        result = _read_json(output)
-    else:
-        result = _read_json(checkpoint) if checkpoint.exists() else {}
+    try:
+        completed = subprocess.run(
+            command,
+            cwd=config.root,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=deadline_seconds,
+        )
+        total_wall = time.perf_counter() - started
+        if output.exists():
+            result = _read_json(output)
+        else:
+            result = _read_json(checkpoint) if checkpoint.exists() else {}
+            result.update(
+                {
+                    "status": "failed_worker_without_result",
+                    "worker_returncode": completed.returncode,
+                    "worker_stdout": completed.stdout[-4000:],
+                    "worker_stderr": completed.stderr[-4000:],
+                }
+            )
+    except subprocess.TimeoutExpired as exc:
+        total_wall = time.perf_counter() - started
+        result = _read_json(output) if output.exists() else (
+            _read_json(checkpoint) if checkpoint.exists() else {}
+        )
+
+        def tail(value: str | bytes | None) -> str:
+            if isinstance(value, bytes):
+                value = value.decode(errors="replace")
+            return (value or "")[-4000:]
+
         result.update(
             {
-                "status": "failed_worker_without_result",
-                "worker_returncode": completed.returncode,
-                "worker_stdout": completed.stdout[-4000:],
-                "worker_stderr": completed.stderr[-4000:],
+                "status": "hard_deadline_exceeded",
+                "worker_timeout_seconds": deadline_seconds,
+                "worker_stdout": tail(exc.stdout),
+                "worker_stderr": tail(exc.stderr),
             }
         )
     result.update(
@@ -194,14 +289,26 @@ def run_one_shot_gap_experiment(
             "experiment_suite_id": suite_id,
             "gap_label": gap_label,
             "frozen_identity": identity,
+            "deadline_seconds": deadline_seconds,
             "total_wall_time_seconds": total_wall,
             "benchmark_boundary": (
                 "worker launch through raw loading, all MIP solve/screen rounds, "
                 "independent verification, fixed-commitment pricing, and result "
-                "serialization; no wall-clock deadline"
+                "serialization; "
+                + (
+                    "no wall-clock deadline"
+                    if deadline_seconds is None
+                    else f"hard {deadline_seconds:g}-second wall-clock deadline"
+                )
             ),
         }
     )
+    if (
+        deadline_seconds is not None
+        and total_wall > deadline_seconds
+        and result.get("status") == "optimal_verified"
+    ):
+        result["status"] = "failed_end_to_end_deadline"
     write_json_atomic(result, output)
 
     record = registry["runs"][gap_label]

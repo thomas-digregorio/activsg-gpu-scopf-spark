@@ -82,7 +82,14 @@ def load_config(path: str | Path) -> RunConfig:
             )
     else:
         deadline = float(deadline_value)
-        if deadline <= 0 or deadline > 300:
-            raise ScopeViolation("The end-to-end deadline must be in (0, 300] seconds")
+        maximum_deadline = (
+            1800.0
+            if payload["benchmark"].get("kind") == "gap_sensitivity_experiment"
+            else 300.0
+        )
+        if deadline <= 0 or deadline > maximum_deadline:
+            raise ScopeViolation(
+                f"The end-to-end deadline must be in (0, {maximum_deadline:g}] seconds"
+            )
     root = config_path.parent.parent
     return RunConfig(path=config_path, root=root, raw=payload)

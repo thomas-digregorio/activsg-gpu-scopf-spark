@@ -73,3 +73,38 @@ def test_activsg10k_gap_experiment_registers_exact_unbounded_levels() -> None:
         assert config.raw["platforms"]["laptop_cpu"]["solver_session"] == (
             "persistent_incremental"
         )
+
+
+def test_activsg500_gap_experiment_registers_exact_bounded_levels() -> None:
+    expected = ("1e-3", "1e-4", "1e-5", "1e-6", "1e-7")
+    baseline = load_config(ROOT / "configs" / "activsg500-gap-1e-3.json")
+    for label in expected:
+        config = load_config(ROOT / "configs" / f"activsg500-gap-{label}.json")
+        assert config.case_name == "ACTIVSg500"
+        assert config.benchmark_kind == "gap_sensitivity_experiment"
+        assert config.runtime["deadline_seconds"] == 1800.0
+        assert config.runtime["verification_reserve_seconds"] == 120.0
+        assert config.runtime["serialization_reserve_seconds"] == 15.0
+        assert config.raw["benchmark"]["gap_label"] == label
+        assert config.raw["benchmark"]["required_git_tag"] == (
+            "experiment-500-gap-v1"
+        )
+        assert config.raw["benchmark"]["experiment_suite_id"] == (
+            "activsg500-gap-sensitivity-v1"
+        )
+        assert config.raw["benchmark"]["pricing"]["enabled"] is True
+        assert config.raw["platforms"]["laptop_cpu"]["solver_session"] == (
+            "persistent_incremental"
+        )
+        assert config.raw["raw_inputs"] == baseline.raw["raw_inputs"]
+        assert config.runtime == baseline.runtime
+        assert config.raw["platforms"] == baseline.raw["platforms"]
+        assert {
+            key: value
+            for key, value in config.model.items()
+            if key != "mip_relative_gap_tolerance"
+        } == {
+            key: value
+            for key, value in baseline.model.items()
+            if key != "mip_relative_gap_tolerance"
+        }
