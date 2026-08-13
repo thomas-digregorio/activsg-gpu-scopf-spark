@@ -1,0 +1,52 @@
+{
+  "$schema": "../schemas/config.schema.json",
+  "schema_version": "1.0.0",
+  "case_name": "ACTIVSg10k",
+  "raw_inputs": {
+    "case_file": "data/raw/matpower-8.1/case_ACTIVSg10k.m",
+    "case_sha256": "ead10b25fecc4dcc02f88bacdfb3526fe8b8985b81f7e539c95abddb32575590",
+    "contingency_file": "data/raw/matpower-8.1/contab_ACTIVSg10k.m",
+    "contingency_sha256": "7e1681a960b0a2a99d824766e0e94cc291fa36a7ec33b6dee24bf12ac67ddef7"
+  },
+  "model": {
+    "interval_hours": 1.0,
+    "pwl_segments": 10,
+    "mip_relative_gap_tolerance": 1e-7,
+    "model_residual_tolerance_pu": 1e-6,
+    "security_violation_tolerance_pu": 1e-5,
+    "lodf_validation_tolerance_pu": 1e-9,
+    "lodf_validation_columns": 3,
+    "lodf_build_chunk_columns": 256,
+    "screen_chunk_columns": 256
+  },
+  "runtime": {
+    "deadline_seconds": null,
+    "verification_reserve_seconds": 0.0,
+    "serialization_reserve_seconds": 0.0,
+    "maximum_constraint_generation_rounds": 100
+  },
+  "platforms": {
+    "laptop_cpu": {
+      "solver": "highs",
+      "screening": "numpy",
+      "solver_threads": 0,
+      "solver_session": "persistent_incremental",
+      "diagnostics": {
+        "enabled": true,
+        "mip_logging_interval_seconds": 10.0
+      }
+    }
+  },
+  "benchmark": {
+    "id": "activsg10k-gap-1e-7",
+    "required_git_tag": "experiment-10k-gap-v1",
+    "official": false,
+    "kind": "gap_sensitivity_experiment",
+    "experiment_suite_id": "activsg10k-gap-sensitivity-v1",
+    "gap_label": "1e-7",
+    "pricing": {
+      "enabled": true,
+      "maximum_constraint_generation_rounds": 100
+    }
+  }
+}

@@ -53,3 +53,20 @@ def test_activsg10k_v3_adds_diagnostics_without_seeding_or_model_changes() -> No
         "mip_logging_interval_seconds": 1.0,
     }
     assert not any("seed" in key.casefold() for key in laptop)
+
+
+def test_activsg10k_gap_experiment_registers_exact_unbounded_levels() -> None:
+    expected = ("1e-3", "1e-4", "1e-5", "1e-6", "1e-7")
+    for label in expected:
+        config = load_config(ROOT / "configs" / f"activsg10k-gap-{label}.json")
+        assert config.case_name == "ACTIVSg10k"
+        assert config.benchmark_kind == "gap_sensitivity_experiment"
+        assert config.runtime["deadline_seconds"] is None
+        assert config.raw["benchmark"]["gap_label"] == label
+        assert config.raw["benchmark"]["required_git_tag"] == (
+            "experiment-10k-gap-v1"
+        )
+        assert config.raw["benchmark"]["pricing"]["enabled"] is True
+        assert config.raw["platforms"]["laptop_cpu"]["solver_session"] == (
+            "persistent_incremental"
+        )

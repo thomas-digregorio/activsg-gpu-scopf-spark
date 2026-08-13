@@ -7,7 +7,8 @@ from activsg_scopf.config import RunConfig
 from activsg_scopf.errors import ScopfError
 from activsg_scopf.matpower import sha256_file
 from activsg_scopf.model import build_master
-from activsg_scopf.network import build_network
+from activsg_scopf.network import build_contingency_catalog, build_network
+from activsg_scopf.pricing import run_fixed_commitment_pricing
 from activsg_scopf.solution import serialize_solution
 from activsg_scopf.solvers import create_solver_session, solve_canonical
 from activsg_scopf.solvers.highs import _require_run_not_error
@@ -70,6 +71,23 @@ def test_persistent_highs_session_appends_rows_logs_and_resolves(
     assert "Running HiGHS" in native_log.read_text(encoding="utf-8")
 
 
+def test_highs_session_can_run_without_a_time_limit() -> None:
+    model = CanonicalMILP()
+    x = model.add_variable("x", objective=1.0, lower=0.0, upper=1.0, integer=True)
+    model.add_row("force_x_on", {x: 1.0}, lower=1.0)
+    session = create_solver_session(
+        model,
+        solver="highs",
+        mip_relative_gap=1e-6,
+    )
+    result = session.solve(time_limit_seconds=None)
+    assert result.optimal
+    assert result.values is not None
+    assert result.values[x] == pytest.approx(1.0)
+    assert result.statistics["requested_call_budget_seconds"] is None
+    assert result.statistics["native_time_limit_seconds"] is None
+
+
 def test_highs_adapter_and_independent_checker_use_one_tiny_solve(tmp_path: Path) -> None:
     case, _ = triangle_case()
     network = build_network(case)
@@ -113,3 +131,50 @@ def test_highs_adapter_and_independent_checker_use_one_tiny_solve(tmp_path: Path
     verification = verify_serialized_solution(config, payload)
     assert verification.passed
     assert verification.checked_valid_outages == 3
+    generator = payload["solution"]["generators"][0]
+    assert generator["pmin_mw"] == pytest.approx(25.0)
+    assert generator["pmin_pu"] == pytest.approx(0.25)
+    assert generator["dispatch_pu"] == pytest.approx(0.62)
+
+
+def test_fixed_commitment_pricing_returns_mw_and_per_unit_prices() -> None:
+    case, contingencies = triangle_case()
+    network = build_network(case)
+    catalog = build_contingency_catalog(
+        case,
+        network,
+        contingencies,
+        validation_columns=3,
+        validation_tolerance_pu=1e-9,
+    )
+    master = build_master(case, network)
+    result = solve_canonical(
+        master.canonical,
+        solver="highs",
+        time_limit_seconds=5,
+        mip_relative_gap=1e-6,
+    )
+    assert result.optimal and result.values is not None
+    pricing = run_fixed_commitment_pricing(
+        case,
+        network,
+        catalog,
+        master,
+        result.values,
+        already_added_pair_ids=set(),
+        security_tolerance_pu=1e-5,
+        screen_chunk_columns=2,
+        solver_threads=0,
+        maximum_rounds=5,
+    )
+    assert pricing["status"] == "optimal_secure_fixed_commitment_lp"
+    assert len(pricing["bus_prices"]) == 3
+    assert len(pricing["generators"]) == 2
+    for record in pricing["bus_prices"]:
+        assert record["price_per_pu_hour"] == pytest.approx(
+            record["price_per_mwh"] * case.base_mva
+        )
+    online = pricing["generators"][0]
+    assert online["pricing_dispatch_pu"] == pytest.approx(
+        online["pricing_dispatch_mw"] / case.base_mva
+    )

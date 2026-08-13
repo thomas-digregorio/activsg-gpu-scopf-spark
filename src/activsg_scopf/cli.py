@@ -12,6 +12,7 @@ from pathlib import Path
 from . import __version__
 from .config import load_config
 from .errors import DeadlineExceeded, ScopfError
+from .experiments import run_one_shot_gap_experiment
 from .matpower import read_contingency_table, read_matpower_case
 from .official import run_controlled
 from .paths import guard_input_path, guard_output_path, guard_runtime_environment
@@ -24,7 +25,7 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="activsg-scopf")
     parser.add_argument("--version", action="version", version=__version__)
     subcommands = parser.add_subparsers(dest="command", required=True)
-    for name in ("ingest", "solve", "verify", "benchmark"):
+    for name in ("ingest", "solve", "verify", "benchmark", "gap-experiment"):
         command = subcommands.add_parser(name)
         command.add_argument("--config", type=Path, required=True)
         command.add_argument("--output", type=Path, required=True)
@@ -45,7 +46,7 @@ def _worker_parser() -> argparse.ArgumentParser:
     worker.add_argument("--output", type=Path, required=True)
     worker.add_argument("--checkpoint", type=Path, required=True)
     worker.add_argument("--platform", choices=("laptop_cpu", "dgx_spark"), required=True)
-    worker.add_argument("--deadline-seconds", type=float, required=True)
+    worker.add_argument("--deadline-seconds", type=float)
     worker.add_argument("--official", action="store_true")
     return worker
 
@@ -154,6 +155,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                 official=True,
                 laptop_result=args.laptop_result,
             )
+            response = {"status": result["status"], "output": str(args.output)}
+        elif args.command == "gap-experiment":
+            config = load_config(args.config)
+            result = run_one_shot_gap_experiment(config, output_path=args.output)
             response = {"status": result["status"], "output": str(args.output)}
         else:
             raise ScopfError(f"Unknown command {args.command}")

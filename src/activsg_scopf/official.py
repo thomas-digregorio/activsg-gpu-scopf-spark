@@ -133,6 +133,10 @@ def run_controlled(
     official: bool,
     laptop_result: Path | None = None,
 ) -> dict[str, Any]:
+    if config.runtime.get("deadline_seconds") is None:
+        raise ScopfError(
+            "Unbounded gap configurations must use the gap-experiment command"
+        )
     validate_platform(config, platform_name)
     output = guard_output_path(output_path)
     if official and not output.is_relative_to((config.root / "results").resolve()):

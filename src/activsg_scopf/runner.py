@@ -1,4 +1,4 @@
-"""End-to-end constraint generation under one global deadline."""
+"""End-to-end constraint generation for bounded benchmarks or unbounded experiments."""
 
 from __future__ import annotations
 
@@ -22,6 +22,7 @@ from .network import (
     contingency_catalog_report,
 )
 from .paths import guard_output_path, guard_runtime_environment
+from .pricing import run_fixed_commitment_pricing
 from .provenance import build_source_manifest
 from .screening import ContingencyScreener, add_security_pairs
 from .solution import serialize_solution
@@ -63,12 +64,27 @@ def run_end_to_end(
         if isinstance(config_or_path, RunConfig)
         else load_config(config_or_path)
     )
-    configured_deadline = float(config.runtime["deadline_seconds"])
-    total_deadline = min(configured_deadline, deadline_seconds or configured_deadline)
+    configured_deadline_value = config.runtime["deadline_seconds"]
+    unbounded = configured_deadline_value is None
+    if unbounded:
+        if deadline_seconds is not None:
+            raise ValueError("An unbounded experiment cannot receive a deadline override")
+        total_deadline = float("inf")
+    else:
+        configured_deadline = float(configured_deadline_value)
+        total_deadline = min(configured_deadline, deadline_seconds or configured_deadline)
     deadline = Deadline(
         total_seconds=total_deadline,
-        verification_reserve_seconds=float(config.runtime["verification_reserve_seconds"]),
-        serialization_reserve_seconds=float(config.runtime["serialization_reserve_seconds"]),
+        verification_reserve_seconds=(
+            0.0
+            if unbounded
+            else float(config.runtime["verification_reserve_seconds"])
+        ),
+        serialization_reserve_seconds=(
+            0.0
+            if unbounded
+            else float(config.runtime["serialization_reserve_seconds"])
+        ),
     )
     payload: dict[str, Any] = {
         "schema_version": "1.0.0",
@@ -81,6 +97,7 @@ def run_end_to_end(
         "timings_seconds": {},
         "constraint_generation_rounds": [],
         "added_security_pair_ids": [],
+        "deadline_seconds": None if unbounded else total_deadline,
     }
     profile = config.raw["platforms"][platform_name]
     diagnostics_profile = profile.get("diagnostics", {})
@@ -113,7 +130,7 @@ def run_end_to_end(
         "end_to_end_started",
         benchmark_id=config.benchmark_id,
         platform=platform_name,
-        deadline_seconds=total_deadline,
+        deadline_seconds=None if unbounded else total_deadline,
     )
     memory_sampler = PeakMemorySampler(sample_gpu=platform_name == "dgx_spark")
 
@@ -234,7 +251,7 @@ def run_end_to_end(
         maximum_rounds = int(config.runtime["maximum_constraint_generation_rounds"])
         for round_number in range(1, maximum_rounds + 1):
             deadline.require("restricted-master solve", reserve_seconds=0.0)
-            solver_budget = deadline.solver_budget()
+            solver_budget = None if unbounded else deadline.solver_budget()
             payload["active_stage"] = "restricted_master_solve"
             payload["active_constraint_generation_round"] = round_number
             payload["active_solver_budget_seconds"] = solver_budget
@@ -362,6 +379,7 @@ def run_end_to_end(
             stage = time.perf_counter()
             payload["active_stage"] = "independent_verification"
             save_checkpoint()
+
             emit_diagnostic("independent_verification_started")
             verification = verify_serialized_solution(config, payload)
             payload["timings_seconds"]["independent_verification"] = _seconds_since(stage)
@@ -385,6 +403,58 @@ def run_end_to_end(
                 ],
             )
             save_checkpoint()
+
+            pricing_profile = config.raw["benchmark"].get("pricing", {})
+            if verification.passed and bool(pricing_profile.get("enabled", False)):
+                payload["active_stage"] = "fixed_commitment_pricing"
+                save_checkpoint()
+                emit_diagnostic("fixed_commitment_pricing_started")
+                stage = time.perf_counter()
+                try:
+                    payload["pricing"] = run_fixed_commitment_pricing(
+                        case,
+                        network,
+                        catalog,
+                        master,
+                        last_solve.values,
+                        already_added_pair_ids=added_pair_ids,
+                        security_tolerance_pu=float(
+                            config.model["security_violation_tolerance_pu"]
+                        ),
+                        screen_chunk_columns=screen_chunk_columns,
+                        solver_threads=int(profile["solver_threads"]),
+                        maximum_rounds=int(
+                            pricing_profile.get(
+                                "maximum_constraint_generation_rounds", maximum_rounds
+                            )
+                        ),
+                    )
+                    payload["timings_seconds"]["fixed_commitment_pricing"] = (
+                        _seconds_since(stage)
+                    )
+                    emit_diagnostic(
+                        "fixed_commitment_pricing_finished",
+                        status=payload["pricing"]["status"],
+                        wall_time_seconds=payload["timings_seconds"][
+                            "fixed_commitment_pricing"
+                        ],
+                    )
+                except Exception as exc:
+                    payload["timings_seconds"]["fixed_commitment_pricing"] = (
+                        _seconds_since(stage)
+                    )
+                    payload["pricing"] = {
+                        "status": "failed",
+                        "error_type": type(exc).__name__,
+                        "error": str(exc),
+                    }
+                    payload["status"] = "optimal_verified_pricing_failed"
+                    emit_diagnostic(
+                        "fixed_commitment_pricing_failed",
+                        error_type=type(exc).__name__,
+                        error=str(exc),
+                    )
+                save_checkpoint()
 
         payload["active_stage"] = "result_serialization"
 

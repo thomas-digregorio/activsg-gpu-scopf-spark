@@ -37,7 +37,7 @@ class SolverSession(Protocol):
 
     mode: str
 
-    def solve(self, *, time_limit_seconds: float) -> SolveResult: ...
+    def solve(self, *, time_limit_seconds: float | None) -> SolveResult: ...
 
 
 @dataclass
@@ -50,7 +50,9 @@ class RebuildingSolverSession:
     threads: int
     mode: str = "rebuild_each_round"
 
-    def solve(self, *, time_limit_seconds: float) -> SolveResult:
+    def solve(self, *, time_limit_seconds: float | None) -> SolveResult:
+        if time_limit_seconds is None:
+            raise ScopfError(f"Unbounded solves are not implemented for {self.solver}")
         return solve_canonical(
             self.model,
             solver=self.solver,

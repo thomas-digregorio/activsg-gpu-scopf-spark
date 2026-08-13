@@ -7,7 +7,7 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 
-from .matpower import GEN_STATUS, MatpowerCase
+from .matpower import GEN_BUS, GEN_STATUS, PMAX, PMIN, MatpowerCase
 from .model import MasterModel
 from .network import NetworkData
 from .provenance import branch_source_id, generator_source_id
@@ -40,9 +40,16 @@ def serialize_solution(
                 "source_id": generator_source_id(generator_index),
                 "source_row": generator_index + 1,
                 "source_status": int(source[GEN_STATUS]),
+                "bus": int(source[GEN_BUS]),
+                "pmin_mw": float(source[PMIN]),
+                "pmin_pu": float(source[PMIN] / case.base_mva),
+                "pmax_mw": float(source[PMAX]),
+                "pmax_pu": float(source[PMAX] / case.base_mva),
                 "commitment": commitment,
                 "dispatch_mw": dispatch,
+                "dispatch_pu": dispatch / case.base_mva,
                 "segment_dispatch_mw": segments,
+                "segment_dispatch_pu": [value / case.base_mva for value in segments],
             }
         )
     return {
@@ -59,6 +66,9 @@ def serialize_solution(
                 "source_id": branch_source_id(int(source_index)),
                 "source_row": int(source_index) + 1,
                 "flow_mw": float(values[master.index.flow_by_active_branch[active_index]]),
+                "flow_pu": float(
+                    values[master.index.flow_by_active_branch[active_index]] / case.base_mva
+                ),
             }
             for active_index, source_index in enumerate(network.active_branch_source_rows)
         ],

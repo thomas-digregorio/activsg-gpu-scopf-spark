@@ -86,6 +86,30 @@ one-shot run. Do not invoke `benchmark` casually: before starting work it writes
 an ignored, durable registry entry, and it refuses an automatic retry or
 replacement even after failure.
 
+## ACTIVSg10k MIP-gap sensitivity experiment
+
+The separately registered `activsg10k-gap-sensitivity-v1` experiment runs the
+unchanged model once at each requested HiGHS relative MIP gap: `1e-3`, `1e-4`,
+`1e-5`, `1e-6`, and `1e-7`. These five runs have no wall-clock deadline. Each
+starts independently from the base restricted master; gap levels do not seed
+one another. The persistent HiGHS session still passes the previous round's
+commitment as a partial MIP start after new contingency rows are added.
+
+Use `gap-experiment`, not `solve` or `benchmark`. The command writes a durable
+one-shot registry before worker launch and refuses a second run for that gap:
+
+```powershell
+activsg-scopf gap-experiment --config configs\activsg10k-gap-1e-3.json --output results\experiments\activsg10k-gap-1e-3-laptop.json
+```
+
+After a MIP solution is independently verified, pricing fixes its commitment,
+relaxes integrality, reoptimizes dispatch as an N-1-secure continuous LP, and
+uses the nodal-balance duals as prices. Dispatch and source PMIN/PMAX are stored
+in MW and p.u. Prices are stored in $/MWh and in $/p.u.-hour, equal to the
+$/MWh value times the case base MVA. This price solve is not another MIP run and
+its dispatch is retained separately from the MIP incumbent. See
+[`docs/gap-sensitivity-experiment.md`](docs/gap-sensitivity-experiment.md).
+
 ## Five-minute official protocol
 
 The benchmark controller requires a clean tracked worktree and requires `HEAD`

@@ -54,6 +54,8 @@ class HighsSession:
         self.loaded_rows = 0
         self.solve_count = 0
         self.previous_values: np.ndarray | None = None
+        self.last_row_duals: np.ndarray | None = None
+        self.last_column_duals: np.ndarray | None = None
         self.diagnostic_event = diagnostic_event
         self._active_solve_number = 0
         output_enabled = diagnostic_event is not None or native_log_path is not None
@@ -173,10 +175,10 @@ class HighsSession:
         self.loaded_rows = self.model.num_rows
         return rows_added, time.perf_counter() - started
 
-    def solve(self, *, time_limit_seconds: float) -> SolveResult:
+    def solve(self, *, time_limit_seconds: float | None) -> SolveResult:
         import highspy
 
-        if time_limit_seconds <= 0:
+        if time_limit_seconds is not None and time_limit_seconds <= 0:
             raise ScopfError("Solver was not started because no deadline budget remained")
         call_started = time.perf_counter()
         solve_number = self.solve_count + 1
@@ -219,21 +221,26 @@ class HighsSession:
                 wall_time_seconds=time.perf_counter() - mip_start_started,
             )
         setup_time = time.perf_counter() - call_started
-        native_time_limit = float(time_limit_seconds) - setup_time
-        if native_time_limit <= 0:
+        native_time_limit = (
+            None if time_limit_seconds is None else float(time_limit_seconds) - setup_time
+        )
+        if native_time_limit is not None and native_time_limit <= 0:
             raise ScopfError(
                 "Solver was not started because incremental session setup exhausted "
                 "the remaining deadline budget"
             )
         highs_run_time_before = float(self.highs.getRunTime())
-        _require_ok(
-            self.highs.setOptionValue("time_limit", native_time_limit),
-            "time limit",
-        )
+        if native_time_limit is not None:
+            _require_ok(
+                self.highs.setOptionValue("time_limit", native_time_limit),
+                "time limit",
+            )
         self._emit(
             "highs_run_started",
             solve_number=solve_number,
-            requested_call_budget_seconds=float(time_limit_seconds),
+            requested_call_budget_seconds=(
+                None if time_limit_seconds is None else float(time_limit_seconds)
+            ),
             native_time_limit_seconds=native_time_limit,
             session_setup_wall_time_seconds=setup_time,
             highs_run_time_before_seconds=highs_run_time_before,
@@ -254,6 +261,16 @@ class HighsSession:
         )
         if values is not None:
             self.previous_values = values.copy()
+        self.last_row_duals = (
+            np.asarray(solution.row_dual, dtype=np.float64)
+            if solution.dual_valid
+            else None
+        )
+        self.last_column_duals = (
+            np.asarray(solution.col_dual, dtype=np.float64)
+            if solution.dual_valid
+            else None
+        )
         objective_value = float(info.objective_function_value) if has_incumbent else None
         bound = float(info.mip_dual_bound) if np.isfinite(info.mip_dual_bound) else None
         gap = float(info.mip_gap) if np.isfinite(info.mip_gap) else None
@@ -289,7 +306,9 @@ class HighsSession:
                 "incremental_rows_added": rows_added,
                 "incremental_row_load_wall_time_seconds": row_add_time,
                 "partial_integer_mip_start_return_status": mip_start_status,
-                "requested_call_budget_seconds": float(time_limit_seconds),
+                "requested_call_budget_seconds": (
+                    None if time_limit_seconds is None else float(time_limit_seconds)
+                ),
                 "native_time_limit_seconds": native_time_limit,
                 "session_setup_wall_time_seconds": setup_time,
                 "highs_run_time_before_seconds": highs_run_time_before,

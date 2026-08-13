@@ -42,6 +42,10 @@ class RunConfig:
     def benchmark_id(self) -> str:
         return str(self.raw["benchmark"]["id"])
 
+    @property
+    def benchmark_kind(self) -> str:
+        return str(self.raw["benchmark"].get("kind", "deadline_benchmark"))
+
 
 def load_config(path: str | Path) -> RunConfig:
     config_path = guard_input_path(path)
@@ -70,8 +74,15 @@ def load_config(path: str | Path) -> RunConfig:
         raise ScopeViolation("Version 1 is exactly one one-hour interval")
     if payload["model"].get("pwl_segments") != 10:
         raise ScopeViolation("Version 1 requires exactly 10 equal-MW PWL segments")
-    deadline = float(payload["runtime"].get("deadline_seconds", 0))
-    if deadline <= 0 or deadline > 300:
-        raise ScopeViolation("The end-to-end deadline must be in (0, 300] seconds")
+    deadline_value = payload["runtime"].get("deadline_seconds", 0)
+    if deadline_value is None:
+        if payload["benchmark"].get("kind") != "gap_sensitivity_experiment":
+            raise ScopeViolation(
+                "Only a registered gap-sensitivity experiment may omit the deadline"
+            )
+    else:
+        deadline = float(deadline_value)
+        if deadline <= 0 or deadline > 300:
+            raise ScopeViolation("The end-to-end deadline must be in (0, 300] seconds")
     root = config_path.parent.parent
     return RunConfig(path=config_path, root=root, raw=payload)

@@ -85,3 +85,8 @@ cuOpt's MIP solver includes CPU and GPU work. Hardware, operating systems,
 Python versions, and solvers differ, so any ratio is labeled system-to-system.
 No isolated screening, same-host CPU, fixed-commitment LP, warmup, or repeated
 timing result belongs to the registered comparison.
+
+The unbounded ACTIVSg10k MIP-gap sensitivity study is a separate experiment,
+not part of this official CPU/Spark comparison. Its one-shot runs and
+fixed-commitment LP prices have their own frozen tag, registry, output names,
+and interpretation contract.
