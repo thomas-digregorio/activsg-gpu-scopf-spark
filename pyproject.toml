@@ -1,0 +1,43 @@
+[build-system]
+requires = ["hatchling>=1.26"]
+build-backend = "hatchling.build"
+
+[project]
+name = "activsg-gpu-scopf-spark"
+version = "0.1.0"
+description = "Auditable single-hour preventive DC-SCOPF prototype for ACTIVSg500"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "highspy>=1.11,<2",
+  "numpy>=2.0,<3",
+  "psutil>=6,<8",
+  "scipy>=1.14,<2",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3,<9",
+  "ruff>=0.12,<1",
+]
+gpu = [
+  "cupy-cuda13x>=13.6,<14",
+]
+
+[project.scripts]
+activsg-scopf = "activsg_scopf.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/activsg_scopf"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
