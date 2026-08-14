@@ -181,3 +181,21 @@ exhaustively N-1 secure, so it is a feasible witness for every subset of the
 173 added rows. The v3 result therefore identifies a cuOpt/adapter numerical or
 solver-behavior issue in the rebuilt secured master, not an ACTIVSg2000
 infeasibility result.
+
+V4 introduced the exact invertible per-unit cuOpt scaling validated by the
+fixed-master diagnostic and restored dynamic add-resolve-screen rounds. Its
+third-round incumbent passed the exhaustive screen and a post-run independent
+checker, but cuOpt reported a `0.0022012` gap, above `0.001`; v4 therefore
+remained incomplete.
+
+The separately authorized v5 run changed only the frozen identity and runtime
+boundary. It supplied no CPU initialization: round 1 was cold and rounds 2 and
+3 each received only the preceding GPU commitment's 432 integer columns. The
+1,035-second end-to-end deadline retained the existing 120-second verification
+and 15-second serialization reserves, leaving at most 900 seconds for loading
+and cumulative cuOpt rounds. Actual solver-round wall time was 899.782 seconds.
+The final objective was `1,132,939.788370`, the finite lower bound was
+`1,130,527.130461`, and the gap was `0.0021296`. The final exhaustive screen
+found no violation above tolerance, and the independent raw-input checker
+passed all 17,563,400 sides, but the gap gate failed. V5 is consequently
+preserved as secure but incomplete, with pricing withheld and no retry.

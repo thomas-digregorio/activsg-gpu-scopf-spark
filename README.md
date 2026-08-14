@@ -212,6 +212,19 @@ checker passed the saved incumbent. Round 3 nevertheless ended at gap
 pricing is withheld. See the
 [v4 report](reports/activsg2000-gpu-1e-3-v4/README.md). No retry was performed.
 
+The subsequently authorized v5 run retained the exact v4 mathematical model,
+per-unit scaling, dynamic contingency generation, and later-round partial
+integer starts, but used no CPU initialization. It reserved 900 seconds for raw
+loading and cumulative cuOpt rounds inside a 1,035-second end-to-end boundary.
+Round 1 started cold, round 2 received the prior GPU commitment and added 14
+new pairs, and round 3 again received the prior GPU commitment. Round 3 reached
+its time limit at objective `1,132,939.788370`, bound `1,130,527.130461`, and
+gap `0.0021296`. Its exhaustive screen found zero violations, and a post-run
+independent checker passed all 17,563,400 sides. The result is therefore secure
+but gap-uncertified, remains incomplete, and has no accepted pricing. See the
+[v5 report](reports/activsg2000-gpu-1e-3-v5/README.md). No v5 retry was
+performed.
+
 That ACTIVSg2000 campaign is now closed. The `1e-3` run completed
 `optimal_verified` with accepted fixed-commitment pricing; the `1e-4` run hit
 its restricted-master solver budget above the requested gap and its provisional
