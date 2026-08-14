@@ -242,3 +242,22 @@ def test_activsg2000_gpu_v2_changes_only_gap_certificate_identity() -> None:
         for key, value in v2_spark.items()
         if key not in {"mip_acceptance_policy", "mip_certificate_residual_tolerance"}
     } == v1_spark
+
+
+def test_activsg2000_gpu_v3_preserves_v2_math_and_policy() -> None:
+    v2 = load_config(ROOT / "configs" / "activsg2000-gpu-gap-1e-3-v2.json")
+    v3 = load_config(ROOT / "configs" / "activsg2000-gpu-gap-1e-3-v3.json")
+
+    assert v3.case_name == v2.case_name == "ACTIVSg2000"
+    assert v3.model == v2.model
+    assert v3.runtime == v2.runtime
+    assert v3.raw["raw_inputs"] == v2.raw["raw_inputs"]
+    assert v3.raw["platforms"] == v2.raw["platforms"]
+    assert v3.benchmark_id == "activsg2000-gpu-gap-v3-1e-3"
+    assert v3.raw["benchmark"]["required_git_tag"] == (
+        "experiment-2000-gpu-gap-v3"
+    )
+    assert v3.raw["benchmark"]["experiment_suite_id"] == (
+        "activsg2000-gpu-gap-sensitivity-v3"
+    )
+    assert v3.raw["benchmark"]["pricing"] == v2.raw["benchmark"]["pricing"]

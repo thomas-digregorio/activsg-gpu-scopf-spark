@@ -10,14 +10,14 @@ immutable source hashes, exact source PMIN/PMAX, ten equal-MW PWL segments,
 single-hour demand, DC network equations, outage catalog, model residual
 tolerance, and contingency-security tolerance.
 
-Six identities are registered: the preserved unbounded
+Seven identities are registered: the preserved unbounded
 `activsg10k-gap-sensitivity-v2` suite and the bounded
 `activsg500-gap-sensitivity-v1`, `activsg2000-gap-sensitivity-v1`, and
 `activsg500-gpu-gap-sensitivity-v1` suites, plus the single-level
-`activsg2000-gpu-gap-sensitivity-v1` and explicitly authorized replacement
-`activsg2000-gpu-gap-sensitivity-v2` suites. The first three use laptop HiGHS
-and NumPy. The GPU suites use DGX Spark cuOpt and CuPy. Both ACTIVSg2000 GPU
-identities authorize only `1e-3`; no later GPU gap is registered.
+`activsg2000-gpu-gap-sensitivity-v1`, explicitly authorized replacement v2,
+and serialization-corrected v3 suites. The first three use laptop HiGHS and
+NumPy. The GPU suites use DGX Spark cuOpt and CuPy. Every ACTIVSg2000 GPU
+identity authorizes only `1e-3`; no later GPU gap is registered.
 Results never cross-seed between cases or gap levels.
 
 Each level is one independent MIP run starting with only base-case constraints.
@@ -158,3 +158,10 @@ The run cannot be successful until the requested gap is certified for the
 current master and the final screen contains zero violations above `1e-5` p.u.
 The independent checker then rereads the immutable raw files and repeats all
 model and exhaustive-security gates before fixed-commitment pricing.
+
+V2 stopped after its first cuOpt solve because NumPy boolean certificate flags
+could not be JSON serialized at the pre-screen checkpoint. No exhaustive screen
+or security-row addition occurred. V3 changes those flags to built-in Python
+booleans and directly regression-tests JSON serialization; it does not change
+the mathematical model, requested gap, residual thresholds, screening loop, or
+deadline.

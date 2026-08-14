@@ -67,6 +67,21 @@ def test_activsg2000_gpu_v2_authorizes_only_1e_3() -> None:
         _experiment_identity(forged)
 
 
+def test_activsg2000_gpu_v3_authorizes_only_1e_3() -> None:
+    config = load_config(ROOT / "configs" / "activsg2000-gpu-gap-1e-3-v3.json")
+    assert _experiment_identity(config) == (
+        "activsg2000-gpu-gap-sensitivity-v3",
+        "1e-3",
+    )
+    forged_raw = copy.deepcopy(config.raw)
+    forged_raw["model"]["mip_relative_gap_tolerance"] = 1e-4
+    forged_raw["benchmark"]["gap_label"] = "1e-4"
+    forged_raw["benchmark"]["id"] = "activsg2000-gpu-gap-v3-1e-4"
+    forged = RunConfig(path=config.path, root=config.root, raw=forged_raw)
+    with pytest.raises(ScopfError, match="does not authorize gap"):
+        _experiment_identity(forged)
+
+
 def test_next_gap_requires_prior_success_and_pricing() -> None:
     successful = {
         "runs": {

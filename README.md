@@ -160,6 +160,15 @@ added before a re-solve, and the new dispatch is screened again. Success still
 requires both a certified requested gap and a final exhaustive screen with zero
 violations above `1e-5` p.u., followed by the independent raw-input checker.
 
+V2 ran once and is closed as `failed_exception`: round 1 solved below the
+requested gap, but NumPy boolean values in the new certificate could not be
+serialized into the next checkpoint. The failure occurred before screening,
+so it produced no accepted commitment, dispatch, or prices. The tracked
+[v2 failure report](reports/activsg2000-gpu-1e-3-v2-failure/README.md) preserves
+the diagnostic solve evidence and raw-artifact hashes. The user then authorized
+v3 with only the scalar-serialization correction and a regression test; the
+model and iterative security acceptance rule are unchanged.
+
 That ACTIVSg2000 campaign is now closed. The `1e-3` run completed
 `optimal_verified` with accepted fixed-commitment pricing; the `1e-4` run hit
 its restricted-master solver budget above the requested gap and its provisional
@@ -189,6 +198,9 @@ bash scripts/spark-gap-2000-gpu-1e-3.sh
 # Explicitly authorized replacement after the v1 status-gate failure
 bash scripts/spark-build-2000-gpu-1e-3-v2.sh
 bash scripts/spark-gap-2000-gpu-1e-3-v2.sh
+# Explicitly authorized replacement after the v2 serialization failure
+bash scripts/spark-build-2000-gpu-1e-3-v3.sh
+bash scripts/spark-gap-2000-gpu-1e-3-v3.sh
 ```
 
 Continue with `1e-4` through `1e-7` only after the prior level finishes

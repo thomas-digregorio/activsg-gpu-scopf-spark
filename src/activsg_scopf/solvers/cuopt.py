@@ -37,9 +37,11 @@ def evaluate_mip_gap_certificate(
 
     if requested_gap < 0 or residual_tolerance < 0:
         raise ScopfError("MIP certificate tolerances must be nonnegative")
-    finite_objective = objective is not None and np.isfinite(objective)
-    finite_bound = bound is not None and np.isfinite(bound)
-    finite_reported_gap = reported_gap is not None and np.isfinite(reported_gap)
+    finite_objective = bool(objective is not None and np.isfinite(objective))
+    finite_bound = bool(bound is not None and np.isfinite(bound))
+    finite_reported_gap = bool(
+        reported_gap is not None and np.isfinite(reported_gap)
+    )
     calculated_gap: float | None = None
     bound_is_valid_for_minimization = False
     if finite_objective and finite_bound:
@@ -56,10 +58,10 @@ def evaluate_mip_gap_certificate(
             bound_value <= objective_value + bound_order_tolerance
         )
     gap_limit = float(requested_gap) * (1.0 + 1e-9) + 1e-12
-    reported_gap_meets_request = (
+    reported_gap_meets_request = bool(
         finite_reported_gap and float(reported_gap) <= gap_limit
     )
-    calculated_gap_meets_request = (
+    calculated_gap_meets_request = bool(
         calculated_gap is not None
         and np.isfinite(calculated_gap)
         and calculated_gap <= gap_limit

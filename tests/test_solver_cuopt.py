@@ -1,3 +1,5 @@
+import json
+
 from activsg_scopf.solvers.cuopt import evaluate_mip_gap_certificate
 
 
@@ -27,6 +29,7 @@ def test_feasible_found_with_finite_bound_certifies_requested_gap() -> None:
     assert certificate["reported_gap_meets_request"] is True
     assert certificate["calculated_gap_meets_request"] is True
     assert certificate["native_residuals_meet_tolerance"] is True
+    json.dumps(certificate)
     assert abs(
         float(certificate["calculated_mip_relative_gap"])
         - 0.0001255739331724089
