@@ -75,6 +75,11 @@ dynamic experiment applies the same numerical scaling while restoring the
 required add-resolve-screen loop and the prior-commitment partial MIP start in
 each later round.
 
+The one v4 run completed three rounds. Its final round had zero exhaustive
+violations and the saved incumbent independently passed the full N-1 checker,
+but its finite relative gap was `0.0022012`, above the requested `0.001`.
+Accordingly it is preserved as incomplete, with prices withheld and no retry.
+
 The two immutable
 input results live only under ignored `results/diagnostic-inputs/` paths and are
 accepted only at their registered SHA-256 hashes. The run has a hard 1,800-second

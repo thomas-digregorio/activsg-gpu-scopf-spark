@@ -293,6 +293,20 @@ def _registry_path(config: RunConfig, suite_id: str) -> Path:
     )
 
 
+def _write_worker_console(
+    path: Path,
+    stdout: str | bytes | None,
+    stderr: str | bytes | None,
+) -> None:
+    """Persist captured worker output so native solver logging is not discarded."""
+
+    def decode(value: str | bytes | None) -> str:
+        return value.decode(errors="replace") if isinstance(value, bytes) else value or ""
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(decode(stdout) + decode(stderr), encoding="utf-8")
+
+
 def run_one_shot_gap_experiment(
     config: RunConfig,
     *,
@@ -339,9 +353,14 @@ def run_one_shot_gap_experiment(
     if checkpoint.exists():
         raise ScopfError(f"Gap-experiment checkpoint already exists: {checkpoint}")
     diagnostic_root = config.root / "results" / "diagnostics"
+    worker_console_path = guard_output_path(
+        diagnostic_root
+        / f"{config.benchmark_id}-{platform_name}-worker-console.log"
+    )
     stale_diagnostics = [
         diagnostic_root / f"{config.benchmark_id}-{platform_name}-events.jsonl",
         diagnostic_root / f"{config.benchmark_id}-{platform_name}-highs.log",
+        worker_console_path,
     ]
     if any(path.exists() for path in stale_diagnostics):
         raise ScopfError("Gap-experiment diagnostic output already exists")
@@ -386,6 +405,9 @@ def run_one_shot_gap_experiment(
             text=True,
             timeout=deadline_seconds,
         )
+        _write_worker_console(
+            worker_console_path, completed.stdout, completed.stderr
+        )
         total_wall = time.perf_counter() - started
         if output.exists():
             result = _read_json(output)
@@ -401,6 +423,7 @@ def run_one_shot_gap_experiment(
             )
     except subprocess.TimeoutExpired as exc:
         total_wall = time.perf_counter() - started
+        _write_worker_console(worker_console_path, exc.stdout, exc.stderr)
         result = _read_json(output) if output.exists() else (
             _read_json(checkpoint) if checkpoint.exists() else {}
         )
@@ -428,6 +451,7 @@ def run_one_shot_gap_experiment(
             "gap_label": gap_label,
             "frozen_identity": identity,
             "deadline_seconds": deadline_seconds,
+            "worker_console_log": str(worker_console_path.relative_to(config.root)),
             "total_wall_time_seconds": total_wall,
             "benchmark_boundary": (
                 "worker launch through raw loading, all MIP solve/screen rounds, "

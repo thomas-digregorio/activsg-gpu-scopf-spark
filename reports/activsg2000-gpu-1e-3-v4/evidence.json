@@ -1,0 +1,157 @@
+{
+  "absolute_gap": 2494.43807857926,
+  "added_security_pairs": 366,
+  "bound": 1130745.8782881377,
+  "campaign": "activsg2000-gpu-gap-sensitivity-v4",
+  "commitment_count": 330,
+  "constraint_generation_rounds": [
+    {
+      "adapter_status": "FeasibleFound",
+      "adapter_wall_seconds": 5.5749106550065335,
+      "bound": 1118297.105971293,
+      "mip_gap": 0.0001756116680973317,
+      "native_solve_seconds": 5.169369345,
+      "native_status": "FeasibleFound",
+      "objective": 1118493.5264852366,
+      "partial_integer_mip_start_columns": 0,
+      "requested_gap_certified": true,
+      "round": 1,
+      "rows_before_solve": 8788,
+      "screen_maximum_violation_pu": 2.14963000923198,
+      "screen_new_violated_pairs": 349,
+      "screen_seconds": 1.0358847960014828
+    },
+    {
+      "adapter_status": "Optimal",
+      "adapter_wall_seconds": 72.37665316500352,
+      "bound": 1130983.143821981,
+      "mip_gap": 0.00079811563708963,
+      "native_solve_seconds": 72.256198928,
+      "native_status": "Optimal",
+      "objective": 1131886.5201531295,
+      "partial_integer_mip_start_columns": 432,
+      "requested_gap_certified": true,
+      "round": 2,
+      "rows_before_solve": 9137,
+      "screen_maximum_violation_pu": 0.1910390724148988,
+      "screen_new_violated_pairs": 17,
+      "screen_seconds": 0.03782720700837672
+    },
+    {
+      "adapter_status": "FeasibleFound",
+      "adapter_wall_seconds": 1587.1721857810044,
+      "bound": 1130745.8782881377,
+      "mip_gap": 0.0022011554323924207,
+      "native_solve_seconds": 1586.303953622,
+      "native_status": "FeasibleFound",
+      "objective": 1133240.316366717,
+      "partial_integer_mip_start_columns": 432,
+      "requested_gap_certified": false,
+      "round": 3,
+      "rows_before_solve": 9154,
+      "screen_maximum_violation_pu": 5.684341886080802e-16,
+      "screen_new_violated_pairs": 0,
+      "screen_seconds": 0.04642897201119922
+    }
+  ],
+  "failure_gate": "requested_mip_gap_not_certified",
+  "final_model_dimensions": {
+    "columns": 9220,
+    "nonzeros": 27506,
+    "rows": 9154
+  },
+  "final_screen": {
+    "final_exhaustive_screen_maximum_violation_pu": 5.684341886080802e-16,
+    "final_exhaustive_screen_new_violations": 0,
+    "final_exhaustive_screen_round": 3,
+    "final_exhaustive_screen_tolerance_pu": 1e-05,
+    "final_exhaustive_screen_zero_above_tolerance": true,
+    "independent_verification_passed": false,
+    "requested_mip_gap_certified": false,
+    "requested_mip_gap_tolerance": 0.001
+  },
+  "frozen_identity": {
+    "commit": "3a76436a4b5d37f92352b031830056e285d734c0",
+    "config_sha256": "8828ae679cce05789ca2c66f8f295917663964fd1cbf287f4c0ef1aefa23da99",
+    "tag": "experiment-2000-gpu-gap-v4"
+  },
+  "mip_gap": 0.0022011554323924207,
+  "objective": 1133240.316366717,
+  "peak_memory": {
+    "cuda_device_memory_delta_bytes": 17671925760,
+    "cupy_pool_used_bytes": 70301696,
+    "process_rss_bytes": 11680935936
+  },
+  "post_run_independent_verification": {
+    "checked_security_sides": 17563400,
+    "checked_valid_outages": 2740,
+    "details": {
+      "base_limit_violation_pu": 0.0,
+      "conditional_pmin_pmax_violation_pu": 6.8212102632969615e-15,
+      "dc_flow_equation_residual_pu": 2.1991581888869406e-10,
+      "dispatch_definition_violation_pu": 9.833911462919786e-14,
+      "global_balance_residual_pu": 3.04680725093931e-13,
+      "independent_base_dc_solution_residual_pu": 1.1723841453203932e-10,
+      "nodal_balance_residual_pu": 3.771205570046732e-13,
+      "reference_angle_residual_rad": 0.0,
+      "segment_bound_violation_pu": 7.364775456153439e-14
+    },
+    "elapsed_seconds": 1.4821265000064159,
+    "maximum_angle_limit_violation_rad": 0.0,
+    "maximum_integrality_violation": 9.370282327836321e-13,
+    "maximum_model_residual_pu": 2.1991581888869406e-10,
+    "maximum_security_violation_pu": 5.911715561524034e-14,
+    "objective_difference": 1.862645149230957e-09,
+    "objective_recalculated": 1133240.3163667151,
+    "passed": true,
+    "security_check_method": "independent raw-input FP64 sparse factorization, chunked LODF exhaustive screen, and selected explicit post-outage DC solves"
+  },
+  "pricing_status": "withheld_mip_gap_not_certified",
+  "raw_evidence": {
+    "event_log": {
+      "bytes": 5757,
+      "sha256": "83c675893c814a5ad79c306a24425473efa2e03ca685c8699ee9ff2896b86034"
+    },
+    "gpu_result": {
+      "bytes": 1825355,
+      "sha256": "e78618e701aca4aec846e3799b9cb0d01b0a24ba7cdee78f8d29e5a89cee78bd"
+    },
+    "independent_verification": {
+      "bytes": 1150,
+      "sha256": "0e2d2ac884053eaaf534366060858de1e10c8b40251e0e2fc40f4e4a73ef5e1c"
+    },
+    "launcher_console": {
+      "bytes": 148,
+      "sha256": "3e5225655c9306f944eecf1f35d86595bd5783a1b36039d80e0f1101e3722d7e"
+    },
+    "run_registry": {
+      "bytes": 1012,
+      "sha256": "9b5eaaab922b8d708d5d924d6992257615d0ef9bfb0bcd820eea2ad67a3940a0"
+    }
+  },
+  "requested_mip_gap": 0.001,
+  "schema_version": "1.0.0",
+  "source_identity": {
+    "case_file": "case_ACTIVSg2000.m",
+    "case_sha256": "8d00618de8fd10bf35a599f59d2deebfecd0d86e28fcff73219ad7c4ebab860b",
+    "contingency_file": "contab_ACTIVSg2000.m",
+    "contingency_sha256": "198b39f0381925a4ddacbe2148973cb1d93ddfe220303829cf87b16d45190bba",
+    "row_identity_convention": {
+      "branch": "branch-row-NNNN is the immutable one-based mpc.branch source row",
+      "contingency_change": "source_row is the immutable one-based chgtab row",
+      "generator": "gen-row-NNNN is the immutable one-based mpc.gen source row"
+    }
+  },
+  "status": "incomplete_restricted_master_gap_not_certified",
+  "success": false,
+  "timings_seconds": {
+    "model_and_factor_build": 0.2808452400058741,
+    "raw_input_loading": 0.015742096002213657,
+    "result_serialization": 0.009715010994113982,
+    "screen_workspace_build": 0.04352747699886095,
+    "screening": 1.1201409750210587,
+    "solver_rounds": 1665.1237496010144,
+    "solver_session_build": 3.0432012863457203e-05
+  },
+  "total_wall_time_seconds": 1668.4942001500021
+}

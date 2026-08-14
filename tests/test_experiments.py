@@ -150,6 +150,16 @@ def test_bounded_gap_controller_serializes_hard_timeout(
     assert serialized["status"] == "hard_deadline_exceeded"
     assert serialized["worker_timeout_seconds"] == 1800.0
     assert serialized["worker_stdout"] == "partial"
+    worker_console = (
+        tmp_path
+        / "results"
+        / "diagnostics"
+        / "activsg500-gap-v1-1e-3-laptop_cpu-worker-console.log"
+    )
+    assert worker_console.read_text(encoding="utf-8") == "partial"
+    assert serialized["worker_console_log"] == str(
+        worker_console.relative_to(tmp_path)
+    )
     assert registry["runs"]["1e-3"]["status"] == "hard_deadline_exceeded"
 
 

@@ -205,6 +205,12 @@ The scaled fixed-master diagnostic proved the correction: it certified a
 exposed 14 new contingency pairs, so it correctly failed the exhaustive gate.
 The v4 experiment restores dynamic add-resolve-screen rounds with the same
 scaling and prior-commitment partial MIP starts.
+That one v4 run is now closed. It added 349 pairs in round 1 and 17 in round 2;
+round 3's exhaustive screen found zero violations, and a post-run independent
+checker passed the saved incumbent. Round 3 nevertheless ended at gap
+`0.0022012`, above the requested `0.001`, so the run remains incomplete and
+pricing is withheld. See the
+[v4 report](reports/activsg2000-gpu-1e-3-v4/README.md). No retry was performed.
 
 That ACTIVSg2000 campaign is now closed. The `1e-3` run completed
 `optimal_verified` with accepted fixed-commitment pricing; the `1e-4` run hit
