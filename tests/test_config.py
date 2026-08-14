@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from activsg_scopf.config import load_config
+from activsg_scopf.seeded_diagnostic import validate_diagnostic_identity
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -261,3 +262,16 @@ def test_activsg2000_gpu_v3_preserves_v2_math_and_policy() -> None:
         "activsg2000-gpu-gap-sensitivity-v3"
     )
     assert v3.raw["benchmark"]["pricing"] == v2.raw["benchmark"]["pricing"]
+
+
+def test_activsg2000_seeded_round2_diagnostic_is_exactly_registered() -> None:
+    config = load_config(
+        ROOT / "configs" / "activsg2000-gpu-round2-cpu-seed-diagnostic-v1.json"
+    )
+
+    validate_diagnostic_identity(config)
+    assert config.benchmark_kind == "seeded_round2_diagnostic"
+    assert config.runtime["deadline_seconds"] == 1800.0
+    assert config.raw["diagnostic"]["mip_start_mode"] == "all_columns"
+    assert config.raw["diagnostic"]["console_logging"] is True
+    assert config.raw["diagnostic"]["constraint_generation_enabled"] is False

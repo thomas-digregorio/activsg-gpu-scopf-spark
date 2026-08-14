@@ -1,6 +1,15 @@
 import json
 
-from activsg_scopf.solvers.cuopt import evaluate_mip_gap_certificate
+import numpy as np
+import pytest
+
+from activsg_scopf.errors import ScopfError
+from activsg_scopf.solvers.cuopt import (
+    FULL_MIP_START,
+    INTEGER_ONLY_MIP_START,
+    evaluate_mip_gap_certificate,
+    prepare_mip_start,
+)
 
 
 def _certificate(**overrides: object) -> dict[str, object]:
@@ -61,3 +70,40 @@ def test_gap_certificate_rejects_non_solution_status() -> None:
 
     assert certificate["native_status_supports_certificate"] is False
     assert certificate["passed"] is False
+
+
+def test_full_mip_start_selects_every_column_and_normalizes_integers() -> None:
+    candidate = np.asarray([0.9999999999999, 12.5, -0.25])
+    integrality = np.asarray([1, 0, 0], dtype=np.int32)
+
+    columns, values = prepare_mip_start(
+        candidate,
+        expected_shape=(3,),
+        integrality=integrality,
+        mode=FULL_MIP_START,
+    )
+
+    np.testing.assert_array_equal(columns, np.asarray([0, 1, 2]))
+    np.testing.assert_array_equal(values, np.asarray([1.0, 12.5, -0.25]))
+
+
+def test_integer_only_mip_start_preserves_existing_round_behavior() -> None:
+    columns, values = prepare_mip_start(
+        np.asarray([1.0, np.nan, 0.0]),
+        expected_shape=(3,),
+        integrality=np.asarray([1, 0, 1], dtype=np.int32),
+        mode=INTEGER_ONLY_MIP_START,
+    )
+
+    np.testing.assert_array_equal(columns, np.asarray([0, 2]))
+    np.testing.assert_array_equal(values, np.asarray([1.0, 0.0]))
+
+
+def test_full_mip_start_rejects_nonfinite_continuous_value() -> None:
+    with pytest.raises(ScopfError, match="nonfinite"):
+        prepare_mip_start(
+            np.asarray([1.0, np.nan]),
+            expected_shape=(2,),
+            integrality=np.asarray([1, 0], dtype=np.int32),
+            mode=FULL_MIP_START,
+        )

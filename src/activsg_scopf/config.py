@@ -84,7 +84,8 @@ def load_config(path: str | Path) -> RunConfig:
         deadline = float(deadline_value)
         maximum_deadline = (
             1800.0
-            if payload["benchmark"].get("kind") == "gap_sensitivity_experiment"
+            if payload["benchmark"].get("kind")
+            in {"gap_sensitivity_experiment", "seeded_round2_diagnostic"}
             else 300.0
         )
         if deadline <= 0 or deadline > maximum_deadline:

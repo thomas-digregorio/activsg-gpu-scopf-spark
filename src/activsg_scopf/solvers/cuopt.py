@@ -17,6 +17,11 @@ FINITE_BOUND_GAP_CERTIFICATE = (
 SUPPORTED_CERTIFICATE_STATUSES = frozenset(
     {"Optimal", "FeasibleFound", "TimeLimit"}
 )
+INTEGER_ONLY_MIP_START = "integer_only"
+FULL_MIP_START = "all_columns"
+SUPPORTED_MIP_START_MODES = frozenset(
+    {INTEGER_ONLY_MIP_START, FULL_MIP_START}
+)
 
 
 def _native(value: object) -> object:
@@ -107,6 +112,36 @@ def evaluate_mip_gap_certificate(
     }
 
 
+def prepare_mip_start(
+    mip_start_values: np.ndarray,
+    *,
+    expected_shape: tuple[int, ...],
+    integrality: np.ndarray,
+    mode: str,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return exact cuOpt start columns/values with integer entries normalized."""
+
+    if mode not in SUPPORTED_MIP_START_MODES:
+        raise ScopfError(f"Unknown cuOpt MIP start mode: {mode!r}")
+    candidate = np.asarray(mip_start_values, dtype=np.float64)
+    if candidate.shape != expected_shape:
+        raise ScopfError(
+            "cuOpt MIP start has the wrong vector shape: "
+            f"expected {expected_shape}, observed {candidate.shape}"
+        )
+    columns = (
+        np.flatnonzero(integrality)
+        if mode == INTEGER_ONLY_MIP_START
+        else np.arange(candidate.size, dtype=np.int64)
+    )
+    values = candidate[columns].copy()
+    integer_positions = np.flatnonzero(integrality[columns])
+    values[integer_positions] = np.rint(values[integer_positions])
+    if not np.all(np.isfinite(values)):
+        raise ScopfError("cuOpt MIP start contains a nonfinite selected value")
+    return columns, values
+
+
 def solve_cuopt(
     model: CanonicalMILP,
     *,
@@ -114,6 +149,8 @@ def solve_cuopt(
     mip_relative_gap: float,
     threads: int = 0,
     mip_start_values: np.ndarray | None = None,
+    mip_start_mode: str = INTEGER_ONLY_MIP_START,
+    log_to_console: bool = False,
     mip_acceptance_policy: str = NATIVE_OPTIMAL_ONLY,
     mip_certificate_residual_tolerance: float = 1e-6,
 ) -> SolveResult:
@@ -150,19 +187,18 @@ def solve_cuopt(
         for index, name in enumerate(model.variable_names)
     ]
     mip_start_columns = np.empty(0, dtype=np.int64)
+    mip_start_selected_values = np.empty(0, dtype=np.float64)
     if mip_start_values is not None:
-        candidate = np.asarray(mip_start_values, dtype=np.float64)
-        if candidate.shape != objective.shape:
-            raise ScopfError(
-                "cuOpt partial MIP start has the wrong vector shape: "
-                f"expected {objective.shape}, observed {candidate.shape}"
-            )
-        mip_start_columns = np.flatnonzero(integrality)
-        for index in mip_start_columns:
-            value = float(np.rint(candidate[index]))
-            if not np.isfinite(value):
-                raise ScopfError("cuOpt partial MIP start contains a nonfinite value")
-            variables[int(index)].setMIPStart(value)
+        mip_start_columns, mip_start_selected_values = prepare_mip_start(
+            mip_start_values,
+            expected_shape=objective.shape,
+            integrality=integrality,
+            mode=mip_start_mode,
+        )
+        for index, value in zip(
+            mip_start_columns, mip_start_selected_values, strict=True
+        ):
+            variables[int(index)].setMIPStart(float(value))
     objective_columns = np.flatnonzero(objective)
     objective_expression = LinearExpression(
         [variables[int(index)] for index in objective_columns],
@@ -171,6 +207,7 @@ def solve_cuopt(
     )
     problem.setObjective(objective_expression, sense=MINIMIZE)
     row_lower, row_upper = model.row_bound_arrays()
+    native_constraint_count = 0
     for row, name in enumerate(model.row_names):
         indices, coefficients = model.row_entries(row)
         expression = LinearExpression(
@@ -180,16 +217,19 @@ def solve_cuopt(
         hi = float(row_upper[row])
         if isfinite(lo) and isfinite(hi) and lo == hi:
             problem.addConstraint(expression == lo, name=name)
+            native_constraint_count += 1
         else:
             if isfinite(lo):
                 problem.addConstraint(expression >= lo, name=f"{name}__lower")
+                native_constraint_count += 1
             if isfinite(hi):
                 problem.addConstraint(expression <= hi, name=f"{name}__upper")
+                native_constraint_count += 1
     settings = SolverSettings()
     settings.set_parameter("time_limit", float(time_limit_seconds))
     settings.set_parameter("mip_relative_gap", float(mip_relative_gap))
     settings.set_parameter("random_seed", 0)
-    settings.set_parameter("log_to_console", False)
+    settings.set_parameter("log_to_console", bool(log_to_console))
     if threads > 0:
         settings.set_parameter("num_cpu_threads", int(threads))
     problem.solve(settings)
@@ -282,6 +322,15 @@ def solve_cuopt(
             "mip_acceptance_policy": mip_acceptance_policy,
             "mip_gap_certificate": gap_certificate,
             "requested_gap_certified": requested_gap_certified,
-            "partial_integer_mip_start_columns": int(mip_start_columns.size),
+            "mip_start_mode": mip_start_mode,
+            "mip_start_columns": int(mip_start_columns.size),
+            "partial_integer_mip_start_columns": int(
+                np.count_nonzero(integrality[mip_start_columns])
+            ),
+            "canonical_columns_translated": model.num_columns,
+            "canonical_rows_translated": model.num_rows,
+            "canonical_nonzeros_translated": int(model.matrix_csr().nnz),
+            "native_constraints_added": native_constraint_count,
+            "log_to_console": bool(log_to_console),
         },
     )

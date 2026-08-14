@@ -181,6 +181,13 @@ the 173-row subset. The tracked [v3 report](reports/activsg2000-gpu-1e-3-v3/READ
 contains every exact-PMIN generator row, the clearly labeled provisional
 round-1 dispatch, blank GPU prices, and full timing/status evidence.
 
+The separately authorized follow-up is a one-shot fixed-master diagnostic. It
+rebuilds those exact 173 round-2 security rows, independently proves the known
+secure CPU commitment and full dispatch state feasible, then gives all 9,220
+canonical values to cuOpt with native console logging enabled. It performs no
+constraint-generation rounds. See the
+[seeded round-2 diagnostic contract](docs/activsg2000-seeded-round2-diagnostic.md).
+
 That ACTIVSg2000 campaign is now closed. The `1e-3` run completed
 `optimal_verified` with accepted fixed-commitment pricing; the `1e-4` run hit
 its restricted-master solver budget above the requested gap and its provisional
@@ -213,6 +220,9 @@ bash scripts/spark-gap-2000-gpu-1e-3-v2.sh
 # Explicitly authorized replacement after the v2 serialization failure
 bash scripts/spark-build-2000-gpu-1e-3-v3.sh
 bash scripts/spark-gap-2000-gpu-1e-3-v3.sh
+# Separately authorized exact round-2 solve with the secure CPU full start
+bash scripts/spark-build-2000-round2-cpu-seed-diagnostic-v1.sh
+bash scripts/spark-run-2000-round2-cpu-seed-diagnostic-v1.sh
 ```
 
 Continue with `1e-4` through `1e-7` only after the prior level finishes
