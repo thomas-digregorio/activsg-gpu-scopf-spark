@@ -51,6 +51,9 @@ class RebuildingSolverSession:
     threads: int
     mip_acceptance_policy: str = "native_optimal_only"
     mip_certificate_residual_tolerance: float = 1e-6
+    native_scaling_mode: str = "none"
+    native_base_mva: float = 100.0
+    log_to_console: bool = False
     mode: str = "rebuild_each_round_with_partial_mip_start"
     previous_values: FloatArray | None = None
 
@@ -68,6 +71,9 @@ class RebuildingSolverSession:
             mip_certificate_residual_tolerance=(
                 self.mip_certificate_residual_tolerance
             ),
+            native_scaling_mode=self.native_scaling_mode,
+            native_base_mva=self.native_base_mva,
+            log_to_console=self.log_to_console,
         )
         if result.values is not None:
             self.previous_values = result.values.copy()
@@ -85,6 +91,9 @@ def create_solver_session(
     mip_logging_interval_seconds: float = 5.0,
     mip_acceptance_policy: str = "native_optimal_only",
     mip_certificate_residual_tolerance: float = 1e-6,
+    native_scaling_mode: str = "none",
+    native_base_mva: float = 100.0,
+    log_to_console: bool = False,
 ) -> SolverSession:
     if solver == "highs":
         from .highs import HighsSession
@@ -105,6 +114,9 @@ def create_solver_session(
             threads,
             mip_acceptance_policy=mip_acceptance_policy,
             mip_certificate_residual_tolerance=mip_certificate_residual_tolerance,
+            native_scaling_mode=native_scaling_mode,
+            native_base_mva=native_base_mva,
+            log_to_console=log_to_console,
         )
     raise ScopfError(f"Unknown canonical solver adapter: {solver}")
 
@@ -119,6 +131,9 @@ def solve_canonical(
     mip_start_values: FloatArray | None = None,
     mip_acceptance_policy: str = "native_optimal_only",
     mip_certificate_residual_tolerance: float = 1e-6,
+    native_scaling_mode: str = "none",
+    native_base_mva: float = 100.0,
+    log_to_console: bool = False,
 ) -> SolveResult:
     if time_limit_seconds <= 0:
         raise ScopfError("Solver was not started because no deadline budget remained")
@@ -144,5 +159,8 @@ def solve_canonical(
             mip_start_values=mip_start_values,
             mip_acceptance_policy=mip_acceptance_policy,
             mip_certificate_residual_tolerance=mip_certificate_residual_tolerance,
+            native_scaling_mode=native_scaling_mode,
+            native_base_mva=native_base_mva,
+            log_to_console=log_to_console,
         )
     raise ScopfError(f"Unknown canonical solver adapter: {solver}")

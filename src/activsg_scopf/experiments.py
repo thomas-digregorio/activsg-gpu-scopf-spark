@@ -144,6 +144,28 @@ EXPERIMENT_SUITES: dict[str, dict[str, Any]] = {
         "verification_reserve_seconds": 120.0,
         "serialization_reserve_seconds": 15.0,
     },
+    "activsg2000-gpu-gap-sensitivity-v4": {
+        "case_name": "ACTIVSg2000",
+        "benchmark_prefix": "activsg2000-gpu-gap-v4",
+        "required_git_tag": "experiment-2000-gpu-gap-v4",
+        "allowed_gap_labels": ("1e-3",),
+        "platform": "dgx_spark",
+        "required_profile": {
+            "solver": "cuopt",
+            "screening": "cupy",
+            "solver_session": "rebuild_each_round_with_partial_mip_start",
+            "pricing_solver": "highs",
+            "highspy_version": "1.15.1",
+            "mip_acceptance_policy": (
+                "finite_incumbent_bound_gap_and_native_residuals_v1"
+            ),
+            "mip_certificate_residual_tolerance": 1e-6,
+            "native_scaling_mode": "power_system_per_unit_v1",
+        },
+        "deadline_seconds": 1800.0,
+        "verification_reserve_seconds": 120.0,
+        "serialization_reserve_seconds": 15.0,
+    },
 }
 
 

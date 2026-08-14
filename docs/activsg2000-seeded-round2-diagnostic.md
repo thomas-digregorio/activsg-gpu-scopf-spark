@@ -67,6 +67,14 @@ reduces the nonzero matrix coefficient ratio from `9.4971145e7` to `7.890e3`;
 the largest observed identity error is `1.0247e-11` after conversion back to
 canonical row units.
 
+V3 completed the native solve in `20.0379` seconds with objective
+`1,131,794.3545`, lower bound `1,130,841.0594`, and certified relative gap
+`0.0008423`. The mandatory exhaustive screen then found 14 newly violated
+contingency pairs, so the fixed-master diagnostic was not accepted. A fresh v4
+dynamic experiment applies the same numerical scaling while restoring the
+required add-resolve-screen loop and the prior-commitment partial MIP start in
+each later round.
+
 The two immutable
 input results live only under ignored `results/diagnostic-inputs/` paths and are
 accepted only at their registered SHA-256 hashes. The run has a hard 1,800-second

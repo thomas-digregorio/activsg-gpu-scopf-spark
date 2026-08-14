@@ -264,6 +264,32 @@ def test_activsg2000_gpu_v3_preserves_v2_math_and_policy() -> None:
     assert v3.raw["benchmark"]["pricing"] == v2.raw["benchmark"]["pricing"]
 
 
+def test_activsg2000_gpu_v4_changes_only_native_numerical_scaling() -> None:
+    v3 = load_config(ROOT / "configs" / "activsg2000-gpu-gap-1e-3-v3.json")
+    v4 = load_config(ROOT / "configs" / "activsg2000-gpu-gap-1e-3-v4.json")
+
+    assert v4.case_name == v3.case_name == "ACTIVSg2000"
+    assert v4.model == v3.model
+    assert v4.runtime == v3.runtime
+    assert v4.raw["raw_inputs"] == v3.raw["raw_inputs"]
+    assert v4.benchmark_id == "activsg2000-gpu-gap-v4-1e-3"
+    assert v4.raw["benchmark"]["required_git_tag"] == (
+        "experiment-2000-gpu-gap-v4"
+    )
+    assert v4.raw["benchmark"]["experiment_suite_id"] == (
+        "activsg2000-gpu-gap-sensitivity-v4"
+    )
+    assert v4.raw["benchmark"]["pricing"] == v3.raw["benchmark"]["pricing"]
+    v3_profile = v3.raw["platforms"]["dgx_spark"]
+    v4_profile = v4.raw["platforms"]["dgx_spark"]
+    assert v4_profile["native_scaling_mode"] == "power_system_per_unit_v1"
+    assert {
+        key: value
+        for key, value in v4_profile.items()
+        if key != "native_scaling_mode"
+    } == v3_profile
+
+
 def test_activsg2000_seeded_round2_diagnostic_is_exactly_registered() -> None:
     config = load_config(
         ROOT / "configs" / "activsg2000-gpu-round2-cpu-seed-diagnostic-v1.json"

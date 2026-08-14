@@ -200,6 +200,11 @@ finite bound or gap, so it correctly failed the requested gap certificate. The
 authorized v3 correction is an invertible per-unit diagonal reformulation only
 inside the cuOpt adapter; it removes no row and changes no PMIN, limit,
 objective, security tolerance, or canonical solution meaning.
+The scaled fixed-master diagnostic proved the correction: it certified a
+`0.0008423` gap in 20.04 native solve seconds. Its improved dispatch then
+exposed 14 new contingency pairs, so it correctly failed the exhaustive gate.
+The v4 experiment restores dynamic add-resolve-screen rounds with the same
+scaling and prior-commitment partial MIP starts.
 
 That ACTIVSg2000 campaign is now closed. The `1e-3` run completed
 `optimal_verified` with accepted fixed-commitment pricing; the `1e-4` run hit
@@ -242,6 +247,9 @@ bash scripts/spark-run-2000-round2-cpu-seed-diagnostic-v2.sh
 # Approved numerical correction after v2's root-LP factorization failure
 bash scripts/spark-build-2000-round2-cpu-seed-diagnostic-v3.sh
 bash scripts/spark-run-2000-round2-cpu-seed-diagnostic-v3.sh
+# One fresh scaled dynamic rerun after the numerical fix
+bash scripts/spark-build-2000-gpu-1e-3-v4.sh
+bash scripts/spark-gap-2000-gpu-1e-3-v4.sh
 ```
 
 Continue with `1e-4` through `1e-7` only after the prior level finishes

@@ -15,11 +15,13 @@ def test_rebuilding_session_reuses_only_prior_solution_as_partial_start(
         np.asarray([1.0, 55.0], dtype=np.float64),
     ]
     observed_starts: list[np.ndarray | None] = []
+    observed_options: list[dict[str, object]] = []
 
     def solve_stub(*args, mip_start_values=None, **kwargs):
         observed_starts.append(
             None if mip_start_values is None else mip_start_values.copy()
         )
+        observed_options.append(kwargs)
         values = returned_values[len(observed_starts) - 1]
         return SolveResult(
             solver="cuopt",
@@ -45,6 +47,9 @@ def test_rebuilding_session_reuses_only_prior_solution_as_partial_start(
         solver="cuopt",
         mip_relative_gap=1e-3,
         threads=0,
+        native_scaling_mode="power_system_per_unit_v1",
+        native_base_mva=100.0,
+        log_to_console=True,
     )
 
     first = session.solve(time_limit_seconds=5.0)
@@ -56,3 +61,8 @@ def test_rebuilding_session_reuses_only_prior_solution_as_partial_start(
     assert observed_starts[1] is not None
     np.testing.assert_array_equal(observed_starts[1], np.asarray([1.0, 50.0]))
     np.testing.assert_array_equal(second.values, np.asarray([1.0, 55.0]))
+    assert observed_options[0]["native_scaling_mode"] == (
+        "power_system_per_unit_v1"
+    )
+    assert observed_options[0]["native_base_mva"] == 100.0
+    assert observed_options[0]["log_to_console"] is True

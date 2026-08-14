@@ -288,6 +288,13 @@ def run_end_to_end(
                 mip_certificate_residual_tolerance=float(
                     profile.get("mip_certificate_residual_tolerance", 1e-6)
                 ),
+                native_scaling_mode=str(
+                    profile.get("native_scaling_mode", "none")
+                ),
+                native_base_mva=float(case.base_mva),
+                log_to_console=bool(
+                    diagnostics_enabled and profile["solver"] == "cuopt"
+                ),
             )
 
         solver_session = build_solver_session()
