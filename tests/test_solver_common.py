@@ -26,6 +26,7 @@ def test_rebuilding_session_reuses_only_prior_solution_as_partial_start(
             solver_version="test",
             status="Optimal",
             optimal=True,
+            requested_gap_certified=True,
             has_incumbent=True,
             objective=float(values[1]),
             bound=float(values[1]),

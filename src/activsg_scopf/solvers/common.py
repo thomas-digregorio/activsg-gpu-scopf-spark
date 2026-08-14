@@ -23,6 +23,7 @@ class SolveResult:
     solver_version: str
     status: str
     optimal: bool
+    requested_gap_certified: bool
     has_incumbent: bool
     objective: float | None
     bound: float | None
@@ -48,6 +49,8 @@ class RebuildingSolverSession:
     solver: str
     mip_relative_gap: float
     threads: int
+    mip_acceptance_policy: str = "native_optimal_only"
+    mip_certificate_residual_tolerance: float = 1e-6
     mode: str = "rebuild_each_round_with_partial_mip_start"
     previous_values: FloatArray | None = None
 
@@ -61,6 +64,10 @@ class RebuildingSolverSession:
             mip_relative_gap=self.mip_relative_gap,
             threads=self.threads,
             mip_start_values=self.previous_values,
+            mip_acceptance_policy=self.mip_acceptance_policy,
+            mip_certificate_residual_tolerance=(
+                self.mip_certificate_residual_tolerance
+            ),
         )
         if result.values is not None:
             self.previous_values = result.values.copy()
@@ -76,6 +83,8 @@ def create_solver_session(
     diagnostic_event: DiagnosticEvent | None = None,
     native_log_path: Path | None = None,
     mip_logging_interval_seconds: float = 5.0,
+    mip_acceptance_policy: str = "native_optimal_only",
+    mip_certificate_residual_tolerance: float = 1e-6,
 ) -> SolverSession:
     if solver == "highs":
         from .highs import HighsSession
@@ -89,7 +98,14 @@ def create_solver_session(
             mip_logging_interval_seconds=mip_logging_interval_seconds,
         )
     if solver == "cuopt":
-        return RebuildingSolverSession(model, solver, mip_relative_gap, threads)
+        return RebuildingSolverSession(
+            model,
+            solver,
+            mip_relative_gap,
+            threads,
+            mip_acceptance_policy=mip_acceptance_policy,
+            mip_certificate_residual_tolerance=mip_certificate_residual_tolerance,
+        )
     raise ScopfError(f"Unknown canonical solver adapter: {solver}")
 
 
@@ -101,6 +117,8 @@ def solve_canonical(
     mip_relative_gap: float,
     threads: int = 0,
     mip_start_values: FloatArray | None = None,
+    mip_acceptance_policy: str = "native_optimal_only",
+    mip_certificate_residual_tolerance: float = 1e-6,
 ) -> SolveResult:
     if time_limit_seconds <= 0:
         raise ScopfError("Solver was not started because no deadline budget remained")
@@ -124,5 +142,7 @@ def solve_canonical(
             mip_relative_gap=mip_relative_gap,
             threads=threads,
             mip_start_values=mip_start_values,
+            mip_acceptance_policy=mip_acceptance_policy,
+            mip_certificate_residual_tolerance=mip_certificate_residual_tolerance,
         )
     raise ScopfError(f"Unknown canonical solver adapter: {solver}")

@@ -43,6 +43,7 @@ def _solve_summary(result: SolveResult) -> dict[str, Any]:
         "solver_version": result.solver_version,
         "status": result.status,
         "optimal": result.optimal,
+        "requested_gap_certified": result.requested_gap_certified,
         "has_incumbent": result.has_incumbent,
         "objective": result.objective,
         "bound": result.bound,
@@ -281,6 +282,12 @@ def run_end_to_end(
                 mip_logging_interval_seconds=float(
                     diagnostics_profile.get("mip_logging_interval_seconds", 1.0)
                 ),
+                mip_acceptance_policy=str(
+                    profile.get("mip_acceptance_policy", "native_optimal_only")
+                ),
+                mip_certificate_residual_tolerance=float(
+                    profile.get("mip_certificate_residual_tolerance", 1e-6)
+                ),
             )
 
         solver_session = build_solver_session()
@@ -397,10 +404,34 @@ def run_end_to_end(
             }
             payload["last_completed_screen"] = round_payload["screen"]
             save_checkpoint()
-            if not last_solve.optimal:
-                payload["status"] = "incomplete_restricted_master_not_optimal"
-                break
             tolerance = float(config.model["security_violation_tolerance_pu"])
+            exhaustive_screen_passed = (
+                not screened.violations
+                and screened.maximum_violation_pu <= tolerance
+            )
+            payload["acceptance_gates"] = {
+                "requested_mip_gap_tolerance": float(
+                    config.model["mip_relative_gap_tolerance"]
+                ),
+                "requested_mip_gap_certified": (
+                    last_solve.requested_gap_certified
+                ),
+                "final_exhaustive_screen_round": round_number,
+                "final_exhaustive_screen_tolerance_pu": tolerance,
+                "final_exhaustive_screen_new_violations": len(screened.violations),
+                "final_exhaustive_screen_maximum_violation_pu": (
+                    screened.maximum_violation_pu
+                ),
+                "final_exhaustive_screen_zero_above_tolerance": (
+                    exhaustive_screen_passed
+                ),
+                "independent_verification_passed": False,
+            }
+            if not last_solve.requested_gap_certified:
+                payload["status"] = (
+                    "incomplete_restricted_master_gap_not_certified"
+                )
+                break
             if not screened.violations:
                 if screened.maximum_violation_pu <= tolerance:
                     secure = True
@@ -451,6 +482,9 @@ def run_end_to_end(
             verification = verify_serialized_solution(config, payload)
             payload["timings_seconds"]["independent_verification"] = _seconds_since(stage)
             payload["verification"] = verification.as_dict()
+            payload["acceptance_gates"]["independent_verification_passed"] = (
+                verification.passed
+            )
             payload["maximum_model_residual_pu"] = verification.maximum_model_residual_pu
             payload["final_exhaustive_violation_pu"] = (
                 verification.maximum_security_violation_pu

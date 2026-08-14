@@ -10,13 +10,14 @@ immutable source hashes, exact source PMIN/PMAX, ten equal-MW PWL segments,
 single-hour demand, DC network equations, outage catalog, model residual
 tolerance, and contingency-security tolerance.
 
-Five identities are registered: the preserved unbounded
+Six identities are registered: the preserved unbounded
 `activsg10k-gap-sensitivity-v2` suite and the bounded
 `activsg500-gap-sensitivity-v1`, `activsg2000-gap-sensitivity-v1`, and
 `activsg500-gpu-gap-sensitivity-v1` suites, plus the single-level
-`activsg2000-gpu-gap-sensitivity-v1` suite. The first three use laptop HiGHS
-and NumPy. The GPU suites use DGX Spark cuOpt and CuPy. The ACTIVSg2000 GPU
-identity authorizes only `1e-3`; no later GPU gap is registered.
+`activsg2000-gpu-gap-sensitivity-v1` and explicitly authorized replacement
+`activsg2000-gpu-gap-sensitivity-v2` suites. The first three use laptop HiGHS
+and NumPy. The GPU suites use DGX Spark cuOpt and CuPy. Both ACTIVSg2000 GPU
+identities authorize only `1e-3`; no later GPU gap is registered.
 Results never cross-seed between cases or gap levels.
 
 Each level is one independent MIP run starting with only base-case constraints.
@@ -133,3 +134,27 @@ commitment and dispatch are provisional, GPU prices are unavailable, and the
 lower objective must not be compared with the accepted laptop secure result as
 an improvement. The run was not retried. Full evidence is under
 `reports/activsg2000-gpu-1e-3-v1/`.
+
+## ACTIVSg2000 GPU replacement acceptance rule
+
+V2 preserves the v1 case hashes, exact PMIN/PMAX, model, requested `1e-3` gap,
+security tolerance, 1,800-second boundary, dynamic pair generation, partial
+integer MIP starts, and pricing definition. It changes only the frozen identity
+and cuOpt restricted-master acceptance gate.
+
+For v2, native `Optimal`, `FeasibleFound`, or `TimeLimit` can proceed to row
+generation only when all of these are true:
+
+- A finite incumbent objective and minimization dual bound exist.
+- The independently calculated `abs(objective - bound) / abs(objective)` and
+  cuOpt's reported gap are both at or below the requested tolerance.
+- The bound is valid for minimization within numerical allowance.
+- Native maximum constraint, integrality, and variable-bound residuals are all
+  present and at most `1e-6`.
+
+After every accepted restricted-master solve, including every re-solve after
+rows are added, the complete valid outage-by-monitored-line set is screened.
+The run cannot be successful until the requested gap is certified for the
+current master and the final screen contains zero violations above `1e-5` p.u.
+The independent checker then rereads the immutable raw files and repeats all
+model and exhaustive-security gates before fixed-commitment pricing.

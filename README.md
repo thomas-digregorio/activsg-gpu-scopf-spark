@@ -149,6 +149,17 @@ security. The tracked [ACTIVSg2000 Spark report](reports/activsg2000-gpu-1e-3-v1
 preserves the provisional 544-generator record, blank GPU price fields, timing,
 and failure evidence.
 
+The explicitly authorized `activsg2000-gpu-gap-sensitivity-v2` replacement
+changes only the restricted-master acceptance policy and frozen identity. A
+cuOpt `FeasibleFound`, `Optimal`, or `TimeLimit` incumbent can proceed only when
+the objective and finite dual bound independently reproduce a relative gap at
+or below `1e-3`, cuOpt's reported gap also passes, and all recorded native
+constraint, integrality, and variable-bound residuals are at most `1e-6`.
+Every accepted master is exhaustively screened; all newly violated pairs are
+added before a re-solve, and the new dispatch is screened again. Success still
+requires both a certified requested gap and a final exhaustive screen with zero
+violations above `1e-5` p.u., followed by the independent raw-input checker.
+
 That ACTIVSg2000 campaign is now closed. The `1e-3` run completed
 `optimal_verified` with accepted fixed-commitment pricing; the `1e-4` run hit
 its restricted-master solver budget above the requested gap and its provisional
@@ -175,6 +186,9 @@ bash scripts/spark-gap-500-gpu.sh 1e-3
 # Single authorized ACTIVSg2000 GPU run
 bash scripts/spark-build-2000-gpu-1e-3.sh
 bash scripts/spark-gap-2000-gpu-1e-3.sh
+# Explicitly authorized replacement after the v1 status-gate failure
+bash scripts/spark-build-2000-gpu-1e-3-v2.sh
+bash scripts/spark-gap-2000-gpu-1e-3-v2.sh
 ```
 
 Continue with `1e-4` through `1e-7` only after the prior level finishes

@@ -213,3 +213,32 @@ def test_activsg2000_gpu_experiment_registers_only_1e_3() -> None:
     assert spark["solver_session"] == "rebuild_each_round_with_partial_mip_start"
     assert spark["pricing_solver"] == "highs"
     assert spark["highspy_version"] == "1.15.1"
+
+
+def test_activsg2000_gpu_v2_changes_only_gap_certificate_identity() -> None:
+    cpu = load_config(ROOT / "configs" / "activsg2000-gap-1e-3.json")
+    v1 = load_config(ROOT / "configs" / "activsg2000-gpu-gap-1e-3.json")
+    v2 = load_config(ROOT / "configs" / "activsg2000-gpu-gap-1e-3-v2.json")
+
+    assert v2.case_name == cpu.case_name == "ACTIVSg2000"
+    assert v2.model == v1.model == cpu.model
+    assert v2.runtime == v1.runtime == cpu.runtime
+    assert v2.raw["raw_inputs"] == v1.raw["raw_inputs"] == cpu.raw["raw_inputs"]
+    assert v2.benchmark_id == "activsg2000-gpu-gap-v2-1e-3"
+    assert v2.raw["benchmark"]["required_git_tag"] == (
+        "experiment-2000-gpu-gap-v2"
+    )
+    assert v2.raw["benchmark"]["experiment_suite_id"] == (
+        "activsg2000-gpu-gap-sensitivity-v2"
+    )
+    v2_spark = v2.raw["platforms"]["dgx_spark"]
+    v1_spark = v1.raw["platforms"]["dgx_spark"]
+    assert v2_spark["mip_acceptance_policy"] == (
+        "finite_incumbent_bound_gap_and_native_residuals_v1"
+    )
+    assert v2_spark["mip_certificate_residual_tolerance"] == 1e-6
+    assert {
+        key: value
+        for key, value in v2_spark.items()
+        if key not in {"mip_acceptance_policy", "mip_certificate_residual_tolerance"}
+    } == v1_spark

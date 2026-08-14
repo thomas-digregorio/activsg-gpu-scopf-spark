@@ -297,6 +297,7 @@ class HighsSession:
             solver_version=self.highs.version(),
             status=status.name.removeprefix("k"),
             optimal=status == highspy.HighsModelStatus.kOptimal,
+            requested_gap_certified=status == highspy.HighsModelStatus.kOptimal,
             has_incumbent=has_incumbent,
             objective=objective_value,
             bound=bound,
