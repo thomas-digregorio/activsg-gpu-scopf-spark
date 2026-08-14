@@ -59,9 +59,10 @@ SUITES = {
         "solver_note": (
             "The DGX Spark uses cuOpt for each rebuilt restricted master, carries "
             "the prior integer commitment as a partial MIP start, and uses CuPy "
-            "for exhaustive screening. Its fixed-commitment pricing LP uses HiGHS "
-            "inside the same Spark container because cuOpt does not expose the "
-            "needed nodal row duals."
+            "for the MIP-stage exhaustive contingency screens. The independent "
+            "checker and the fixed-commitment pricing LP use NumPy/HiGHS inside "
+            "the same Spark container; cuOpt does not expose the needed nodal row "
+            "duals."
         ),
     },
 }
@@ -189,6 +190,8 @@ def main() -> None:
 
     report_dir.mkdir(parents=True, exist_ok=True)
     summary_rows: list[dict[str, Any]] = []
+    round_rows: list[dict[str, Any]] = []
+    stage_rows: list[dict[str, Any]] = []
     for label in GAPS:
         result = results[label]
         pricing = result["pricing"]
@@ -243,7 +246,64 @@ def main() -> None:
                 "raw_result_sha256": result["_sha256"],
             }
         )
+        for round_payload in result["constraint_generation_rounds"]:
+            solve = round_payload["solve"]
+            statistics = solve["statistics"]
+            screen = round_payload["screen"]
+            round_rows.append(
+                {
+                    "gap_label": label,
+                    "round": round_payload["round"],
+                    "rows_before_solve": round_payload["rows_before_solve"],
+                    "solver_budget_seconds": round_payload["solver_budget_seconds"],
+                    "solver_status": solve["status"],
+                    "objective": solve["objective"],
+                    "bound": solve["bound"],
+                    "achieved_mip_gap": solve["mip_gap"],
+                    "adapter_wall_seconds": round_payload[
+                        "adapter_wall_time_seconds"
+                    ],
+                    "native_solve_seconds": solve["solve_time_seconds"],
+                    "presolve_seconds": statistics.get("presolve_time"),
+                    "partial_integer_mip_start_columns": statistics.get(
+                        "partial_integer_mip_start_columns"
+                    ),
+                    "num_nodes": statistics.get("num_nodes"),
+                    "num_simplex_iterations": statistics.get(
+                        "num_simplex_iterations"
+                    ),
+                    "screen_wall_seconds": screen["wall_time_seconds"],
+                    "screen_evaluated_sides": screen["evaluated_sides"],
+                    "screen_new_violated_pairs": screen["new_violated_pairs"],
+                    "screen_maximum_violation_pu": screen[
+                        "maximum_violation_pu"
+                    ],
+                }
+            )
+        timings = result["timings_seconds"]
+        stage_rows.append(
+            {
+                "gap_label": label,
+                "raw_input_loading_seconds": timings["raw_input_loading"],
+                "model_and_factor_build_seconds": timings["model_and_factor_build"],
+                "screen_workspace_build_seconds": timings[
+                    "screen_workspace_build"
+                ],
+                "solver_session_build_seconds": timings["solver_session_build"],
+                "solver_rounds_seconds": timings["solver_rounds"],
+                "screening_seconds": timings["screening"],
+                "independent_verification_seconds": timings[
+                    "independent_verification"
+                ],
+                "fixed_commitment_pricing_seconds": timings[
+                    "fixed_commitment_pricing"
+                ],
+                "total_wall_seconds": result["total_wall_time_seconds"],
+            }
+        )
     _write_csv(report_dir / "summary.csv", summary_rows)
+    _write_csv(report_dir / "round-timings.csv", round_rows)
+    _write_csv(report_dir / "stage-timings.csv", stage_rows)
 
     first_generators = results[GAPS[0]]["solution"]["generators"]
     generator_rows: list[dict[str, Any]] = []
@@ -352,6 +412,28 @@ def main() -> None:
     lines.extend(
         [
             "",
+            "## End-to-end timing attribution",
+            "",
+            (
+                "| Gap | Model/factors (s) | MIP solves (s) | MIP screens (s) | "
+                "Independent verify (s) | Pricing (s) | Total (s) |"
+            ),
+            "|---:|---:|---:|---:|---:|---:|---:|",
+        ]
+    )
+    for row in stage_rows:
+        lines.append(
+            f"| {row['gap_label']} | "
+            f"{float(row['model_and_factor_build_seconds']):,.3f} | "
+            f"{float(row['solver_rounds_seconds']):,.3f} | "
+            f"{float(row['screening_seconds']):,.3f} | "
+            f"{float(row['independent_verification_seconds']):,.3f} | "
+            f"{float(row['fixed_commitment_pricing_seconds']):,.3f} | "
+            f"{float(row['total_wall_seconds']):,.3f} |"
+        )
+    lines.extend(
+        [
+            "",
             "## Differences from the 1e-7 result",
             "",
             (
@@ -401,13 +483,17 @@ def main() -> None:
         price_pu = pricing["bus_price_summary_per_pu_hour"]
         pricing_difference = pricing["pricing_dispatch_difference"]
         mip_solver = reference["constraint_generation_rounds"][-1]["solve"]["solver"]
+        mip_solver_name = {"cuopt": "cuOpt", "highs": "HiGHS"}.get(
+            mip_solver, mip_solver
+        )
         lines.extend(
             [
                 "",
                 "## Interpretation",
                 "",
                 f"For this {reference['case_name']} formulation, the requested MIP-gap "
-                f"setting never became binding. {mip_solver} proved objective equal to bound "
+                f"setting never became binding. {mip_solver_name} proved objective equal "
+                "to bound "
                 "with a reported zero gap in every restricted-master round at every "
                 "requested setting. Consequently, `1e-3` produced exactly the same "
                 "generator commitment, MIP dispatch, fixed-commitment pricing dispatch, "
@@ -441,7 +527,8 @@ def main() -> None:
             "",
             "Full source-row generator data are in `generator-detail.csv`; all "
             f"{len(bus_rows):,} bus prices are in `bus-prices.csv`; exact metrics and "
-            "evidence hashes are in `comparison.json`.",
+            "evidence hashes are in `comparison.json`; stage and round attribution "
+            "are in `stage-timings.csv` and `round-timings.csv`.",
             "",
         ]
     )

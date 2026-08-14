@@ -328,8 +328,40 @@ def main() -> None:
             f"{float(row['gpu_wall_seconds']):,.3f} | "
             f"{float(row['cpu_wall_divided_by_gpu_wall']):,.3f} |"
         )
+    maximum_objective_difference = max(
+        abs(float(row["gpu_minus_cpu_objective"])) for row in summaries
+    )
+    maximum_dispatch_difference = max(
+        float(row["mip_dispatch_max_mw"]) for row in summaries
+    )
+    maximum_price_difference = max(
+        float(row["price_max_absolute_per_mwh"]) for row in summaries
+    )
+    maximum_gpu_over_cpu_wall = max(
+        float(row["gpu_wall_seconds"]) / float(row["cpu_wall_seconds"])
+        for row in summaries
+    )
+    minimum_gpu_over_cpu_wall = min(
+        float(row["gpu_wall_seconds"]) / float(row["cpu_wall_seconds"])
+        for row in summaries
+    )
     lines.extend(
         [
+            "",
+            "## Interpretation",
+            "",
+            "The two solver stacks selected the same commitment at every gap. No "
+            "generator dispatch or nodal-price difference exceeded `1e-6` in its "
+            "reported unit. The largest absolute objective difference was "
+            f"{maximum_objective_difference:.3e}, the largest generator dispatch "
+            f"difference was {maximum_dispatch_difference:.3e} MW, and the largest "
+            f"bus-price difference was {maximum_price_difference:.3e} $/MWh.",
+            "",
+            "On this small case, the DGX Spark end-to-end path took "
+            f"{minimum_gpu_over_cpu_wall:.3f}x to {maximum_gpu_over_cpu_wall:.3f}x "
+            "the laptop wall time. This is a latency-dominated system result, not "
+            "evidence that GPU acceleration is intrinsically slower for larger "
+            "instances.",
             "",
             "`generator-detail.csv` contains exact PMIN/PMAX, commitment, MIP "
             "dispatch, pricing dispatch, and generator-bus prices in MW and p.u. "

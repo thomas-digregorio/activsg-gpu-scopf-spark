@@ -102,3 +102,13 @@ violations, so it was not independently verified or priced. The ordered gate
 therefore prevented `1e-5`, `1e-6`, and `1e-7` from starting. The accepted
 `1e-3` generator, dispatch, and price records and the clearly labeled partial
 `1e-4` evidence are under `reports/activsg2000-gap-sensitivity-v1/`.
+
+## ACTIVSg500 GPU v1 outcome
+
+All five DGX Spark levels completed `optimal_verified` with accepted pricing
+and zero reported MIP gap. Each selected the same 50-unit commitment, added the
+same 169 contingency pairs over three MIP rounds, and reproduced the laptop
+dispatch and all 500 prices within numerical precision. Spark end-to-end time
+ranged from 3.671 to 4.917 seconds, versus 2.676 to 2.726 seconds for the prior
+laptop results. This is a small-case system comparison and not a pure GPU
+speedup measurement.

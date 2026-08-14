@@ -117,6 +117,16 @@ same Spark container because the cuOpt adapter does not expose the required
 nodal row duals. Every level retains the same hard 1,800-second end-to-end
 boundary, and the GPU suite has its own registry and result namespace.
 
+That Spark suite is complete. All five one-shot runs finished
+`optimal_verified` with accepted fixed-commitment pricing in 3.671 to 4.917
+seconds. Every requested gap returned the same 50-unit commitment, objective,
+dispatch, and nodal prices, with a zero reported gap. The tracked
+[Spark gap report](reports/activsg500-gpu-gap-sensitivity-v1/README.md) contains
+full source-row generator and all-bus price tables plus stage and round timing.
+The paired [laptop-versus-Spark report](reports/activsg500-cpu-vs-spark-gap-v1/README.md)
+shows identical grid decisions within numerical precision; on this small case,
+the laptop remained faster end-to-end.
+
 The `activsg2000-gap-sensitivity-v1` suite applies that same bounded, ordered,
 one-shot design to ACTIVSg2000. Each gap is limited to 1,800 seconds and a later
 gap cannot start after any timeout, failure, verification failure, or missing
