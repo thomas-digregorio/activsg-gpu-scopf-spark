@@ -165,3 +165,19 @@ or security-row addition occurred. V3 changes those flags to built-in Python
 booleans and directly regression-tests JSON serialization; it does not change
 the mathematical model, requested gap, residual thresholds, screening loop, or
 deadline.
+
+V3 passed the corrected round-1 checkpoint, certified a `1.298937e-4` gap,
+screened the complete contingency set, and added all 173 violations. The
+round-2 rebuilt master received the prior values for all 432 integer commitment
+columns. cuOpt then ran for 1,659.012 seconds and returned native `Infeasible`
+with no incumbent or finite bound. Because no gap certificate existed, the
+controller correctly did not perform a second screen or declare success. The
+run ended `incomplete_no_incumbent` after 1,667.116 seconds without verification
+or pricing.
+
+That native status is inconsistent with mathematical case infeasibility: the
+accepted laptop result has the same immutable inputs and model contract and is
+exhaustively N-1 secure, so it is a feasible witness for every subset of the
+173 added rows. The v3 result therefore identifies a cuOpt/adapter numerical or
+solver-behavior issue in the rebuilt secured master, not an ACTIVSg2000
+infeasibility result.

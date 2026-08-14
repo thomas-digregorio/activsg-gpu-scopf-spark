@@ -1,0 +1,174 @@
+{
+  "campaign": "activsg2000-gpu-gap-sensitivity-v3",
+  "campaign_status": "incomplete_round_2_no_incumbent",
+  "cpu_frozen_identity": {
+    "commit": "173fd0c10b8af5ed431956f2eea9726032df6f9e",
+    "config_sha256": "be7a4b2e86cd272d2f4b2ae83686db5fc52f36c04d6ec6793e98d0ee5c7117e6",
+    "tag": "experiment-2000-gap-v1"
+  },
+  "feasibility_interpretation": {
+    "cuopt_round_2_native_status": "Infeasible",
+    "mathematical_case_infeasibility_established": false,
+    "reason": "The accepted laptop solution uses the same immutable inputs and passes the complete contingency set, so it is a feasible witness for every 173-row subset added by GPU round 1."
+  },
+  "gpu_frozen_identity": {
+    "commit": "921ab8e59ce71866ba004127d73278d7918c1d9c",
+    "config_sha256": "d805ffe427806372b9432487e27c64699dfe7de049d5a3a08ab65d467e4b5c41",
+    "tag": "experiment-2000-gpu-gap-v3"
+  },
+  "gpu_peak_memory": {
+    "cuda_device_memory_delta_bytes": 12171591680,
+    "cupy_pool_used_bytes": 70301696,
+    "process_rss_bytes": 6451380224
+  },
+  "gpu_round_1_posthoc_verification": {
+    "checked_security_sides": 17563400,
+    "checked_valid_outages": 2740,
+    "details": {
+      "base_limit_violation_pu": 0.0,
+      "conditional_pmin_pmax_violation_pu": 2.8552449293783864e-12,
+      "dc_flow_equation_residual_pu": 5.354475973717854e-11,
+      "dispatch_definition_violation_pu": 7.657945388928056e-12,
+      "global_balance_residual_pu": 7.956714398460463e-11,
+      "independent_base_dc_solution_residual_pu": 7.855078365537339e-11,
+      "nodal_balance_residual_pu": 5.443922646009014e-11,
+      "reference_angle_residual_rad": 0.0,
+      "segment_bound_violation_pu": 2.8552626929467804e-12
+    },
+    "elapsed_seconds": 1.5606690999993589,
+    "maximum_angle_limit_violation_rad": 0.0,
+    "maximum_integrality_violation": 2.2080781647559888e-11,
+    "maximum_model_residual_pu": 7.956714398460463e-11,
+    "maximum_security_violation_pu": 2.0459100279388647,
+    "objective_difference": 1.1641532182693481e-09,
+    "objective_recalculated": 1118442.3846114434,
+    "passed": false,
+    "security_check_method": "independent raw-input FP64 sparse factorization, chunked LODF exhaustive screen, and selected explicit post-outage DC solves"
+  },
+  "gpu_round_1_provisional_commitment_count": 325,
+  "gpu_rounds": [
+    {
+      "adapter_wall_seconds": 5.572940904996358,
+      "bound": 1118297.1059715485,
+      "has_incumbent": true,
+      "mip_gap": 0.00012989371816872662,
+      "native_solve_seconds": 5.181347568,
+      "native_status": "FeasibleFound",
+      "objective": 1118442.3846114445,
+      "partial_integer_mip_start_columns": 0,
+      "requested_gap_certified": true,
+      "round": 1,
+      "rows_before_solve": 8788,
+      "screen_completed": true,
+      "screen_maximum_violation_pu": 2.0459100279199696,
+      "screen_new_violated_pairs": 173,
+      "screen_wall_seconds": 1.078850694000721,
+      "status": "FeasibleFound"
+    },
+    {
+      "adapter_wall_seconds": 1659.012212881993,
+      "bound": null,
+      "has_incumbent": false,
+      "mip_gap": null,
+      "native_solve_seconds": 1658.462986885,
+      "native_status": "Infeasible",
+      "objective": null,
+      "partial_integer_mip_start_columns": 432,
+      "requested_gap_certified": false,
+      "round": 2,
+      "rows_before_solve": 8961,
+      "screen_completed": false,
+      "screen_maximum_violation_pu": null,
+      "screen_new_violated_pairs": null,
+      "screen_wall_seconds": null,
+      "status": "Infeasible"
+    }
+  ],
+  "gpu_timings_seconds": {
+    "model_and_factor_build": 0.2829871060093865,
+    "raw_input_loading": 0.015338785990024917,
+    "result_serialization": 0.00919581000925973,
+    "screen_workspace_build": 0.03979583899490535,
+    "screening": 1.078850694000721,
+    "solver_rounds": 1664.5851537869894,
+    "solver_session_build": 2.5152010493911803e-05
+  },
+  "raw_evidence": {
+    "cpu": {
+      "bytes": 2502876,
+      "sha256": "5573425a8e625c0c964b2c61d33ca80666de74a350e9431a96e5ce9b90e02e3f"
+    },
+    "gpu": {
+      "bytes": 1807102,
+      "sha256": "9b9e7d3b0dfdad0faeb740f639307844920c18eb85c07ac9705f8b84e034366c"
+    },
+    "gpu_round_1_posthoc_verification": {
+      "bytes": 1149,
+      "sha256": "6e57748b72446b3ef3aa104fb63e80be2f9c6d402e6bb787e24af12f36fc8368"
+    }
+  },
+  "record_audit": {
+    "conditional_limit_violations_above_1e-6_mw": 0,
+    "dispatch_pu_conversion_mismatches": 0,
+    "source_limit_mismatches": 0,
+    "source_offline_availability_violations": 0
+  },
+  "retry_performed_under_v3_identity": false,
+  "schema_version": "1.0.0",
+  "source_dimensions": {
+    "branches": 3206,
+    "buses": 2000,
+    "contingency_change_rows": 3734,
+    "contingency_table_counts": {
+      "CT_TBRCH": 3190,
+      "CT_TGEN": 544
+    },
+    "gencost_rows": 544,
+    "generators": 544,
+    "source_offline_generators": 112,
+    "source_online_generators": 432
+  },
+  "source_identity": {
+    "case_file": "case_ACTIVSg2000.m",
+    "case_sha256": "8d00618de8fd10bf35a599f59d2deebfecd0d86e28fcff73219ad7c4ebab860b",
+    "contingency_file": "contab_ACTIVSg2000.m",
+    "contingency_sha256": "198b39f0381925a4ddacbe2148973cb1d93ddfe220303829cf87b16d45190bba",
+    "row_identity_convention": {
+      "branch": "branch-row-NNNN is the immutable one-based mpc.branch source row",
+      "contingency_change": "source_row is the immutable one-based chgtab row",
+      "generator": "gen-row-NNNN is the immutable one-based mpc.gen source row"
+    }
+  },
+  "source_online_capacity_mw": {
+    "pmax_sum": 81201.89,
+    "pmin_sum": 32613.680000000004
+  },
+  "summary": [
+    {
+      "added_pairs": 106,
+      "bound": 1132599.3522354912,
+      "commitment_count": 327,
+      "last_completed_screen_new_violations": 0,
+      "mip_gap": 0.0007763998859633739,
+      "objective": 1133479.3855011363,
+      "platform": "laptop_cpu",
+      "pricing_status": "optimal_secure_fixed_commitment_lp",
+      "result_status": "optimal_verified",
+      "rounds": 3,
+      "wall_seconds": 1007.3702709000063
+    },
+    {
+      "added_pairs": 173,
+      "bound": null,
+      "commitment_count": null,
+      "last_completed_screen_new_violations": 173,
+      "mip_gap": null,
+      "objective": null,
+      "platform": "dgx_spark",
+      "pricing_status": "not_reached",
+      "result_status": "incomplete_no_incumbent",
+      "rounds": 2,
+      "wall_seconds": 1667.1162451249984
+    }
+  ]
+}

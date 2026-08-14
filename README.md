@@ -169,6 +169,18 @@ the diagnostic solve evidence and raw-artifact hashes. The user then authorized
 v3 with only the scalar-serialization correction and a regression test; the
 model and iterative security acceptance rule are unchanged.
 
+V3 is also closed without a retry. Round 1 correctly certified its `1e-3` gap,
+screened all 17,563,400 sides, and added all 173 violated pairs. The rebuilt
+round-2 master received 432 partial integer start values, but cuOpt returned
+native `Infeasible` after 1,659.012 seconds with no incumbent or finite bound.
+No second screen, final verification, or pricing was possible, so the run ended
+`incomplete_no_incumbent` after 1,667.116 seconds. This is not evidence that the
+mathematical case is infeasible: the accepted laptop solution uses the same
+model and passes the complete contingency set, providing a feasible witness for
+the 173-row subset. The tracked [v3 report](reports/activsg2000-gpu-1e-3-v3/README.md)
+contains every exact-PMIN generator row, the clearly labeled provisional
+round-1 dispatch, blank GPU prices, and full timing/status evidence.
+
 That ACTIVSg2000 campaign is now closed. The `1e-3` run completed
 `optimal_verified` with accepted fixed-commitment pricing; the `1e-4` run hit
 its restricted-master solver budget above the requested gap and its provisional
