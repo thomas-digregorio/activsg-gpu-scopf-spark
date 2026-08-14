@@ -256,6 +256,9 @@ bash scripts/spark-run-2000-round2-cpu-seed-diagnostic-v3.sh
 # One fresh scaled dynamic rerun after the numerical fix
 bash scripts/spark-build-2000-gpu-1e-3-v4.sh
 bash scripts/spark-gap-2000-gpu-1e-3-v4.sh
+
+bash scripts/spark-build-2000-gpu-1e-3-v5.sh
+bash scripts/spark-gap-2000-gpu-1e-3-v5.sh
 ```
 
 Continue with `1e-4` through `1e-7` only after the prior level finishes

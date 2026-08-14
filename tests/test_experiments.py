@@ -82,6 +82,23 @@ def test_activsg2000_gpu_v3_authorizes_only_1e_3() -> None:
         _experiment_identity(forged)
 
 
+def test_activsg2000_gpu_v5_registers_900_second_solve_budget() -> None:
+    config = load_config(ROOT / "configs" / "activsg2000-gpu-gap-1e-3-v5.json")
+
+    assert _experiment_identity(config) == (
+        "activsg2000-gpu-gap-sensitivity-v5",
+        "1e-3",
+    )
+    runtime = config.runtime
+    available = (
+        runtime["deadline_seconds"]
+        - runtime["verification_reserve_seconds"]
+        - runtime["serialization_reserve_seconds"]
+    )
+    assert available == 900.0
+    assert config.raw["benchmark"]["initialization"]["external_cpu_mip_start"] is False
+
+
 def test_next_gap_requires_prior_success_and_pricing() -> None:
     successful = {
         "runs": {

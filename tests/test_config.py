@@ -290,6 +290,35 @@ def test_activsg2000_gpu_v4_changes_only_native_numerical_scaling() -> None:
     } == v3_profile
 
 
+def test_activsg2000_gpu_v5_changes_only_runtime_and_frozen_identity() -> None:
+    v4 = load_config(ROOT / "configs" / "activsg2000-gpu-gap-1e-3-v4.json")
+    v5 = load_config(ROOT / "configs" / "activsg2000-gpu-gap-1e-3-v5.json")
+
+    assert v5.case_name == v4.case_name == "ACTIVSg2000"
+    assert v5.model == v4.model
+    assert v5.raw["raw_inputs"] == v4.raw["raw_inputs"]
+    assert v5.raw["platforms"] == v4.raw["platforms"]
+    assert v5.runtime == {
+        "deadline_seconds": 1035.0,
+        "verification_reserve_seconds": 120.0,
+        "serialization_reserve_seconds": 15.0,
+        "maximum_constraint_generation_rounds": 100,
+    }
+    assert v5.benchmark_id == "activsg2000-gpu-gap-v5-1e-3"
+    assert v5.raw["benchmark"]["required_git_tag"] == (
+        "experiment-2000-gpu-gap-v5"
+    )
+    assert v5.raw["benchmark"]["experiment_suite_id"] == (
+        "activsg2000-gpu-gap-sensitivity-v5"
+    )
+    assert v5.raw["benchmark"]["initialization"] == {
+        "external_cpu_mip_start": False,
+        "round_1": "cold",
+        "later_rounds": "prior_gpu_integer_commitment_only",
+    }
+    assert v5.raw["benchmark"]["pricing"] == v4.raw["benchmark"]["pricing"]
+
+
 def test_activsg2000_seeded_round2_diagnostic_is_exactly_registered() -> None:
     config = load_config(
         ROOT / "configs" / "activsg2000-gpu-round2-cpu-seed-diagnostic-v1.json"
