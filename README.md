@@ -133,6 +133,11 @@ gap cannot start after any timeout, failure, verification failure, or missing
 fixed-commitment pricing. It uses the exact source-case PMIN values and does not
 reuse a solution or contingency-pair list from another gap.
 
+The separately registered `activsg2000-gpu-gap-sensitivity-v1` suite authorizes
+exactly one DGX Spark run at `1e-3`. It uses the same immutable source hashes,
+exact PMIN/PMAX, model, tolerances, and 1,800-second boundary as the accepted
+laptop `1e-3` run. No GPU `1e-4` or later-gap configuration is registered.
+
 That ACTIVSg2000 campaign is now closed. The `1e-3` run completed
 `optimal_verified` with accepted fixed-commitment pricing; the `1e-4` run hit
 its restricted-master solver budget above the requested gap and its provisional
@@ -156,6 +161,9 @@ GPU experiment tag:
 ```bash
 bash scripts/spark-build-500-gpu-gap.sh
 bash scripts/spark-gap-500-gpu.sh 1e-3
+# Single authorized ACTIVSg2000 GPU run
+bash scripts/spark-build-2000-gpu-1e-3.sh
+bash scripts/spark-gap-2000-gpu-1e-3.sh
 ```
 
 Continue with `1e-4` through `1e-7` only after the prior level finishes

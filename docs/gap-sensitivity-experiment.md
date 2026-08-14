@@ -10,11 +10,13 @@ immutable source hashes, exact source PMIN/PMAX, ten equal-MW PWL segments,
 single-hour demand, DC network equations, outage catalog, model residual
 tolerance, and contingency-security tolerance.
 
-Four identities are registered: the preserved unbounded
+Five identities are registered: the preserved unbounded
 `activsg10k-gap-sensitivity-v2` suite and the bounded
 `activsg500-gap-sensitivity-v1`, `activsg2000-gap-sensitivity-v1`, and
-`activsg500-gpu-gap-sensitivity-v1` suites. The first three use laptop HiGHS
-and NumPy. The last uses DGX Spark cuOpt and CuPy.
+`activsg500-gpu-gap-sensitivity-v1` suites, plus the single-level
+`activsg2000-gpu-gap-sensitivity-v1` suite. The first three use laptop HiGHS
+and NumPy. The GPU suites use DGX Spark cuOpt and CuPy. The ACTIVSg2000 GPU
+identity authorizes only `1e-3`; no later GPU gap is registered.
 Results never cross-seed between cases or gap levels.
 
 Each level is one independent MIP run starting with only base-case constraints.

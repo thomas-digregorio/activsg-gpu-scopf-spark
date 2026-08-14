@@ -85,6 +85,23 @@ EXPERIMENT_SUITES: dict[str, dict[str, Any]] = {
         "verification_reserve_seconds": 120.0,
         "serialization_reserve_seconds": 15.0,
     },
+    "activsg2000-gpu-gap-sensitivity-v1": {
+        "case_name": "ACTIVSg2000",
+        "benchmark_prefix": "activsg2000-gpu-gap-v1",
+        "required_git_tag": "experiment-2000-gpu-gap-v1",
+        "allowed_gap_labels": ("1e-3",),
+        "platform": "dgx_spark",
+        "required_profile": {
+            "solver": "cuopt",
+            "screening": "cupy",
+            "solver_session": "rebuild_each_round_with_partial_mip_start",
+            "pricing_solver": "highs",
+            "highspy_version": "1.15.1",
+        },
+        "deadline_seconds": 1800.0,
+        "verification_reserve_seconds": 120.0,
+        "serialization_reserve_seconds": 15.0,
+    },
 }
 
 
@@ -128,6 +145,11 @@ def _experiment_identity(config: RunConfig) -> tuple[str, str]:
     label = str(config.raw["benchmark"].get("gap_label", ""))
     if gap not in GAP_LABELS or label != GAP_LABELS[gap]:
         raise ScopfError(f"Unregistered gap experiment identity: gap={gap}, label={label!r}")
+    allowed_labels = suite.get("allowed_gap_labels")
+    if allowed_labels is not None and label not in allowed_labels:
+        raise ScopfError(
+            f"Experiment suite {suite_id!r} does not authorize gap {label!r}"
+        )
     expected_benchmark_id = f"{suite['benchmark_prefix']}-{label}"
     if config.benchmark_id != expected_benchmark_id:
         raise ScopfError(

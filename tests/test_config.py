@@ -188,3 +188,28 @@ def test_activsg2000_gap_experiment_registers_exact_bounded_levels() -> None:
             for key, value in baseline.model.items()
             if key != "mip_relative_gap_tolerance"
         }
+
+
+def test_activsg2000_gpu_experiment_registers_only_1e_3() -> None:
+    cpu = load_config(ROOT / "configs" / "activsg2000-gap-1e-3.json")
+    gpu = load_config(ROOT / "configs" / "activsg2000-gpu-gap-1e-3.json")
+    assert gpu.case_name == cpu.case_name == "ACTIVSg2000"
+    assert gpu.model == cpu.model
+    assert gpu.runtime == cpu.runtime
+    assert gpu.raw["raw_inputs"] == cpu.raw["raw_inputs"]
+    assert gpu.benchmark_kind == "gap_sensitivity_experiment"
+    assert gpu.benchmark_id == "activsg2000-gpu-gap-v1-1e-3"
+    assert gpu.raw["benchmark"]["gap_label"] == "1e-3"
+    assert gpu.raw["benchmark"]["required_git_tag"] == (
+        "experiment-2000-gpu-gap-v1"
+    )
+    assert gpu.raw["benchmark"]["experiment_suite_id"] == (
+        "activsg2000-gpu-gap-sensitivity-v1"
+    )
+    assert set(gpu.raw["platforms"]) == {"dgx_spark"}
+    spark = gpu.raw["platforms"]["dgx_spark"]
+    assert spark["solver"] == "cuopt"
+    assert spark["screening"] == "cupy"
+    assert spark["solver_session"] == "rebuild_each_round_with_partial_mip_start"
+    assert spark["pricing_solver"] == "highs"
+    assert spark["highspy_version"] == "1.15.1"
