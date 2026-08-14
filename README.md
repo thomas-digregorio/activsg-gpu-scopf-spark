@@ -138,6 +138,17 @@ exactly one DGX Spark run at `1e-3`. It uses the same immutable source hashes,
 exact PMIN/PMAX, model, tolerances, and 1,800-second boundary as the accepted
 laptop `1e-3` run. No GPU `1e-4` or later-gap configuration is registered.
 
+That single Spark run is now closed without a retry. cuOpt returned native
+`FeasibleFound` for the base restricted master in 7.909 seconds with a reported
+gap of `1.255739e-4`, but the frozen adapter required native `Optimal` before
+adding contingency rows. The exhaustive screen found 165 violated pairs with a
+maximum violation of 2.041592 p.u.; therefore no security rows, accepted
+verification, or GPU pricing followed. A post-hoc raw-input check confirmed the
+base-model and exact conditional PMIN/PMAX residuals but failed exhaustive N-1
+security. The tracked [ACTIVSg2000 Spark report](reports/activsg2000-gpu-1e-3-v1/README.md)
+preserves the provisional 544-generator record, blank GPU price fields, timing,
+and failure evidence.
+
 That ACTIVSg2000 campaign is now closed. The `1e-3` run completed
 `optimal_verified` with accepted fixed-commitment pricing; the `1e-4` run hit
 its restricted-master solver budget above the requested gap and its provisional

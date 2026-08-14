@@ -1,0 +1,156 @@
+{
+  "campaign": "activsg2000-gpu-gap-sensitivity-v1",
+  "campaign_status": "stopped_after_single_incomplete_run",
+  "cpu_accepted_vs_gpu_provisional": {
+    "commitment_flip_count": 50,
+    "comparison_status": "not_a_final_grid_solution_comparison",
+    "cpu_off_gpu_on_count": 24,
+    "cpu_on_gpu_off_count": 26,
+    "mip_dispatch_mw": {
+      "count_above_1": 64,
+      "count_above_1e-2": 65,
+      "count_above_1e-6": 65,
+      "maximum_absolute": 684.2,
+      "mean_absolute": 15.865327942795796,
+      "root_mean_square": 67.41690626247627,
+      "sum_absolute": 8630.738400880913
+    },
+    "pricing_comparison_available": false,
+    "reason": "The DGX Spark stopped after an unaccepted base restricted-master round and retained 165 unresolved contingency violations."
+  },
+  "cpu_frozen_identity": {
+    "commit": "173fd0c10b8af5ed431956f2eea9726032df6f9e",
+    "config_sha256": "be7a4b2e86cd272d2f4b2ae83686db5fc52f36c04d6ec6793e98d0ee5c7117e6",
+    "tag": "experiment-2000-gap-v1"
+  },
+  "gpu_frozen_identity": {
+    "commit": "c96d73532609c028ac34e8e41132efa28a249859",
+    "config_sha256": "2fa3997f8b72510bc2c0023ab4c898be21986c0a3790c00e61ca89d4d484261a",
+    "tag": "experiment-2000-gpu-gap-v1"
+  },
+  "gpu_posthoc_verification": {
+    "checked_security_sides": 17563400,
+    "checked_valid_outages": 2740,
+    "details": {
+      "base_limit_violation_pu": 0.0,
+      "conditional_pmin_pmax_violation_pu": 2.8268800633668434e-11,
+      "dc_flow_equation_residual_pu": 1.8927053702100238e-10,
+      "dispatch_definition_violation_pu": 2.8268800633668434e-11,
+      "global_balance_residual_pu": 5.5215423344634474e-11,
+      "independent_base_dc_solution_residual_pu": 6.046100509138341e-11,
+      "nodal_balance_residual_pu": 7.856833406094666e-11,
+      "reference_angle_residual_rad": 0.0,
+      "segment_bound_violation_pu": 2.154685319055716e-12
+    },
+    "elapsed_seconds": 1.4681170000112616,
+    "maximum_angle_limit_violation_rad": 0.0,
+    "maximum_integrality_violation": 1.6663004309691587e-11,
+    "maximum_model_residual_pu": 1.8927053702100238e-10,
+    "maximum_security_violation_pu": 2.0415921745847436,
+    "objective_difference": 1.3969838619232178e-09,
+    "objective_recalculated": 1118437.5525740332,
+    "passed": false,
+    "security_check_method": "independent raw-input FP64 sparse factorization, chunked LODF exhaustive screen, and selected explicit post-outage DC solves"
+  },
+  "gpu_round_1": {
+    "accepted_optimal": false,
+    "adapter_wall_seconds": 5.541097277004155,
+    "bound": 1118297.1059715485,
+    "mip_gap": 0.0001255739331724089,
+    "native_solve_seconds": 5.150766666,
+    "native_status": "FeasibleFound",
+    "objective": 1118437.5525740345,
+    "partial_integer_mip_start_columns": 0,
+    "platform": "dgx_spark",
+    "reported_gap_meets_request": true,
+    "requested_mip_gap": 0.001,
+    "round": 1,
+    "screen_maximum_violation_pu": 2.0415921745751096,
+    "screen_new_violated_pairs": 165,
+    "screen_wall_seconds": 1.0342201510065934,
+    "solver": "cuopt",
+    "status": "FeasibleFound"
+  },
+  "raw_evidence": {
+    "cpu": {
+      "bytes": 2502876,
+      "sha256": "5573425a8e625c0c964b2c61d33ca80666de74a350e9431a96e5ce9b90e02e3f"
+    },
+    "gpu": {
+      "bytes": 1794821,
+      "sha256": "f0506e259f86854a65b3d8f0dc993b206a804a60de068cd074ce8e077926105a"
+    },
+    "gpu_posthoc_verification": {
+      "bytes": 1152,
+      "sha256": "cfd9c0762ecdacf0f267f87f3a234eeed9b498c5465edd3c391f8a36fcfcd259"
+    }
+  },
+  "record_audit": {
+    "conditional_limit_violations_above_1e-6_mw": 0,
+    "dispatch_pu_conversion_mismatches": 0,
+    "source_limit_mismatches": 0,
+    "source_offline_availability_violations": 0
+  },
+  "retry_performed": false,
+  "schema_version": "1.0.0",
+  "source_dimensions": {
+    "branches": 3206,
+    "buses": 2000,
+    "contingency_change_rows": 3734,
+    "contingency_table_counts": {
+      "CT_TBRCH": 3190,
+      "CT_TGEN": 544
+    },
+    "gencost_rows": 544,
+    "generators": 544,
+    "source_offline_generators": 112,
+    "source_online_generators": 432
+  },
+  "source_identity": {
+    "case_file": "case_ACTIVSg2000.m",
+    "case_sha256": "8d00618de8fd10bf35a599f59d2deebfecd0d86e28fcff73219ad7c4ebab860b",
+    "contingency_file": "contab_ACTIVSg2000.m",
+    "contingency_sha256": "198b39f0381925a4ddacbe2148973cb1d93ddfe220303829cf87b16d45190bba",
+    "row_identity_convention": {
+      "branch": "branch-row-NNNN is the immutable one-based mpc.branch source row",
+      "contingency_change": "source_row is the immutable one-based chgtab row",
+      "generator": "gen-row-NNNN is the immutable one-based mpc.gen source row"
+    }
+  },
+  "source_online_capacity_mw": {
+    "pmax_sum": 81201.89,
+    "pmin_sum": 32613.680000000004
+  },
+  "summary": [
+    {
+      "added_security_pairs": 106,
+      "bound": 1132599.3522354912,
+      "commitment_count": 327,
+      "constraint_generation_rounds": 3,
+      "final_security_violation_pu": 7.892776920925826e-10,
+      "last_screen_new_violations": 0,
+      "mip_gap": 0.0007763998859633739,
+      "objective": 1133479.3855011363,
+      "platform": "laptop_cpu",
+      "pricing_status": "optimal_secure_fixed_commitment_lp",
+      "raw_result_sha256": "5573425a8e625c0c964b2c61d33ca80666de74a350e9431a96e5ce9b90e02e3f",
+      "result_status": "optimal_verified",
+      "total_wall_seconds": 1007.3702709000063
+    },
+    {
+      "added_security_pairs": 0,
+      "bound": 1118297.1059715485,
+      "commitment_count": 325,
+      "constraint_generation_rounds": 1,
+      "final_security_violation_pu": 2.0415921745847436,
+      "last_screen_new_violations": 165,
+      "mip_gap": 0.0001255739331724089,
+      "objective": 1118437.5525740345,
+      "platform": "dgx_spark",
+      "pricing_status": "not_reached",
+      "raw_result_sha256": "f0506e259f86854a65b3d8f0dc993b206a804a60de068cd074ce8e077926105a",
+      "result_status": "incomplete_restricted_master_not_optimal",
+      "total_wall_seconds": 7.908521046992973
+    }
+  ]
+}

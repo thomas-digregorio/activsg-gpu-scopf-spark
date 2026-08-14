@@ -114,3 +114,22 @@ dispatch and all 500 prices within numerical precision. Spark end-to-end time
 ranged from 3.671 to 4.917 seconds, versus 2.676 to 2.726 seconds for the prior
 laptop results. This is a small-case system comparison and not a pure GPU
 speedup measurement.
+
+## ACTIVSg2000 GPU 1e-3 outcome
+
+The one authorized DGX Spark run completed in 7.909 seconds but stopped after
+the first restricted master. cuOpt returned native `FeasibleFound` with an
+objective of 1,118,437.552574, bound of 1,118,297.105972, and reported gap of
+`1.255739e-4`, which is below the requested `1e-3`. The frozen fail-closed
+adapter nevertheless required native `Optimal` before adding screened rows.
+
+The exhaustive incumbent screen found 165 violated contingency pairs and a
+maximum violation of 2.041592 p.u. No rows were added, and independent
+verification and fixed-commitment pricing were not reached in the run. A
+post-hoc raw-input checker, run without another MIP solve, passed the basic
+model and exact conditional PMIN/PMAX residual gates but failed exhaustive N-1
+security over 17,563,400 monitored sides. Consequently the saved 325-unit
+commitment and dispatch are provisional, GPU prices are unavailable, and the
+lower objective must not be compared with the accepted laptop secure result as
+an improvement. The run was not retried. Full evidence is under
+`reports/activsg2000-gpu-1e-3-v1/`.
