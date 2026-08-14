@@ -275,3 +275,17 @@ def test_activsg2000_seeded_round2_diagnostic_is_exactly_registered() -> None:
     assert config.raw["diagnostic"]["mip_start_mode"] == "all_columns"
     assert config.raw["diagnostic"]["console_logging"] is True
     assert config.raw["diagnostic"]["constraint_generation_enabled"] is False
+
+
+def test_activsg2000_seeded_round2_v2_registers_exact_bound_projection() -> None:
+    config = load_config(
+        ROOT / "configs" / "activsg2000-gpu-round2-cpu-seed-diagnostic-v2.json"
+    )
+
+    validate_diagnostic_identity(config)
+    assert config.benchmark_id == (
+        "activsg2000-gpu-round2-cpu-seed-diagnostic-v2"
+    )
+    assert config.raw["diagnostic"]["mip_start_bound_policy"] == (
+        "project_numerical_excess_to_exact_bound"
+    )

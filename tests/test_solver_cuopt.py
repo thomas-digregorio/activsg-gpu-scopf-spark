@@ -107,3 +107,18 @@ def test_full_mip_start_rejects_nonfinite_continuous_value() -> None:
             integrality=np.asarray([1, 0], dtype=np.int32),
             mode=FULL_MIP_START,
         )
+
+
+def test_full_mip_start_can_project_numerical_excess_to_exact_bounds() -> None:
+    columns, values = prepare_mip_start(
+        np.asarray([1.0, 10.00000006, -2.00000001]),
+        expected_shape=(3,),
+        integrality=np.asarray([1, 0, 0], dtype=np.int32),
+        mode=FULL_MIP_START,
+        lower_bounds=np.asarray([0.0, 0.0, -2.0]),
+        upper_bounds=np.asarray([1.0, 10.0, 5.0]),
+        clip_to_bounds=True,
+    )
+
+    np.testing.assert_array_equal(columns, np.asarray([0, 1, 2]))
+    np.testing.assert_array_equal(values, np.asarray([1.0, 10.0, -2.0]))

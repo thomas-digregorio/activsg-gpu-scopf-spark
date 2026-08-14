@@ -41,8 +41,16 @@ from .verify import verify_serialized_solution
 FloatArray = npt.NDArray[np.float64]
 
 DIAGNOSTIC_KIND = "seeded_round2_diagnostic"
-DIAGNOSTIC_ID = "activsg2000-gpu-round2-cpu-seed-diagnostic-v1"
-DIAGNOSTIC_TAG = "diagnostic-2000-gpu-round2-cpu-seed-v1"
+DIAGNOSTIC_IDENTITIES = {
+    "activsg2000-gpu-round2-cpu-seed-diagnostic-v1": {
+        "tag": "diagnostic-2000-gpu-round2-cpu-seed-v1",
+        "mip_start_bound_policy": "preserve_as_serialized",
+    },
+    "activsg2000-gpu-round2-cpu-seed-diagnostic-v2": {
+        "tag": "diagnostic-2000-gpu-round2-cpu-seed-v2",
+        "mip_start_bound_policy": "project_numerical_excess_to_exact_bound",
+    },
+}
 CPU_RESULT_SHA256 = "5573425a8e625c0c964b2c61d33ca80666de74a350e9431a96e5ce9b90e02e3f"
 GPU_V3_RESULT_SHA256 = "9b9e7d3b0dfdad0faeb740f639307844920c18eb85c07ac9705f8b84e034366c"
 CPU_RESULT_COMMIT = "173fd0c10b8af5ed431956f2eea9726032df6f9e"
@@ -88,10 +96,13 @@ def validate_diagnostic_identity(config: RunConfig) -> None:
         raise ScopfError("The seeded round-2 diagnostic is registered only for ACTIVSg2000")
     if config.benchmark_kind != DIAGNOSTIC_KIND:
         raise ScopfError("Configuration is not a seeded round-2 diagnostic")
-    if config.benchmark_id != DIAGNOSTIC_ID:
-        raise ScopfError(f"Expected diagnostic id {DIAGNOSTIC_ID!r}")
-    if config.raw["benchmark"].get("required_git_tag") != DIAGNOSTIC_TAG:
-        raise ScopfError(f"Expected frozen diagnostic tag {DIAGNOSTIC_TAG!r}")
+    identity = DIAGNOSTIC_IDENTITIES.get(config.benchmark_id)
+    if identity is None:
+        raise ScopfError(f"Unregistered seeded diagnostic id {config.benchmark_id!r}")
+    if config.raw["benchmark"].get("required_git_tag") != identity["tag"]:
+        raise ScopfError(
+            f"Expected frozen diagnostic tag {identity['tag']!r}"
+        )
     exact_model = {
         "interval_hours": 1.0,
         "pwl_segments": 10,
@@ -146,6 +157,15 @@ def validate_diagnostic_identity(config: RunConfig) -> None:
                 f"Seeded diagnostic changed {key}: expected {expected!r}, "
                 f"observed {diagnostic.get(key)!r}"
             )
+    observed_bound_policy = diagnostic.get(
+        "mip_start_bound_policy", "preserve_as_serialized"
+    )
+    if observed_bound_policy != identity["mip_start_bound_policy"]:
+        raise ScopfError(
+            "Seeded diagnostic changed mip_start_bound_policy: expected "
+            f"{identity['mip_start_bound_policy']!r}, observed "
+            f"{observed_bound_policy!r}"
+        )
 
 
 def validate_reference_evidence(
@@ -537,18 +557,39 @@ def run_seeded_round2_worker(
         save()
         stage = time.perf_counter()
         raw_values = deserialize_solution_values(cpu["solution"], case, network, master)
-        _, _, _, integrality = master.canonical.column_arrays()
+        _, column_lower, column_upper, integrality = master.canonical.column_arrays()
+        bound_policy = config.raw["diagnostic"].get(
+            "mip_start_bound_policy", "preserve_as_serialized"
+        )
+        project_to_bounds = (
+            bound_policy == "project_numerical_excess_to_exact_bound"
+        )
+        _, integer_normalized_values = prepare_mip_start(
+            raw_values,
+            expected_shape=(master.canonical.num_columns,),
+            integrality=integrality,
+            mode=FULL_MIP_START,
+        )
         start_columns, start_values = prepare_mip_start(
             raw_values,
             expected_shape=(master.canonical.num_columns,),
             integrality=integrality,
             mode=FULL_MIP_START,
+            lower_bounds=column_lower,
+            upper_bounds=column_upper,
+            clip_to_bounds=project_to_bounds,
         )
         expected_columns = np.arange(master.canonical.num_columns, dtype=np.int64)
         if not np.array_equal(start_columns, expected_columns):
             raise ProvenanceError("Full cuOpt start does not select every canonical column")
         raw_integrality = float(
             np.max(np.abs(raw_values[integrality > 0] - np.rint(raw_values[integrality > 0])))
+        )
+        bound_projection_delta = np.abs(start_values - integer_normalized_values)
+        pre_projection_audit = canonical_feasibility_audit(
+            master.canonical,
+            integer_normalized_values,
+            expected_objective=float(cpu["objective"]),
         )
         normalized_values = start_values
         seed_audit = canonical_feasibility_audit(
@@ -570,8 +611,15 @@ def run_seeded_round2_worker(
             config.raw["diagnostic"]["objective_identity_tolerance"]
         )
         gate_passed = bool(
-            seed_audit["maximum_row_violation"] <= canonical_tolerance
+            pre_projection_audit["maximum_column_bound_violation"]
+            <= canonical_tolerance
+            and float(np.max(bound_projection_delta)) <= canonical_tolerance
+            and seed_audit["maximum_row_violation"] <= canonical_tolerance
             and seed_audit["maximum_column_bound_violation"] <= canonical_tolerance
+            and (
+                not project_to_bounds
+                or seed_audit["maximum_column_bound_violation"] == 0.0
+            )
             and seed_audit["maximum_integrality_violation"] <= canonical_tolerance
             and seed_audit["objective_difference"] <= objective_tolerance
             and independent_seed_verification.passed
@@ -580,8 +628,16 @@ def run_seeded_round2_worker(
             **seed_audit,
             "raw_cpu_maximum_integrality_violation": raw_integrality,
             "integer_normalization_maximum_delta": float(
-                np.max(np.abs(normalized_values - raw_values))
+                np.max(np.abs(integer_normalized_values - raw_values))
             ),
+            "mip_start_bound_policy": bound_policy,
+            "bound_projection_count": int(
+                np.count_nonzero(bound_projection_delta)
+            ),
+            "bound_projection_maximum_delta": float(
+                np.max(bound_projection_delta)
+            ),
+            "pre_projection_canonical_audit": pre_projection_audit,
             "selected_mip_start_columns": int(start_columns.size),
             "selected_integer_columns": int(np.count_nonzero(integrality)),
             "mip_start_mode": FULL_MIP_START,
@@ -609,6 +665,10 @@ def run_seeded_round2_worker(
                     "canonical_rows": master.canonical.num_rows,
                     "security_rows": EXPECTED_SECURITY_ROWS,
                     "mip_start_columns": int(start_columns.size),
+                    "mip_start_bound_policy": bound_policy,
+                    "bound_projection_count": int(
+                        np.count_nonzero(bound_projection_delta)
+                    ),
                     "maximum_row_violation": seed_audit["maximum_row_violation"],
                     "maximum_security_violation_pu": (
                         independent_seed_verification.maximum_security_violation_pu
@@ -627,8 +687,9 @@ def run_seeded_round2_worker(
             time_limit_seconds=EXPECTED_SOLVER_TIME_LIMIT_SECONDS,
             mip_relative_gap=float(config.model["mip_relative_gap_tolerance"]),
             threads=int(config.raw["platforms"]["dgx_spark"]["solver_threads"]),
-            mip_start_values=normalized_values,
+            mip_start_values=integer_normalized_values,
             mip_start_mode=FULL_MIP_START,
+            clip_mip_start_to_bounds=project_to_bounds,
             log_to_console=True,
             mip_acceptance_policy=str(
                 config.raw["platforms"]["dgx_spark"]["mip_acceptance_policy"]

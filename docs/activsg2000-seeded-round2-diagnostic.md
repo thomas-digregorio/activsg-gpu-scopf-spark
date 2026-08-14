@@ -37,7 +37,15 @@ Interpretation is deliberately narrow:
   converted into an infeasibility claim.
 
 The frozen configuration is
-`configs/activsg2000-gpu-round2-cpu-seed-diagnostic-v1.json`. The two immutable
+`configs/activsg2000-gpu-round2-cpu-seed-diagnostic-v1.json`. V1 preserved the
+accepted CPU floating-point values verbatim; cuOpt returned `NoTermination`
+before presolve because one dispatch value exceeded its exact column bound by
+`5.994e-8`. The approved v2 correction in
+`configs/activsg2000-gpu-round2-cpu-seed-diagnostic-v2.json` projects only such
+sub-tolerance excesses onto the existing exact variable bounds. The model,
+commitment, PMIN/PMAX values, security rows, and tolerances are unchanged.
+
+The two immutable
 input results live only under ignored `results/diagnostic-inputs/` paths and are
 accepted only at their registered SHA-256 hashes. The run has a hard 1,800-second
 controller boundary, while the one cuOpt call receives the exact

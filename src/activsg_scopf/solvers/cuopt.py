@@ -118,6 +118,9 @@ def prepare_mip_start(
     expected_shape: tuple[int, ...],
     integrality: np.ndarray,
     mode: str,
+    lower_bounds: np.ndarray | None = None,
+    upper_bounds: np.ndarray | None = None,
+    clip_to_bounds: bool = False,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Return exact cuOpt start columns/values with integer entries normalized."""
 
@@ -137,6 +140,15 @@ def prepare_mip_start(
     values = candidate[columns].copy()
     integer_positions = np.flatnonzero(integrality[columns])
     values[integer_positions] = np.rint(values[integer_positions])
+    if clip_to_bounds:
+        if lower_bounds is None or upper_bounds is None:
+            raise ScopfError("cuOpt MIP-start bound projection requires both bound arrays")
+        lower = np.asarray(lower_bounds, dtype=np.float64)
+        upper = np.asarray(upper_bounds, dtype=np.float64)
+        if lower.shape != expected_shape or upper.shape != expected_shape:
+            raise ScopfError("cuOpt MIP-start bound arrays have the wrong vector shape")
+        values = np.maximum(values, lower[columns])
+        values = np.minimum(values, upper[columns])
     if not np.all(np.isfinite(values)):
         raise ScopfError("cuOpt MIP start contains a nonfinite selected value")
     return columns, values
@@ -150,6 +162,7 @@ def solve_cuopt(
     threads: int = 0,
     mip_start_values: np.ndarray | None = None,
     mip_start_mode: str = INTEGER_ONLY_MIP_START,
+    clip_mip_start_to_bounds: bool = False,
     log_to_console: bool = False,
     mip_acceptance_policy: str = NATIVE_OPTIMAL_ONLY,
     mip_certificate_residual_tolerance: float = 1e-6,
@@ -188,13 +201,29 @@ def solve_cuopt(
     ]
     mip_start_columns = np.empty(0, dtype=np.int64)
     mip_start_selected_values = np.empty(0, dtype=np.float64)
+    mip_start_bound_projection_count = 0
+    mip_start_bound_projection_maximum_delta = 0.0
     if mip_start_values is not None:
         mip_start_columns, mip_start_selected_values = prepare_mip_start(
             mip_start_values,
             expected_shape=objective.shape,
             integrality=integrality,
             mode=mip_start_mode,
+            lower_bounds=lower,
+            upper_bounds=upper,
+            clip_to_bounds=clip_mip_start_to_bounds,
         )
+        unprojected = np.asarray(mip_start_values, dtype=np.float64)[
+            mip_start_columns
+        ].copy()
+        integer_positions = np.flatnonzero(integrality[mip_start_columns])
+        unprojected[integer_positions] = np.rint(unprojected[integer_positions])
+        projection_delta = np.abs(mip_start_selected_values - unprojected)
+        mip_start_bound_projection_count = int(np.count_nonzero(projection_delta))
+        if projection_delta.size:
+            mip_start_bound_projection_maximum_delta = float(
+                np.max(projection_delta)
+            )
         for index, value in zip(
             mip_start_columns, mip_start_selected_values, strict=True
         ):
@@ -324,6 +353,15 @@ def solve_cuopt(
             "requested_gap_certified": requested_gap_certified,
             "mip_start_mode": mip_start_mode,
             "mip_start_columns": int(mip_start_columns.size),
+            "mip_start_bound_projection_enabled": bool(
+                clip_mip_start_to_bounds
+            ),
+            "mip_start_bound_projection_count": (
+                mip_start_bound_projection_count
+            ),
+            "mip_start_bound_projection_maximum_delta": (
+                mip_start_bound_projection_maximum_delta
+            ),
             "partial_integer_mip_start_columns": int(
                 np.count_nonzero(integrality[mip_start_columns])
             ),

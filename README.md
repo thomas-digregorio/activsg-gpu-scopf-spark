@@ -187,6 +187,9 @@ secure CPU commitment and full dispatch state feasible, then gives all 9,220
 canonical values to cuOpt with native console logging enabled. It performs no
 constraint-generation rounds. See the
 [seeded round-2 diagnostic contract](docs/activsg2000-seeded-round2-diagnostic.md).
+V1 returned native `NoTermination` before presolve because the accepted CPU
+floating-point state contained a `5.994e-8` variable-bound excess. The approved
+v2 correction projects only numerical excesses onto the unchanged exact bounds.
 
 That ACTIVSg2000 campaign is now closed. The `1e-3` run completed
 `optimal_verified` with accepted fixed-commitment pricing; the `1e-4` run hit
@@ -223,6 +226,9 @@ bash scripts/spark-gap-2000-gpu-1e-3-v3.sh
 # Separately authorized exact round-2 solve with the secure CPU full start
 bash scripts/spark-build-2000-round2-cpu-seed-diagnostic-v1.sh
 bash scripts/spark-run-2000-round2-cpu-seed-diagnostic-v1.sh
+# Approved correction for v1's sub-tolerance MIP-start bound excess
+bash scripts/spark-build-2000-round2-cpu-seed-diagnostic-v2.sh
+bash scripts/spark-run-2000-round2-cpu-seed-diagnostic-v2.sh
 ```
 
 Continue with `1e-4` through `1e-7` only after the prior level finishes
