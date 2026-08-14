@@ -242,13 +242,21 @@ is secure but gap-uncertified, remains incomplete, and has no accepted pricing.
 See the [v6 report](reports/activsg2000-gpu-1e-3-v6/README.md). No v6 retry was
 performed.
 
-The separately authorized v7 experiment preserves the complete v6 model,
-PDLP profile, initialization, screening loop, tolerances, and raw inputs. Its
-only substantive change is doubling the cumulative cuOpt allowance from 900 to
-1,800 seconds. With the same 120-second independent-verification reserve and
-15-second serialization reserve, the guarded end-to-end boundary is 1,935
-seconds. Only one v7 optimization run is authorized; there is no automatic
-retry.
+The separately authorized v7 experiment preserved the complete v6 model,
+PDLP profile, initialization, screening loop, tolerances, and raw inputs while
+doubling the cumulative cuOpt allowance from 900 to 1,800 seconds. It added 173
+then 14 contingency pairs. Round 3 reused the prior GPU integer commitment,
+stopped on cuOpt's time limit, and found no new violations in an exhaustive
+17,563,400-side screen. The post-run independent checker passed every side,
+with maximum security violation `5.982e-12` p.u. The final objective was
+`1,133,078.528383`, the lower bound was `1,130,841.046502`, and the gap was
+`0.0019747`, above the requested `0.001`. The incumbent is therefore secure
+but gap-uncertified, the run remains incomplete, and pricing is withheld.
+Recorded restricted-master time was `1,802.319` seconds, including a
+`2.319`-second cuOpt return overrun, while end-to-end wall time remained inside
+the separate 1,935-second guard at `1,805.749` seconds. See the
+[v7 report](reports/activsg2000-gpu-1e-3-v7/README.md). No v7 retry was
+performed.
 
 That ACTIVSg2000 campaign is now closed. The `1e-3` run completed
 `optimal_verified` with accepted fixed-commitment pricing; the `1e-4` run hit
