@@ -242,6 +242,14 @@ is secure but gap-uncertified, remains incomplete, and has no accepted pricing.
 See the [v6 report](reports/activsg2000-gpu-1e-3-v6/README.md). No v6 retry was
 performed.
 
+The separately authorized v7 experiment preserves the complete v6 model,
+PDLP profile, initialization, screening loop, tolerances, and raw inputs. Its
+only substantive change is doubling the cumulative cuOpt allowance from 900 to
+1,800 seconds. With the same 120-second independent-verification reserve and
+15-second serialization reserve, the guarded end-to-end boundary is 1,935
+seconds. Only one v7 optimization run is authorized; there is no automatic
+retry.
+
 That ACTIVSg2000 campaign is now closed. The `1e-3` run completed
 `optimal_verified` with accepted fixed-commitment pricing; the `1e-4` run hit
 its restricted-master solver budget above the requested gap and its provisional
@@ -292,6 +300,9 @@ bash scripts/spark-gap-2000-gpu-1e-3-v5.sh
 # One authorized PDLP-policy comparison against v5
 bash scripts/spark-build-2000-gpu-1e-3-v6.sh
 bash scripts/spark-gap-2000-gpu-1e-3-v6.sh
+# One authorized 30-minute PDLP run; otherwise identical to v6
+bash scripts/spark-build-2000-gpu-1e-3-v7.sh
+bash scripts/spark-gap-2000-gpu-1e-3-v7.sh
 ```
 
 Continue with `1e-4` through `1e-7` only after the prior level finishes

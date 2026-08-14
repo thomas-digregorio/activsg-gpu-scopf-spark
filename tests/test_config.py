@@ -1,6 +1,10 @@
+import json
 from pathlib import Path
 
+import pytest
+
 from activsg_scopf.config import load_config
+from activsg_scopf.errors import ScopeViolation
 from activsg_scopf.seeded_diagnostic import validate_diagnostic_identity
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -355,6 +359,53 @@ def test_activsg2000_gpu_v6_changes_only_cuopt_pdlp_policy_and_identity() -> Non
         for key, value in v6_profile.items()
         if key != "cuopt_pdlp_profile"
     } == v5_profile
+
+
+def test_activsg2000_gpu_v7_changes_only_runtime_and_frozen_identity() -> None:
+    v6 = load_config(ROOT / "configs" / "activsg2000-gpu-gap-1e-3-v6.json")
+    v7 = load_config(ROOT / "configs" / "activsg2000-gpu-gap-1e-3-v7.json")
+
+    assert v7.case_name == v6.case_name == "ACTIVSg2000"
+    assert v7.model == v6.model
+    assert v7.raw["raw_inputs"] == v6.raw["raw_inputs"]
+    assert v7.raw["platforms"] == v6.raw["platforms"]
+    assert v7.runtime == {
+        "deadline_seconds": 1935.0,
+        "verification_reserve_seconds": 120.0,
+        "serialization_reserve_seconds": 15.0,
+        "maximum_constraint_generation_rounds": 100,
+    }
+    assert v7.benchmark_id == "activsg2000-gpu-gap-v7-1e-3"
+    assert v7.raw["benchmark"]["required_git_tag"] == (
+        "experiment-2000-gpu-gap-v7"
+    )
+    assert v7.raw["benchmark"]["experiment_suite_id"] == (
+        "activsg2000-gpu-gap-sensitivity-v7"
+    )
+    assert v7.raw["benchmark"]["initialization"] == (
+        v6.raw["benchmark"]["initialization"]
+    )
+    assert v7.raw["benchmark"]["pricing"] == v6.raw["benchmark"]["pricing"]
+    assert v7.raw["benchmark"]["runtime_change"] == {
+        "comparison_baseline": "activsg2000-gpu-gap-v6-1e-3",
+        "only_change": (
+            "double_cumulative_solver_allowance_from_900_to_1800_seconds"
+        ),
+    }
+
+
+def test_1935_second_outer_deadline_is_authorized_only_for_v7(
+    tmp_path: Path,
+) -> None:
+    v6 = load_config(ROOT / "configs" / "activsg2000-gpu-gap-1e-3-v6.json")
+    forged = json.loads(json.dumps(v6.raw))
+    forged["runtime"]["deadline_seconds"] = 1935.0
+    path = tmp_path / "configs" / "forged-v6.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps(forged), encoding="utf-8")
+
+    with pytest.raises(ScopeViolation, match=r"\(0, 1800\]"):
+        load_config(path)
 
 
 def test_activsg2000_seeded_round2_diagnostic_is_exactly_registered() -> None:

@@ -11,6 +11,10 @@ from .cases import registered_case
 from .errors import ProvenanceError, ScopeViolation
 from .paths import assert_approved_activsg_name, guard_input_path
 
+EXTENDED_DEADLINE_SUITES = {
+    "activsg2000-gpu-gap-sensitivity-v7": 1935.0,
+}
+
 
 @dataclass(frozen=True)
 class RunConfig:
@@ -82,11 +86,15 @@ def load_config(path: str | Path) -> RunConfig:
             )
     else:
         deadline = float(deadline_value)
-        maximum_deadline = (
-            1800.0
-            if payload["benchmark"].get("kind")
-            in {"gap_sensitivity_experiment", "seeded_round2_diagnostic"}
-            else 300.0
+        benchmark = payload["benchmark"]
+        maximum_deadline = EXTENDED_DEADLINE_SUITES.get(
+            str(benchmark.get("experiment_suite_id", "")),
+            (
+                1800.0
+                if benchmark.get("kind")
+                in {"gap_sensitivity_experiment", "seeded_round2_diagnostic"}
+                else 300.0
+            ),
         )
         if deadline <= 0 or deadline > maximum_deadline:
             raise ScopeViolation(
