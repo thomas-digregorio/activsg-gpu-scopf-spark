@@ -22,6 +22,11 @@ FULL_MIP_START = "all_columns"
 SUPPORTED_MIP_START_MODES = frozenset(
     {INTEGER_ONLY_MIP_START, FULL_MIP_START}
 )
+NO_NATIVE_SCALING = "none"
+POWER_SYSTEM_PER_UNIT_SCALING = "power_system_per_unit_v1"
+SUPPORTED_NATIVE_SCALING_MODES = frozenset(
+    {NO_NATIVE_SCALING, POWER_SYSTEM_PER_UNIT_SCALING}
+)
 
 
 def _native(value: object) -> object:
@@ -154,6 +159,164 @@ def prepare_mip_start(
     return columns, values
 
 
+def native_scaling_vectors(
+    model: CanonicalMILP,
+    *,
+    mode: str,
+    base_mva: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return an exact diagonal variable/row reformulation for cuOpt only."""
+
+    if mode not in SUPPORTED_NATIVE_SCALING_MODES:
+        raise ScopfError(f"Unknown cuOpt native scaling mode: {mode!r}")
+    if not np.isfinite(base_mva) or base_mva <= 0:
+        raise ScopfError("cuOpt native scaling requires a positive finite base MVA")
+    column_scale = np.ones(model.num_columns, dtype=np.float64)
+    row_scale = np.ones(model.num_rows, dtype=np.float64)
+    if mode == NO_NATIVE_SCALING:
+        return column_scale, row_scale
+    for column, name in enumerate(model.variable_names):
+        if name.startswith(("pg_", "pseg_", "flow_")):
+            column_scale[column] = float(base_mva)
+    integrality = model.column_arrays()[3]
+    if np.any(column_scale[integrality > 0] != 1.0):
+        raise ScopfError("cuOpt native scaling cannot rescale integer columns")
+    for row, name in enumerate(model.row_names):
+        indices, coefficients = model.row_entries(row)
+        if indices and all(
+            model.variable_names[index].startswith("theta_") for index in indices
+        ):
+            continue
+        if name.startswith("dc_flow_"):
+            theta_coefficients = [
+                abs(float(coefficient) * column_scale[index])
+                for index, coefficient in zip(indices, coefficients, strict=True)
+                if model.variable_names[index].startswith("theta_")
+            ]
+            if not theta_coefficients or max(theta_coefficients) == 0.0:
+                raise ScopfError(f"Cannot scale malformed DC-flow row {name}")
+            row_scale[row] = 1.0 / max(theta_coefficients)
+        else:
+            row_scale[row] = 1.0 / float(base_mva)
+    if (
+        not np.all(np.isfinite(column_scale))
+        or not np.all(column_scale > 0)
+        or not np.all(np.isfinite(row_scale))
+        or not np.all(row_scale > 0)
+    ):
+        raise ScopfError("cuOpt native scaling produced an invalid diagonal")
+    return column_scale, row_scale
+
+
+def _nonzero_range(entries: np.ndarray) -> dict[str, float | None]:
+    absolute = np.abs(np.asarray(entries, dtype=np.float64))
+    nonzero = absolute[np.isfinite(absolute) & (absolute > 0.0)]
+    if not nonzero.size:
+        return {"minimum_nonzero": None, "maximum": None, "ratio": None}
+    minimum = float(np.min(nonzero))
+    maximum = float(np.max(nonzero))
+    return {
+        "minimum_nonzero": minimum,
+        "maximum": maximum,
+        "ratio": maximum / minimum,
+    }
+
+
+def native_scaling_audit(
+    model: CanonicalMILP,
+    values: np.ndarray,
+    *,
+    mode: str,
+    base_mva: float,
+) -> dict[str, object]:
+    """Quantify conditioning and verify the diagonal reformulation algebra."""
+
+    canonical_values = np.asarray(values, dtype=np.float64)
+    if canonical_values.shape != (model.num_columns,):
+        raise ScopfError("cuOpt native-scaling audit has the wrong vector shape")
+    if not np.all(np.isfinite(canonical_values)):
+        raise ScopfError("cuOpt native-scaling audit received nonfinite values")
+    column_scale, row_scale = native_scaling_vectors(
+        model, mode=mode, base_mva=base_mva
+    )
+    matrix = model.matrix_csr()
+    native_matrix = matrix.multiply(column_scale).multiply(row_scale[:, None]).tocsr()
+    native_values = canonical_values / column_scale
+    canonical_activity = np.asarray(matrix @ canonical_values, dtype=np.float64)
+    native_activity = np.asarray(native_matrix @ native_values, dtype=np.float64)
+    objective, column_lower, column_upper, _ = model.column_arrays()
+    row_lower, row_upper = model.row_bound_arrays()
+    native_objective = objective * column_scale
+    native_lower = row_lower * row_scale
+    native_upper = row_upper * row_scale
+
+    canonical_lower_violation = np.where(
+        np.isfinite(row_lower), row_lower - canonical_activity, -np.inf
+    )
+    canonical_upper_violation = np.where(
+        np.isfinite(row_upper), canonical_activity - row_upper, -np.inf
+    )
+    canonical_row_violation = np.maximum(
+        canonical_lower_violation, canonical_upper_violation
+    )
+    native_lower_violation = np.where(
+        np.isfinite(native_lower), native_lower - native_activity, -np.inf
+    )
+    native_upper_violation = np.where(
+        np.isfinite(native_upper), native_activity - native_upper, -np.inf
+    )
+    canonicalized_native_violation = np.maximum(
+        native_lower_violation, native_upper_violation
+    ) / row_scale
+    finite = np.isfinite(canonical_row_violation) & np.isfinite(
+        canonicalized_native_violation
+    )
+    violation_error = (
+        float(
+            np.max(
+                np.abs(
+                    canonicalized_native_violation[finite]
+                    - canonical_row_violation[finite]
+                )
+            )
+        )
+        if np.any(finite)
+        else 0.0
+    )
+    return {
+        "mode": mode,
+        "base_mva": float(base_mva),
+        "scaled_columns": int(np.count_nonzero(column_scale != 1.0)),
+        "scaled_rows": int(np.count_nonzero(row_scale != 1.0)),
+        "raw_matrix_coefficients": _nonzero_range(matrix.data),
+        "native_matrix_coefficients": _nonzero_range(native_matrix.data),
+        "raw_objective_coefficients": _nonzero_range(objective),
+        "native_objective_coefficients": _nonzero_range(native_objective),
+        "raw_finite_variable_bounds": _nonzero_range(
+            np.concatenate((column_lower, column_upper))
+        ),
+        "native_finite_variable_bounds": _nonzero_range(
+            np.concatenate((column_lower / column_scale, column_upper / column_scale))
+        ),
+        "raw_finite_row_bounds": _nonzero_range(
+            np.concatenate((row_lower, row_upper))
+        ),
+        "native_finite_row_bounds": _nonzero_range(
+            np.concatenate((native_lower, native_upper))
+        ),
+        "maximum_native_activity_identity_error": float(
+            np.max(np.abs(native_activity - row_scale * canonical_activity))
+        ),
+        "maximum_canonicalized_row_violation_identity_error": violation_error,
+        "maximum_value_round_trip_error": float(
+            np.max(np.abs(native_values * column_scale - canonical_values))
+        ),
+        "objective_identity_error": abs(
+            float(native_objective @ native_values) - float(objective @ canonical_values)
+        ),
+    }
+
+
 def solve_cuopt(
     model: CanonicalMILP,
     *,
@@ -163,6 +326,8 @@ def solve_cuopt(
     mip_start_values: np.ndarray | None = None,
     mip_start_mode: str = INTEGER_ONLY_MIP_START,
     clip_mip_start_to_bounds: bool = False,
+    native_scaling_mode: str = NO_NATIVE_SCALING,
+    native_base_mva: float = 100.0,
     log_to_console: bool = False,
     mip_acceptance_policy: str = NATIVE_OPTIMAL_ONLY,
     mip_certificate_residual_tolerance: float = 1e-6,
@@ -188,12 +353,20 @@ def solve_cuopt(
         raise ScopfError("The cuOpt adapter requires NVIDIA cuOpt in the Spark runtime") from exc
 
     objective, lower, upper, integrality = model.column_arrays()
+    column_scale, row_scale = native_scaling_vectors(
+        model,
+        mode=native_scaling_mode,
+        base_mva=float(native_base_mva),
+    )
+    native_objective = objective * column_scale
+    native_lower = lower / column_scale
+    native_upper = upper / column_scale
     problem = Problem("activsg_preventive_scuc")
     variables = [
         problem.addVariable(
-            lb=float(lower[index]),
-            ub=float(upper[index]),
-            obj=float(objective[index]),
+            lb=float(native_lower[index]),
+            ub=float(native_upper[index]),
+            obj=float(native_objective[index]),
             vtype=INTEGER if integrality[index] else CONTINUOUS,
             name=name,
         )
@@ -227,11 +400,13 @@ def solve_cuopt(
         for index, value in zip(
             mip_start_columns, mip_start_selected_values, strict=True
         ):
-            variables[int(index)].setMIPStart(float(value))
-    objective_columns = np.flatnonzero(objective)
+            variables[int(index)].setMIPStart(
+                float(value / column_scale[int(index)])
+            )
+    objective_columns = np.flatnonzero(native_objective)
     objective_expression = LinearExpression(
         [variables[int(index)] for index in objective_columns],
-        objective[objective_columns].tolist(),
+        native_objective[objective_columns].tolist(),
         0.0,
     )
     problem.setObjective(objective_expression, sense=MINIMIZE)
@@ -239,11 +414,15 @@ def solve_cuopt(
     native_constraint_count = 0
     for row, name in enumerate(model.row_names):
         indices, coefficients = model.row_entries(row)
+        native_coefficients = [
+            float(coefficient) * column_scale[index] * row_scale[row]
+            for index, coefficient in zip(indices, coefficients, strict=True)
+        ]
         expression = LinearExpression(
-            [variables[index] for index in indices], coefficients, 0.0
+            [variables[index] for index in indices], native_coefficients, 0.0
         )
-        lo = float(row_lower[row])
-        hi = float(row_upper[row])
+        lo = float(row_lower[row] * row_scale[row])
+        hi = float(row_upper[row] * row_scale[row])
         if isfinite(lo) and isfinite(hi) and lo == hi:
             problem.addConstraint(expression == lo, name=name)
             native_constraint_count += 1
@@ -269,11 +448,12 @@ def solve_cuopt(
         and np.isfinite(problem.ObjValue)
         and all(np.isfinite(variable.getValue()) for variable in variables)
     )
-    values = (
+    native_values = (
         np.asarray([variable.getValue() for variable in variables], dtype=np.float64)
         if has_incumbent
         else None
     )
+    values = None if native_values is None else native_values * column_scale
     objective_value = float(problem.ObjValue) if has_incumbent else None
     raw_bound = getattr(stats, "solution_bound", None)
     raw_gap = getattr(stats, "mip_gap", None)
@@ -369,6 +549,12 @@ def solve_cuopt(
             "canonical_rows_translated": model.num_rows,
             "canonical_nonzeros_translated": int(model.matrix_csr().nnz),
             "native_constraints_added": native_constraint_count,
+            "native_scaling_mode": native_scaling_mode,
+            "native_base_mva": float(native_base_mva),
+            "native_column_scale_minimum": float(np.min(column_scale)),
+            "native_column_scale_maximum": float(np.max(column_scale)),
+            "native_row_scale_minimum": float(np.min(row_scale)),
+            "native_row_scale_maximum": float(np.max(row_scale)),
             "log_to_console": bool(log_to_console),
         },
     )

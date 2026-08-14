@@ -190,6 +190,16 @@ constraint-generation rounds. See the
 V1 returned native `NoTermination` before presolve because the accepted CPU
 floating-point state contained a `5.994e-8` variable-bound excess. The approved
 v2 correction projects only numerical excesses onto the unchanged exact bounds.
+The v2 native console then accepted that full point as feasible, but its
+unscaled root LP suffered repeated basis-factorization repairs, an unremovable
+`1.09e+50` perturbation, and a barrier numerical error before printing
+`MIP Infeasible`. The [numerical attribution](reports/activsg2000-round2-numerical-attribution-v1/README.md)
+shows why that label is contradicted by the known feasible witness. The
+run retained that witness and passed exhaustive verification, but returned no
+finite bound or gap, so it correctly failed the requested gap certificate. The
+authorized v3 correction is an invertible per-unit diagonal reformulation only
+inside the cuOpt adapter; it removes no row and changes no PMIN, limit,
+objective, security tolerance, or canonical solution meaning.
 
 That ACTIVSg2000 campaign is now closed. The `1e-3` run completed
 `optimal_verified` with accepted fixed-commitment pricing; the `1e-4` run hit
@@ -229,6 +239,9 @@ bash scripts/spark-run-2000-round2-cpu-seed-diagnostic-v1.sh
 # Approved correction for v1's sub-tolerance MIP-start bound excess
 bash scripts/spark-build-2000-round2-cpu-seed-diagnostic-v2.sh
 bash scripts/spark-run-2000-round2-cpu-seed-diagnostic-v2.sh
+# Approved numerical correction after v2's root-LP factorization failure
+bash scripts/spark-build-2000-round2-cpu-seed-diagnostic-v3.sh
+bash scripts/spark-run-2000-round2-cpu-seed-diagnostic-v3.sh
 ```
 
 Continue with `1e-4` through `1e-7` only after the prior level finishes

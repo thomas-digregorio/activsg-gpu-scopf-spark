@@ -45,6 +45,28 @@ before presolve because one dispatch value exceeded its exact column bound by
 sub-tolerance excesses onto the existing exact variable bounds. The model,
 commitment, PMIN/PMAX values, security rows, and tolerances are unchanged.
 
+V2 then accepted the full CPU state as feasible, but the unscaled native root
+LP reported repeated deficient-basis factorization repairs, failed to remove a
+`1.09e+50` perturbation, encountered a barrier numerical error, and finally
+printed `MIP Infeasible`. That label is not a mathematical infeasibility result:
+the same native log first reports `Adding initial solution success! feas 1`, and
+the independent canonical checker proves that point feasible and N-1 secure.
+At its time limit cuOpt retained this incumbent but exposed no finite bound or
+gap, so the requested `1e-3` certificate correctly failed.
+
+V3 is the authorized numerical correction in
+`configs/activsg2000-gpu-round2-cpu-seed-diagnostic-v3.json`. It applies only an
+invertible diagonal change of units inside the cuOpt adapter. MW-valued dispatch,
+segment, and branch-flow columns are represented internally in per unit; rows
+are scaled by positive constants, with each DC-flow equality normalized by its
+largest angle coefficient. The canonical variables, objective, exact PMIN/PMAX,
+173 security rows, tolerances, and accepted solution meaning are unchanged.
+Before the solver launch, a fail-closed audit checks variable round-trip, row
+activity, row-violation, and objective identities. On the exact master this
+reduces the nonzero matrix coefficient ratio from `9.4971145e7` to `7.890e3`;
+the largest observed identity error is `1.0247e-11` after conversion back to
+canonical row units.
+
 The two immutable
 input results live only under ignored `results/diagnostic-inputs/` paths and are
 accepted only at their registered SHA-256 hashes. The run has a hard 1,800-second

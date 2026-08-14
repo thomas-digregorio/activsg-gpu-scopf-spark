@@ -35,7 +35,14 @@ from .provenance import build_source_manifest, write_json_atomic
 from .screening import ContingencyScreener, SecurityPair, add_security_pairs
 from .solution import serialize_solution
 from .solvers.common import SolveResult
-from .solvers.cuopt import FULL_MIP_START, prepare_mip_start, solve_cuopt
+from .solvers.cuopt import (
+    FULL_MIP_START,
+    NO_NATIVE_SCALING,
+    POWER_SYSTEM_PER_UNIT_SCALING,
+    native_scaling_audit,
+    prepare_mip_start,
+    solve_cuopt,
+)
 from .verify import verify_serialized_solution
 
 FloatArray = npt.NDArray[np.float64]
@@ -45,10 +52,17 @@ DIAGNOSTIC_IDENTITIES = {
     "activsg2000-gpu-round2-cpu-seed-diagnostic-v1": {
         "tag": "diagnostic-2000-gpu-round2-cpu-seed-v1",
         "mip_start_bound_policy": "preserve_as_serialized",
+        "native_scaling_mode": NO_NATIVE_SCALING,
     },
     "activsg2000-gpu-round2-cpu-seed-diagnostic-v2": {
         "tag": "diagnostic-2000-gpu-round2-cpu-seed-v2",
         "mip_start_bound_policy": "project_numerical_excess_to_exact_bound",
+        "native_scaling_mode": NO_NATIVE_SCALING,
+    },
+    "activsg2000-gpu-round2-cpu-seed-diagnostic-v3": {
+        "tag": "diagnostic-2000-gpu-round2-cpu-seed-v3",
+        "mip_start_bound_policy": "project_numerical_excess_to_exact_bound",
+        "native_scaling_mode": POWER_SYSTEM_PER_UNIT_SCALING,
     },
 }
 CPU_RESULT_SHA256 = "5573425a8e625c0c964b2c61d33ca80666de74a350e9431a96e5ce9b90e02e3f"
@@ -165,6 +179,13 @@ def validate_diagnostic_identity(config: RunConfig) -> None:
             "Seeded diagnostic changed mip_start_bound_policy: expected "
             f"{identity['mip_start_bound_policy']!r}, observed "
             f"{observed_bound_policy!r}"
+        )
+    observed_scaling_mode = diagnostic.get("native_scaling_mode", NO_NATIVE_SCALING)
+    if observed_scaling_mode != identity["native_scaling_mode"]:
+        raise ScopfError(
+            "Seeded diagnostic changed native_scaling_mode: expected "
+            f"{identity['native_scaling_mode']!r}, observed "
+            f"{observed_scaling_mode!r}"
         )
 
 
@@ -604,6 +625,15 @@ def run_seeded_round2_worker(
             "solution": seed_solution,
         }
         independent_seed_verification = verify_serialized_solution(config, seed_payload)
+        scaling_mode = str(
+            config.raw["diagnostic"].get("native_scaling_mode", NO_NATIVE_SCALING)
+        )
+        scaling_audit = native_scaling_audit(
+            master.canonical,
+            normalized_values,
+            mode=scaling_mode,
+            base_mva=float(case.base_mva),
+        )
         canonical_tolerance = float(
             config.raw["diagnostic"]["canonical_feasibility_tolerance"]
         )
@@ -622,6 +652,15 @@ def run_seeded_round2_worker(
             )
             and seed_audit["maximum_integrality_violation"] <= canonical_tolerance
             and seed_audit["objective_difference"] <= objective_tolerance
+            and scaling_audit["maximum_native_activity_identity_error"]
+            <= canonical_tolerance
+            and scaling_audit[
+                "maximum_canonicalized_row_violation_identity_error"
+            ]
+            <= canonical_tolerance
+            and scaling_audit["maximum_value_round_trip_error"]
+            <= canonical_tolerance
+            and scaling_audit["objective_identity_error"] <= objective_tolerance
             and independent_seed_verification.passed
         )
         payload["seed_audit"] = {
@@ -648,6 +687,21 @@ def run_seeded_round2_worker(
             ),
             "gate_passed": gate_passed,
         }
+        payload["native_scaling_audit"] = {
+            **scaling_audit,
+            "gate_passed": bool(
+                scaling_audit["maximum_native_activity_identity_error"]
+                <= canonical_tolerance
+                and scaling_audit[
+                    "maximum_canonicalized_row_violation_identity_error"
+                ]
+                <= canonical_tolerance
+                and scaling_audit["maximum_value_round_trip_error"]
+                <= canonical_tolerance
+                and scaling_audit["objective_identity_error"]
+                <= objective_tolerance
+            ),
+        }
         payload["timings_seconds"]["full_start_reconstruction_and_audit"] = (
             time.perf_counter() - stage
         )
@@ -666,6 +720,7 @@ def run_seeded_round2_worker(
                     "security_rows": EXPECTED_SECURITY_ROWS,
                     "mip_start_columns": int(start_columns.size),
                     "mip_start_bound_policy": bound_policy,
+                    "native_scaling_mode": scaling_mode,
                     "bound_projection_count": int(
                         np.count_nonzero(bound_projection_delta)
                     ),
@@ -690,6 +745,8 @@ def run_seeded_round2_worker(
             mip_start_values=integer_normalized_values,
             mip_start_mode=FULL_MIP_START,
             clip_mip_start_to_bounds=project_to_bounds,
+            native_scaling_mode=scaling_mode,
+            native_base_mva=float(case.base_mva),
             log_to_console=True,
             mip_acceptance_policy=str(
                 config.raw["platforms"]["dgx_spark"]["mip_acceptance_policy"]

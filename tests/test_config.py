@@ -289,3 +289,20 @@ def test_activsg2000_seeded_round2_v2_registers_exact_bound_projection() -> None
     assert config.raw["diagnostic"]["mip_start_bound_policy"] == (
         "project_numerical_excess_to_exact_bound"
     )
+
+
+def test_activsg2000_seeded_round2_v3_registers_per_unit_native_scaling() -> None:
+    config = load_config(
+        ROOT / "configs" / "activsg2000-gpu-round2-cpu-seed-diagnostic-v3.json"
+    )
+
+    validate_diagnostic_identity(config)
+    assert config.benchmark_id == (
+        "activsg2000-gpu-round2-cpu-seed-diagnostic-v3"
+    )
+    assert config.raw["diagnostic"]["mip_start_bound_policy"] == (
+        "project_numerical_excess_to_exact_bound"
+    )
+    assert config.raw["diagnostic"]["native_scaling_mode"] == (
+        "power_system_per_unit_v1"
+    )
