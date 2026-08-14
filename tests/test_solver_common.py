@@ -50,6 +50,7 @@ def test_rebuilding_session_reuses_only_prior_solution_as_partial_start(
         native_scaling_mode="power_system_per_unit_v1",
         native_base_mva=100.0,
         log_to_console=True,
+        cuopt_pdlp_profile={"method": "pdlp"},
     )
 
     first = session.solve(time_limit_seconds=5.0)
@@ -66,3 +67,4 @@ def test_rebuilding_session_reuses_only_prior_solution_as_partial_start(
     )
     assert observed_options[0]["native_base_mva"] == 100.0
     assert observed_options[0]["log_to_console"] is True
+    assert observed_options[0]["cuopt_pdlp_profile"] == {"method": "pdlp"}

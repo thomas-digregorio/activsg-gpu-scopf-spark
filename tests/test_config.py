@@ -5,6 +5,15 @@ from activsg_scopf.seeded_diagnostic import validate_diagnostic_identity
 
 ROOT = Path(__file__).resolve().parents[1]
 
+PDLP_PROFILE = {
+    "method": "pdlp",
+    "solver_mode": "stable3",
+    "precision": "fp64",
+    "batch_strong_branching": True,
+    "batch_reliability_branching": True,
+    "reliability_branching_factor": 1,
+}
+
 
 def test_registered_config_is_single_hour_activsg500() -> None:
     config = load_config(ROOT / "configs" / "activsg500.json")
@@ -317,6 +326,35 @@ def test_activsg2000_gpu_v5_changes_only_runtime_and_frozen_identity() -> None:
         "later_rounds": "prior_gpu_integer_commitment_only",
     }
     assert v5.raw["benchmark"]["pricing"] == v4.raw["benchmark"]["pricing"]
+
+
+def test_activsg2000_gpu_v6_changes_only_cuopt_pdlp_policy_and_identity() -> None:
+    v5 = load_config(ROOT / "configs" / "activsg2000-gpu-gap-1e-3-v5.json")
+    v6 = load_config(ROOT / "configs" / "activsg2000-gpu-gap-1e-3-v6.json")
+
+    assert v6.case_name == v5.case_name == "ACTIVSg2000"
+    assert v6.model == v5.model
+    assert v6.runtime == v5.runtime
+    assert v6.raw["raw_inputs"] == v5.raw["raw_inputs"]
+    assert v6.benchmark_id == "activsg2000-gpu-gap-v6-1e-3"
+    assert v6.raw["benchmark"]["required_git_tag"] == (
+        "experiment-2000-gpu-gap-v6"
+    )
+    assert v6.raw["benchmark"]["experiment_suite_id"] == (
+        "activsg2000-gpu-gap-sensitivity-v6"
+    )
+    assert v6.raw["benchmark"]["initialization"] == (
+        v5.raw["benchmark"]["initialization"]
+    )
+    assert v6.raw["benchmark"]["pricing"] == v5.raw["benchmark"]["pricing"]
+    v5_profile = v5.raw["platforms"]["dgx_spark"]
+    v6_profile = v6.raw["platforms"]["dgx_spark"]
+    assert v6_profile["cuopt_pdlp_profile"] == PDLP_PROFILE
+    assert {
+        key: value
+        for key, value in v6_profile.items()
+        if key != "cuopt_pdlp_profile"
+    } == v5_profile
 
 
 def test_activsg2000_seeded_round2_diagnostic_is_exactly_registered() -> None:

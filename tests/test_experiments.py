@@ -99,6 +99,31 @@ def test_activsg2000_gpu_v5_registers_900_second_solve_budget() -> None:
     assert config.raw["benchmark"]["initialization"]["external_cpu_mip_start"] is False
 
 
+def test_activsg2000_gpu_v6_registers_pdlp_and_same_900_second_budget() -> None:
+    config = load_config(ROOT / "configs" / "activsg2000-gpu-gap-1e-3-v6.json")
+
+    assert _experiment_identity(config) == (
+        "activsg2000-gpu-gap-sensitivity-v6",
+        "1e-3",
+    )
+    runtime = config.runtime
+    available = (
+        runtime["deadline_seconds"]
+        - runtime["verification_reserve_seconds"]
+        - runtime["serialization_reserve_seconds"]
+    )
+    assert available == 900.0
+    profile = config.raw["platforms"]["dgx_spark"]
+    assert profile["cuopt_pdlp_profile"] == {
+        "method": "pdlp",
+        "solver_mode": "stable3",
+        "precision": "fp64",
+        "batch_strong_branching": True,
+        "batch_reliability_branching": True,
+        "reliability_branching_factor": 1,
+    }
+
+
 def test_next_gap_requires_prior_success_and_pricing() -> None:
     successful = {
         "runs": {

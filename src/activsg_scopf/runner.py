@@ -295,6 +295,9 @@ def run_end_to_end(
                 log_to_console=bool(
                     diagnostics_enabled and profile["solver"] == "cuopt"
                 ),
+                cuopt_pdlp_profile=dict(
+                    profile.get("cuopt_pdlp_profile", {})
+                ),
             )
 
         solver_session = build_solver_session()

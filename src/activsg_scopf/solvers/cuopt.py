@@ -27,6 +27,71 @@ POWER_SYSTEM_PER_UNIT_SCALING = "power_system_per_unit_v1"
 SUPPORTED_NATIVE_SCALING_MODES = frozenset(
     {NO_NATIVE_SCALING, POWER_SYSTEM_PER_UNIT_SCALING}
 )
+CUOPT_PDLP_PROFILE_KEYS = frozenset(
+    {
+        "method",
+        "solver_mode",
+        "precision",
+        "batch_strong_branching",
+        "batch_reliability_branching",
+        "reliability_branching_factor",
+    }
+)
+CUOPT_PDLP_METHODS = {"pdlp": 1}
+CUOPT_PDLP_SOLVER_MODES = {"stable3": 4}
+CUOPT_PDLP_PRECISIONS = {"fp64": 1}
+
+
+def normalize_cuopt_pdlp_profile(
+    profile: dict[str, object] | None,
+) -> dict[str, int]:
+    """Map the registered descriptive PDLP profile to exact cuOpt parameters."""
+
+    if not profile:
+        return {}
+    observed_keys = frozenset(profile)
+    if observed_keys != CUOPT_PDLP_PROFILE_KEYS:
+        missing = sorted(CUOPT_PDLP_PROFILE_KEYS - observed_keys)
+        unknown = sorted(observed_keys - CUOPT_PDLP_PROFILE_KEYS)
+        raise ScopfError(
+            "cuOpt PDLP profile must specify the exact registered key set; "
+            f"missing={missing}, unknown={unknown}"
+        )
+    method = str(profile["method"])
+    solver_mode = str(profile["solver_mode"])
+    precision = str(profile["precision"])
+    if method not in CUOPT_PDLP_METHODS:
+        raise ScopfError(f"Unsupported cuOpt PDLP method: {method!r}")
+    if solver_mode not in CUOPT_PDLP_SOLVER_MODES:
+        raise ScopfError(f"Unsupported cuOpt PDLP solver mode: {solver_mode!r}")
+    if precision not in CUOPT_PDLP_PRECISIONS:
+        raise ScopfError(f"Unsupported cuOpt PDLP precision: {precision!r}")
+    for key in ("batch_strong_branching", "batch_reliability_branching"):
+        if not isinstance(profile[key], bool):
+            raise ScopfError(f"cuOpt PDLP profile {key} must be boolean")
+    reliability_factor = profile["reliability_branching_factor"]
+    if not isinstance(reliability_factor, int) or isinstance(
+        reliability_factor, bool
+    ):
+        raise ScopfError(
+            "cuOpt PDLP reliability_branching_factor must be an integer"
+        )
+    if reliability_factor != 1:
+        raise ScopfError(
+            "This frozen cuOpt PDLP profile requires reliability branching factor 1"
+        )
+    return {
+        "method": CUOPT_PDLP_METHODS[method],
+        "pdlp_solver_mode": CUOPT_PDLP_SOLVER_MODES[solver_mode],
+        "pdlp_precision": CUOPT_PDLP_PRECISIONS[precision],
+        "mip_batch_pdlp_strong_branching": int(
+            profile["batch_strong_branching"]
+        ),
+        "mip_batch_pdlp_reliability_branching": int(
+            profile["batch_reliability_branching"]
+        ),
+        "mip_reliability_branching": reliability_factor,
+    }
 
 
 def _native(value: object) -> object:
@@ -329,6 +394,7 @@ def solve_cuopt(
     native_scaling_mode: str = NO_NATIVE_SCALING,
     native_base_mva: float = 100.0,
     log_to_console: bool = False,
+    cuopt_pdlp_profile: dict[str, object] | None = None,
     mip_acceptance_policy: str = NATIVE_OPTIMAL_ONLY,
     mip_certificate_residual_tolerance: float = 1e-6,
 ) -> SolveResult:
@@ -433,6 +499,7 @@ def solve_cuopt(
             if isfinite(hi):
                 problem.addConstraint(expression <= hi, name=f"{name}__upper")
                 native_constraint_count += 1
+    pdlp_settings = normalize_cuopt_pdlp_profile(cuopt_pdlp_profile)
     settings = SolverSettings()
     settings.set_parameter("time_limit", float(time_limit_seconds))
     settings.set_parameter("mip_relative_gap", float(mip_relative_gap))
@@ -440,6 +507,17 @@ def solve_cuopt(
     settings.set_parameter("log_to_console", bool(log_to_console))
     if threads > 0:
         settings.set_parameter("num_cpu_threads", int(threads))
+    for name, value in pdlp_settings.items():
+        settings.set_parameter(name, value)
+    pdlp_settings_readback = {
+        name: int(_native(settings.get_parameter(name)))
+        for name in pdlp_settings
+    }
+    if pdlp_settings_readback != pdlp_settings:
+        raise ScopfError(
+            "cuOpt PDLP parameter readback did not match the requested profile: "
+            f"requested={pdlp_settings}, observed={pdlp_settings_readback}"
+        )
     problem.solve(settings)
     status = problem.Status.name
     stats = problem.SolutionStats
@@ -556,5 +634,8 @@ def solve_cuopt(
             "native_row_scale_minimum": float(np.min(row_scale)),
             "native_row_scale_maximum": float(np.max(row_scale)),
             "log_to_console": bool(log_to_console),
+            "cuopt_pdlp_profile": dict(cuopt_pdlp_profile or {}),
+            "cuopt_pdlp_parameters_requested": pdlp_settings,
+            "cuopt_pdlp_parameters_readback": pdlp_settings_readback,
         },
     )

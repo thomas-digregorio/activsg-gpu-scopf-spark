@@ -225,6 +225,17 @@ but gap-uncertified, remains incomplete, and has no accepted pricing. See the
 [v5 report](reports/activsg2000-gpu-1e-3-v5/README.md). No v5 retry was
 performed.
 
+The separately authorized v6 experiment changes only the cuOpt solver policy
+and frozen identity relative to v5. It explicitly selects the PDLP method in
+Stable3 mode with FP64 arithmetic and enables cuOpt's batched PDLP strong- and
+reliability-branching controls with reliability factor 1. The adapter reads
+every parameter back before solving and records both the requested and observed
+native values in each round. The exact-PMIN model, per-unit reformulation,
+`1e-3` target, cold first round, prior-GPU integer starts in later rounds,
+dynamic add-resolve-screen loop, and cumulative 900-second solve allowance are
+unchanged. Only one v6 optimization run is authorized; there is no automatic
+retry.
+
 That ACTIVSg2000 campaign is now closed. The `1e-3` run completed
 `optimal_verified` with accepted fixed-commitment pricing; the `1e-4` run hit
 its restricted-master solver budget above the requested gap and its provisional
@@ -272,6 +283,9 @@ bash scripts/spark-gap-2000-gpu-1e-3-v4.sh
 
 bash scripts/spark-build-2000-gpu-1e-3-v5.sh
 bash scripts/spark-gap-2000-gpu-1e-3-v5.sh
+# One authorized PDLP-policy comparison against v5
+bash scripts/spark-build-2000-gpu-1e-3-v6.sh
+bash scripts/spark-gap-2000-gpu-1e-3-v6.sh
 ```
 
 Continue with `1e-4` through `1e-7` only after the prior level finishes

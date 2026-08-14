@@ -13,8 +13,54 @@ from activsg_scopf.solvers.cuopt import (
     evaluate_mip_gap_certificate,
     native_scaling_audit,
     native_scaling_vectors,
+    normalize_cuopt_pdlp_profile,
     prepare_mip_start,
 )
+
+PDLP_PROFILE = {
+    "method": "pdlp",
+    "solver_mode": "stable3",
+    "precision": "fp64",
+    "batch_strong_branching": True,
+    "batch_reliability_branching": True,
+    "reliability_branching_factor": 1,
+}
+
+
+def test_empty_cuopt_pdlp_profile_preserves_native_defaults() -> None:
+    assert normalize_cuopt_pdlp_profile({}) == {}
+    assert normalize_cuopt_pdlp_profile(None) == {}
+
+
+def test_registered_cuopt_pdlp_profile_maps_to_exact_native_parameters() -> None:
+    assert normalize_cuopt_pdlp_profile(PDLP_PROFILE) == {
+        "method": 1,
+        "pdlp_solver_mode": 4,
+        "pdlp_precision": 1,
+        "mip_batch_pdlp_strong_branching": 1,
+        "mip_batch_pdlp_reliability_branching": 1,
+        "mip_reliability_branching": 1,
+    }
+
+
+@pytest.mark.parametrize(
+    "mutation, match",
+    [
+        ({"unknown": 1}, "exact registered key set"),
+        ({"method": "concurrent"}, "Unsupported cuOpt PDLP method"),
+        ({"solver_mode": "fast1"}, "Unsupported cuOpt PDLP solver mode"),
+        ({"precision": "mixed"}, "Unsupported cuOpt PDLP precision"),
+        ({"batch_strong_branching": 1}, "must be boolean"),
+        ({"reliability_branching_factor": 2}, "requires.*factor 1"),
+    ],
+)
+def test_cuopt_pdlp_profile_rejects_unregistered_values(
+    mutation: dict[str, object], match: str
+) -> None:
+    profile = dict(PDLP_PROFILE)
+    profile.update(mutation)
+    with pytest.raises(ScopfError, match=match):
+        normalize_cuopt_pdlp_profile(profile)
 
 
 def _certificate(**overrides: object) -> dict[str, object]:
