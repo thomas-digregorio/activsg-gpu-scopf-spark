@@ -233,8 +233,14 @@ every parameter back before solving and records both the requested and observed
 native values in each round. The exact-PMIN model, per-unit reformulation,
 `1e-3` target, cold first round, prior-GPU integer starts in later rounds,
 dynamic add-resolve-screen loop, and cumulative 900-second solve allowance are
-unchanged. Only one v6 optimization run is authorized; there is no automatic
-retry.
+unchanged. The native log confirmed cooperative batch PDLP and dual-simplex
+strong branching in all three rounds. V6 added 173 then 18 pairs; round 3's
+exhaustive screen found zero violations and the independent checker passed all
+17,563,400 sides. It nevertheless ended at objective `1,132,912.294626`, bound
+`1,130,615.375711`, and gap `0.0020274`, above the requested `0.001`. The run
+is secure but gap-uncertified, remains incomplete, and has no accepted pricing.
+See the [v6 report](reports/activsg2000-gpu-1e-3-v6/README.md). No v6 retry was
+performed.
 
 That ACTIVSg2000 campaign is now closed. The `1e-3` run completed
 `optimal_verified` with accepted fixed-commitment pricing; the `1e-4` run hit
