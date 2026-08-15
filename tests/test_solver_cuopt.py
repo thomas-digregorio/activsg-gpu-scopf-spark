@@ -10,6 +10,7 @@ from activsg_scopf.solvers.cuopt import (
     INTEGER_ONLY_MIP_START,
     NO_NATIVE_SCALING,
     POWER_SYSTEM_PER_UNIT_SCALING,
+    IncumbentCommitmentTrace,
     audit_cuopt_native_log,
     audit_mip_start_readback,
     evaluate_mip_gap_certificate,
@@ -29,6 +30,77 @@ PDLP_PROFILE = {
     "batch_reliability_branching": True,
     "reliability_branching_factor": 1,
 }
+
+
+def test_incumbent_commitment_trace_compresses_stable_callbacks() -> None:
+    trace = IncumbentCommitmentTrace(
+        np.asarray([0, 2, 4]), ["u_g0000", "u_g0001", "u_g0002"]
+    )
+    trace.record_callback(
+        np.asarray([1.0, 0.0, 1.0]),
+        elapsed_seconds=1.0,
+        objective=100.0,
+        bound=90.0,
+    )
+    trace.record_callback(
+        np.asarray([1.0, 0.0, 1.0]),
+        elapsed_seconds=2.0,
+        objective=99.0,
+        bound=91.0,
+    )
+    trace.record_callback(
+        np.asarray([1.0, 1.0, 0.0]),
+        elapsed_seconds=3.0,
+        objective=98.0,
+        bound=92.0,
+    )
+    result = trace.finalize(
+        np.asarray([1.0, 1.0, 0.0]),
+        solve_time_seconds=10.0,
+        objective=98.0,
+        bound=92.0,
+    )
+
+    assert result["callback_count"] == 3
+    assert result["same_commitment_callback_count"] == 1
+    assert result["commitment_transition_count"] == 2
+    assert result["unique_commitment_count"] == 2
+    assert result["stabilization_window_seconds_at_solver_return"] == 7.0
+    assert result["solver_return_matches_last_callback"] is True
+    assert result["complete"] is True
+    first, second = result["snapshots"]
+    assert first["incumbent_callbacks_for_state"] == 2
+    assert first["last_seen_objective"] == 99.0
+    assert second["hamming_distance_from_previous_incumbent"] == 2
+    assert second["off_to_on_from_previous_incumbent"] == 1
+    assert second["on_to_off_from_previous_incumbent"] == 1
+    assert [change["variable_name"] for change in second["changes_from_previous_incumbent"]] == [
+        "u_g0001",
+        "u_g0002",
+    ]
+
+
+def test_incumbent_commitment_trace_records_callback_errors() -> None:
+    trace = IncumbentCommitmentTrace(np.asarray([0]), ["u_g0000"])
+    try:
+        trace.record_callback(
+            np.asarray([0.5]),
+            elapsed_seconds=1.0,
+            objective=1.0,
+            bound=0.0,
+        )
+    except ValueError as exc:
+        trace.record_callback_error(exc, elapsed_seconds=1.0)
+    result = trace.finalize(
+        np.asarray([1.0]),
+        solve_time_seconds=2.0,
+        objective=1.0,
+        bound=0.0,
+    )
+
+    assert result["callback_count"] == 1
+    assert len(result["callback_errors"]) == 1
+    assert result["complete"] is False
 
 
 def test_empty_cuopt_pdlp_profile_preserves_native_defaults() -> None:

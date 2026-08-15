@@ -61,6 +61,7 @@ class RebuildingSolverSession:
     native_base_mva: float = 100.0
     log_to_console: bool = False
     cuopt_pdlp_profile: dict[str, Any] = field(default_factory=dict)
+    track_incumbent_commitments: bool = False
     mip_start_precheck: str = NO_MIP_START_PRECHECK
     mip_start_precheck_time_limit_seconds: float = 10.0
     mode: str = field(init=False)
@@ -197,6 +198,7 @@ class RebuildingSolverSession:
             native_base_mva=self.native_base_mva,
             log_to_console=self.log_to_console,
             cuopt_pdlp_profile=self.cuopt_pdlp_profile,
+            track_incumbent_commitments=self.track_incumbent_commitments,
         )
         if precheck is not None:
             result.statistics["mip_start_feasibility_precheck"] = precheck
@@ -220,6 +222,7 @@ def create_solver_session(
     native_base_mva: float = 100.0,
     log_to_console: bool = False,
     cuopt_pdlp_profile: dict[str, Any] | None = None,
+    track_incumbent_commitments: bool = False,
     mip_start_precheck: str = NO_MIP_START_PRECHECK,
     mip_start_precheck_time_limit_seconds: float = 10.0,
 ) -> SolverSession:
@@ -246,6 +249,7 @@ def create_solver_session(
             native_base_mva=native_base_mva,
             log_to_console=log_to_console,
             cuopt_pdlp_profile=dict(cuopt_pdlp_profile or {}),
+            track_incumbent_commitments=track_incumbent_commitments,
             mip_start_precheck=mip_start_precheck,
             mip_start_precheck_time_limit_seconds=(
                 mip_start_precheck_time_limit_seconds
@@ -270,6 +274,7 @@ def solve_canonical(
     native_base_mva: float = 100.0,
     log_to_console: bool = False,
     cuopt_pdlp_profile: dict[str, Any] | None = None,
+    track_incumbent_commitments: bool = False,
 ) -> SolveResult:
     if time_limit_seconds <= 0:
         raise ScopfError("Solver was not started because no deadline budget remained")
@@ -301,5 +306,6 @@ def solve_canonical(
             native_base_mva=native_base_mva,
             log_to_console=log_to_console,
             cuopt_pdlp_profile=cuopt_pdlp_profile,
+            track_incumbent_commitments=track_incumbent_commitments,
         )
     raise ScopfError(f"Unknown canonical solver adapter: {solver}")

@@ -71,6 +71,7 @@ def test_tiny_end_to_end_run_persists_diagnostics(tmp_path: Path) -> None:
     assert "constraint_generation_round_started" in names
     assert "highs_mip_progress" in names
     assert "exhaustive_contingency_screen_finished" in names
+    assert "unit_commitment_snapshot" in names
     assert names.count("constraint_generation_round_started") == names.count(
         "exhaustive_contingency_screen_started"
     )
@@ -274,6 +275,13 @@ def test_uncertified_master_with_new_pairs_is_added_resolved_and_rescreened(
         record["screen"]["new_violated_pairs"]
         for record in result["constraint_generation_rounds"]
     ] == [1, 0]
+    commitment_rounds = [
+        record["unit_commitment"]
+        for record in result["constraint_generation_rounds"]
+    ]
+    assert commitment_rounds[0]["stable_from_previous_round"] is None
+    assert commitment_rounds[1]["stable_from_previous_round"] is True
+    assert commitment_rounds[1]["hamming_distance_from_previous_round"] == 0
     assert result["acceptance_gates"]["requested_mip_gap_certified"] is True
     assert (
         result["acceptance_gates"][

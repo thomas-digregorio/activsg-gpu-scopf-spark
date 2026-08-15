@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import hashlib
+import time
 from math import isfinite
 from pathlib import Path
 from tempfile import NamedTemporaryFile
+from typing import Any
 
 import numpy as np
 
@@ -48,6 +50,227 @@ CUOPT_PDLP_PROFILE_KEYS = frozenset(
 CUOPT_PDLP_METHODS = {"pdlp": 1}
 CUOPT_PDLP_SOLVER_MODES = {"stable3": 4}
 CUOPT_PDLP_PRECISIONS = {"fp64": 1}
+INCUMBENT_COMMITMENT_TRACE_POLICY = (
+    "cuopt_get_solution_callback_distinct_commitment_v1"
+)
+
+
+class IncumbentCommitmentTrace:
+    """Compress cuOpt incumbent callbacks into exact commitment transitions."""
+
+    def __init__(
+        self,
+        canonical_columns: np.ndarray,
+        variable_names: list[str],
+    ) -> None:
+        columns = np.asarray(canonical_columns, dtype=np.int64)
+        if columns.ndim != 1 or len(variable_names) != columns.size:
+            raise ValueError("Invalid incumbent commitment trace identity")
+        self.canonical_columns = [int(value) for value in columns]
+        self.variable_names = list(variable_names)
+        self.callback_count = 0
+        self.same_commitment_callback_count = 0
+        self.callback_errors: list[dict[str, Any]] = []
+        self.snapshots: list[dict[str, Any]] = []
+        self._last_vector: np.ndarray | None = None
+        self._unique_fingerprints: set[str] = set()
+        self.last_callback_elapsed_seconds: float | None = None
+        self.last_commitment_change_elapsed_seconds: float | None = None
+
+    def _normalize(self, commitments: np.ndarray) -> tuple[np.ndarray, float]:
+        values = np.asarray(commitments, dtype=np.float64)
+        if values.shape != (len(self.canonical_columns),):
+            raise ValueError("Incumbent commitment vector has the wrong shape")
+        if not np.all(np.isfinite(values)):
+            raise ValueError("Incumbent commitment vector is nonfinite")
+        rounded = np.rint(values)
+        maximum_integrality_error = (
+            float(np.max(np.abs(values - rounded))) if values.size else 0.0
+        )
+        if maximum_integrality_error > 1e-5:
+            raise ValueError(
+                "Incumbent callback returned a nonintegral commitment vector"
+            )
+        if np.any((rounded < 0.0) | (rounded > 1.0)):
+            raise ValueError("Incumbent commitment vector is not binary")
+        return rounded.astype(np.int8), maximum_integrality_error
+
+    def _record(
+        self,
+        commitments: np.ndarray,
+        *,
+        elapsed_seconds: float,
+        objective: float | None,
+        bound: float | None,
+        source: str,
+        callback: bool,
+    ) -> None:
+        vector, maximum_integrality_error = self._normalize(commitments)
+        fingerprint = hashlib.sha256(vector.tobytes()).hexdigest()
+        if callback:
+            self.callback_count += 1
+            self.last_callback_elapsed_seconds = float(elapsed_seconds)
+        if self._last_vector is not None and np.array_equal(
+            vector, self._last_vector
+        ):
+            if callback:
+                self.same_commitment_callback_count += 1
+                self.snapshots[-1]["incumbent_callbacks_for_state"] += 1
+            self.snapshots[-1].update(
+                {
+                    "last_seen_elapsed_seconds": float(elapsed_seconds),
+                    "last_seen_objective": objective,
+                    "last_seen_bound": bound,
+                    "last_seen_source": source,
+                }
+            )
+            return
+        previous = self._last_vector
+        changed_positions = (
+            np.empty(0, dtype=np.int64)
+            if previous is None
+            else np.flatnonzero(vector != previous)
+        )
+        changes = [
+            {
+                "integer_position": int(position),
+                "canonical_column": self.canonical_columns[int(position)],
+                "variable_name": self.variable_names[int(position)],
+                "from_commitment": int(previous[int(position)]),
+                "to_commitment": int(vector[int(position)]),
+            }
+            for position in changed_positions
+        ]
+        snapshot = {
+            "transition": len(self.snapshots) + 1,
+            "first_seen_elapsed_seconds": float(elapsed_seconds),
+            "last_seen_elapsed_seconds": float(elapsed_seconds),
+            "first_seen_objective": objective,
+            "last_seen_objective": objective,
+            "first_seen_bound": bound,
+            "last_seen_bound": bound,
+            "first_seen_source": source,
+            "last_seen_source": source,
+            "commitment_count": int(np.sum(vector)),
+            "commitment_fingerprint_sha256": fingerprint,
+            "hamming_distance_from_previous_incumbent": (
+                None if previous is None else int(changed_positions.size)
+            ),
+            "off_to_on_from_previous_incumbent": (
+                None
+                if previous is None
+                else int(np.count_nonzero((previous == 0) & (vector == 1)))
+            ),
+            "on_to_off_from_previous_incumbent": (
+                None
+                if previous is None
+                else int(np.count_nonzero((previous == 1) & (vector == 0)))
+            ),
+            "maximum_integrality_error": maximum_integrality_error,
+            "incumbent_callbacks_for_state": int(callback),
+            "changes_from_previous_incumbent": changes,
+            "commitment_vector": [int(value) for value in vector],
+        }
+        self.snapshots.append(snapshot)
+        self._last_vector = vector.copy()
+        self._unique_fingerprints.add(fingerprint)
+        self.last_commitment_change_elapsed_seconds = float(elapsed_seconds)
+
+    def record_callback(
+        self,
+        commitments: np.ndarray,
+        *,
+        elapsed_seconds: float,
+        objective: float | None,
+        bound: float | None,
+    ) -> None:
+        self._record(
+            commitments,
+            elapsed_seconds=elapsed_seconds,
+            objective=objective,
+            bound=bound,
+            source="cuopt_incumbent_callback",
+            callback=True,
+        )
+
+    def record_callback_error(
+        self, exc: Exception, *, elapsed_seconds: float
+    ) -> None:
+        self.callback_count += 1
+        self.last_callback_elapsed_seconds = float(elapsed_seconds)
+        self.callback_errors.append(
+            {
+                "elapsed_seconds": float(elapsed_seconds),
+                "error_type": type(exc).__name__,
+                "error": str(exc),
+            }
+        )
+
+    def finalize(
+        self,
+        final_commitments: np.ndarray | None,
+        *,
+        solve_time_seconds: float,
+        objective: float | None,
+        bound: float | None,
+    ) -> dict[str, Any]:
+        callback_fingerprint = (
+            None
+            if self._last_vector is None
+            else hashlib.sha256(self._last_vector.tobytes()).hexdigest()
+        )
+        if final_commitments is not None:
+            self._record(
+                final_commitments,
+                elapsed_seconds=float(solve_time_seconds),
+                objective=objective,
+                bound=bound,
+                source="solver_return",
+                callback=False,
+            )
+        final_fingerprint = (
+            None
+            if self._last_vector is None
+            else hashlib.sha256(self._last_vector.tobytes()).hexdigest()
+        )
+        stabilization_window = (
+            None
+            if self.last_commitment_change_elapsed_seconds is None
+            else max(
+                0.0,
+                float(solve_time_seconds)
+                - self.last_commitment_change_elapsed_seconds,
+            )
+        )
+        return {
+            "enabled": True,
+            "policy": INCUMBENT_COMMITMENT_TRACE_POLICY,
+            "canonical_integer_columns": self.canonical_columns,
+            "integer_variable_names": self.variable_names,
+            "callback_count": self.callback_count,
+            "callback_errors": self.callback_errors,
+            "commitment_transition_count": len(self.snapshots),
+            "unique_commitment_count": len(self._unique_fingerprints),
+            "same_commitment_callback_count": (
+                self.same_commitment_callback_count
+            ),
+            "last_callback_elapsed_seconds": (
+                self.last_callback_elapsed_seconds
+            ),
+            "last_commitment_change_elapsed_seconds": (
+                self.last_commitment_change_elapsed_seconds
+            ),
+            "stabilization_window_seconds_at_solver_return": (
+                stabilization_window
+            ),
+            "final_commitment_fingerprint_sha256": final_fingerprint,
+            "solver_return_matches_last_callback": (
+                final_fingerprint is not None
+                and callback_fingerprint == final_fingerprint
+            ),
+            "complete": final_fingerprint is not None and not self.callback_errors,
+            "snapshots": self.snapshots,
+        }
 
 
 def normalize_cuopt_pdlp_profile(
@@ -511,6 +734,7 @@ def solve_cuopt(
     native_base_mva: float = 100.0,
     log_to_console: bool = False,
     cuopt_pdlp_profile: dict[str, object] | None = None,
+    track_incumbent_commitments: bool = False,
     mip_acceptance_policy: str = NATIVE_OPTIMAL_ONLY,
     mip_certificate_residual_tolerance: float = 1e-6,
 ) -> SolveResult:
@@ -793,6 +1017,69 @@ def solve_cuopt(
             for index in mip_start_columns
         )
     )
+    incumbent_trace: IncumbentCommitmentTrace | None = None
+    incumbent_callback = None
+    incumbent_callback_clock: dict[str, float | None] = {"started": None}
+    if track_incumbent_commitments:
+        from cuopt.linear_programming.internals import GetSolutionCallback
+
+        integer_columns = np.flatnonzero(integrality)
+        incumbent_trace = IncumbentCommitmentTrace(
+            integer_columns,
+            [model.variable_names[int(index)] for index in integer_columns],
+        )
+
+        def extract_commitments(solution: object) -> np.ndarray:
+            commitments: list[float] = []
+            for index in integer_columns:
+                canonical_index = int(index)
+                components = column_components[canonical_index]
+                native_value = (
+                    eliminated_native_value_by_column[canonical_index]
+                    if not components
+                    else sum(
+                        multiplier * float(solution[native_index])
+                        for _, multiplier, native_index in components
+                    )
+                )
+                commitments.append(
+                    native_value * float(column_scale[canonical_index])
+                )
+            return np.asarray(commitments, dtype=np.float64)
+
+        callback_user_data = {
+            "policy": INCUMBENT_COMMITMENT_TRACE_POLICY,
+        }
+
+        class CommitmentCallback(GetSolutionCallback):
+            def __init__(self) -> None:
+                super().__init__()
+
+            def get_solution(
+                self,
+                solution: object,
+                solution_cost: object,
+                solution_bound: object,
+                user_data: object,
+            ) -> None:
+                started = incumbent_callback_clock["started"]
+                elapsed = 0.0 if started is None else time.perf_counter() - started
+                try:
+                    if user_data is not callback_user_data:
+                        raise ValueError("cuOpt changed callback user data")
+                    incumbent_trace.record_callback(
+                        extract_commitments(solution),
+                        elapsed_seconds=elapsed,
+                        objective=float(solution_cost[0]),
+                        bound=float(solution_bound[0]),
+                    )
+                except Exception as exc:  # pragma: no cover - native callback
+                    incumbent_trace.record_callback_error(
+                        exc, elapsed_seconds=elapsed
+                    )
+
+        incumbent_callback = CommitmentCallback()
+        settings.set_mip_callback(incumbent_callback, callback_user_data)
     with NamedTemporaryFile(
         mode="w", prefix="activsg-cuopt-native-", suffix=".log", delete=False
     ) as native_log_stream:
@@ -800,6 +1087,7 @@ def solve_cuopt(
     settings.set_parameter("log_file", str(native_log_path))
     native_log = ""
     try:
+        incumbent_callback_clock["started"] = time.perf_counter()
         problem.solve(settings)
         native_log = native_log_path.read_text(encoding="utf-8", errors="replace")
     finally:
@@ -880,6 +1168,21 @@ def solve_cuopt(
         if status == "Optimal" and not gap_certificate["reported_gap_meets_request"]
         else status
     )
+    incumbent_trace_payload: dict[str, Any] = {
+        "enabled": False,
+        "policy": INCUMBENT_COMMITMENT_TRACE_POLICY,
+    }
+    if incumbent_trace is not None:
+        incumbent_trace_payload = incumbent_trace.finalize(
+            (
+                None
+                if values is None
+                else values[np.flatnonzero(integrality)]
+            ),
+            solve_time_seconds=float(problem.SolveTime),
+            objective=objective_value,
+            bound=bound_value,
+        )
     return SolveResult(
         solver="cuopt",
         solver_version=str(getattr(cuopt, "__version__", "unknown")),
@@ -949,5 +1252,6 @@ def solve_cuopt(
             "cuopt_pdlp_profile": dict(cuopt_pdlp_profile or {}),
             "cuopt_pdlp_parameters_requested": pdlp_settings,
             "cuopt_pdlp_parameters_readback": pdlp_settings_readback,
+            "incumbent_commitment_trace": incumbent_trace_payload,
         },
     )

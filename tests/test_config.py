@@ -472,6 +472,50 @@ def test_activsg2000_gpu_v9_changes_only_start_policy_and_identity() -> None:
     }
 
 
+def test_activsg2000_gpu_v10_adds_bounded_commitment_trace_only() -> None:
+    v9 = load_config(ROOT / "configs" / "activsg2000-gpu-gap-1e-3-v9.json")
+    v10 = load_config(
+        ROOT / "configs" / "activsg2000-gpu-commitment-trace-v10.json"
+    )
+
+    assert v10.case_name == v9.case_name == "ACTIVSg2000"
+    assert v10.model == v9.model
+    assert v10.raw["raw_inputs"] == v9.raw["raw_inputs"]
+    assert v10.runtime == {
+        "deadline_seconds": 735.0,
+        "verification_reserve_seconds": 120.0,
+        "serialization_reserve_seconds": 15.0,
+        "maximum_constraint_generation_rounds": 100,
+    }
+    v9_profile = v9.raw["platforms"]["dgx_spark"]
+    v10_profile = v10.raw["platforms"]["dgx_spark"]
+    assert {
+        key: value for key, value in v10_profile.items() if key != "diagnostics"
+    } == {
+        key: value for key, value in v9_profile.items() if key != "diagnostics"
+    }
+    assert v10_profile["diagnostics"] == {
+        "enabled": True,
+        "mip_logging_interval_seconds": 10.0,
+        "track_incumbent_commitments": True,
+    }
+    assert v10.benchmark_id == (
+        "activsg2000-gpu-commitment-trace-v10-1e-3"
+    )
+    assert v10.raw["benchmark"]["required_git_tag"] == (
+        "experiment-2000-gpu-commitment-trace-v10"
+    )
+    assert v10.raw["benchmark"]["experiment_suite_id"] == (
+        "activsg2000-gpu-commitment-trace-v10"
+    )
+    assert v10.raw["benchmark"]["initialization"] == (
+        v9.raw["benchmark"]["initialization"]
+    )
+    assert v10.raw["benchmark"]["pricing"] == (
+        v9.raw["benchmark"]["pricing"]
+    )
+
+
 def test_1935_second_outer_deadline_is_authorized_only_for_v7_v8_and_v9(
     tmp_path: Path,
 ) -> None:

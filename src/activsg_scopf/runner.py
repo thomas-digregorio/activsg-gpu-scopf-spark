@@ -9,6 +9,7 @@ from typing import Any
 
 import numpy as np
 
+from .commitment import commitment_snapshot
 from .config import RunConfig, load_config
 from .costs import pwl_approximation_report
 from .deadline import Deadline, PeakMemorySampler
@@ -298,6 +299,11 @@ def run_end_to_end(
                 cuopt_pdlp_profile=dict(
                     profile.get("cuopt_pdlp_profile", {})
                 ),
+                track_incumbent_commitments=bool(
+                    diagnostics_profile.get(
+                        "track_incumbent_commitments", False
+                    )
+                ),
                 mip_start_precheck=str(
                     profile.get("mip_start_precheck", "none")
                 ),
@@ -325,6 +331,7 @@ def run_end_to_end(
         solve_total = 0.0
         screen_total = 0.0
         last_solve: SolveResult | None = None
+        previous_commitment_snapshot: dict[str, Any] | None = None
         secure = False
         maximum_rounds = int(config.runtime["maximum_constraint_generation_rounds"])
         for round_number in range(1, maximum_rounds + 1):
@@ -387,6 +394,31 @@ def run_end_to_end(
                 break
             payload["solution"] = serialize_solution(
                 last_solve.values, case, network, master
+            )
+            round_commitment = commitment_snapshot(
+                payload["solution"], previous_commitment_snapshot
+            )
+            round_payload["unit_commitment"] = round_commitment
+            previous_commitment_snapshot = round_commitment
+            emit_diagnostic(
+                "unit_commitment_snapshot",
+                round=round_number,
+                commitment_count=round_commitment["commitment_count"],
+                commitment_fingerprint_sha256=round_commitment[
+                    "commitment_fingerprint_sha256"
+                ],
+                stable_from_previous_round=round_commitment[
+                    "stable_from_previous_round"
+                ],
+                hamming_distance_from_previous_round=round_commitment[
+                    "hamming_distance_from_previous_round"
+                ],
+                off_to_on_from_previous_round=round_commitment[
+                    "off_to_on_from_previous_round"
+                ],
+                on_to_off_from_previous_round=round_commitment[
+                    "on_to_off_from_previous_round"
+                ],
             )
             flow = last_solve.values[master.index.flow_by_active_branch]
             payload["active_stage"] = "exhaustive_contingency_screen"

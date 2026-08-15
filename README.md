@@ -301,6 +301,16 @@ exposed or reused. The frozen v9 controller had already rejected the affected
 `Unknown` precheck vector by direct residual checks, so this telemetry fix does
 not alter the recorded solve or its cold-start decision.
 
+The separately authorized v10 diagnostic keeps the v9 mathematical model,
+source hashes, exact PMIN/PMAX, gap and security tolerances, PDLP policy,
+start-feasibility gate, and no-CPU-initialization rule. It changes the
+cumulative cuOpt allowance to 600 seconds and enables cuOpt's supported
+incumbent callback. Every distinct within-solve commitment state is recorded
+with elapsed time, objective/bound, on-unit count, fingerprint, and exact
+on/off deltas; every completed restricted-master solve also records a complete
+544-source-row commitment and round-to-round changes. This is a diagnostic run,
+not a timing comparison, because callback instrumentation adds host work.
+
 That ACTIVSg2000 campaign is now closed. The `1e-3` run completed
 `optimal_verified` with accepted fixed-commitment pricing; the `1e-4` run hit
 its restricted-master solver budget above the requested gap and its provisional
@@ -360,6 +370,9 @@ bash scripts/spark-gap-2000-gpu-1e-3-v8.sh
 # One authorized feasibility-checked-start replacement
 bash scripts/spark-build-2000-gpu-1e-3-v9.sh
 bash scripts/spark-gap-2000-gpu-1e-3-v9.sh
+# One authorized 10-minute incumbent-commitment trace
+bash scripts/spark-build-2000-gpu-commitment-trace-v10.sh
+bash scripts/spark-gap-2000-gpu-commitment-trace-v10.sh
 ```
 
 Continue with `1e-4` through `1e-7` only after the prior level finishes

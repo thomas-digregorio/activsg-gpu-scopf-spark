@@ -72,6 +72,7 @@ def test_rebuilding_session_reuses_only_prior_solution_as_partial_start(
     assert observed_options[0]["native_base_mva"] == 100.0
     assert observed_options[0]["log_to_console"] is True
     assert observed_options[0]["cuopt_pdlp_profile"] == {"method": "pdlp"}
+    assert observed_options[0]["track_incumbent_commitments"] is False
 
 
 def test_rebuilding_session_submits_only_feasibility_completed_full_start(
