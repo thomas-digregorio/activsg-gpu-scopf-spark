@@ -318,6 +318,18 @@ and tests every gap-experiment JSON through the same identity check used by the
 CLI. The one authorized computational replacement therefore uses v11 paths and
 an immutable v11 tag rather than overwriting v10's failed-launch evidence.
 
+The single v11 computational run used 600.041 seconds across three cuOpt
+rounds and finished in 601.954 seconds end to end. Its final incumbent is
+independently exhaustive-screened N-1 secure, but its 0.002211857 MIP gap did
+not certify the requested 0.001 threshold. Unit commitment did not stabilize:
+round endpoints changed by 46 and then 39 source rows, and round 3 recorded 30
+distinct callback commitments with its final change only 7.287 seconds before
+return. The [v11 commitment report](reports/activsg2000-gpu-commitment-trace-v11/README.md)
+preserves all 544 round endpoints, 64 distinct incumbent states, and 2,123
+exact within-solve unit flips. Its component probe also confirms that the
+corrected cuOpt adapter translates a five-column canonical MIP start into the
+proper four-column native vector with no assignment-size rejection.
+
 That ACTIVSg2000 campaign is now closed. The `1e-3` run completed
 `optimal_verified` with accepted fixed-commitment pricing; the `1e-4` run hit
 its restricted-master solver budget above the requested gap and its provisional
