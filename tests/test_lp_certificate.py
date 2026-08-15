@@ -12,7 +12,7 @@ from activsg_scopf.lp_certificate import validate_lp_certificate_config
 ROOT = Path(__file__).resolve().parents[1]
 
 
-@pytest.mark.parametrize("version", ["v12", "v13"])
+@pytest.mark.parametrize("version", ["v12", "v13", "v14"])
 def test_activsg2000_gpu_lp_certificate_is_registered_for_one_600_second_run(
     version: str,
 ) -> None:
@@ -24,6 +24,9 @@ def test_activsg2000_gpu_lp_certificate_is_registered_for_one_600_second_run(
     assert registration["profile"]["lp_method"] == "pdlp"
     assert registration["profile"]["pdlp_precision"] == "fp64"
     assert registration["reference_incumbent"]["objective"] == 1133047.8684341211
+    if version == "v14":
+        assert registration["profile"]["per_constraint_residual"] is True
+        assert registration["profile"]["redundant_angle_bounds"] == ("rate_a_dc_shortest_path_v1")
 
 
 def test_lp_certificate_rejects_unregistered_identity(tmp_path: Path) -> None:

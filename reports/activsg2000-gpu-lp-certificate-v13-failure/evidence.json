@@ -1,0 +1,36 @@
+{
+  "schema_version": "1.0.0",
+  "benchmark_id": "activsg2000-gpu-lp-certificate-v13",
+  "status": "failed_continuous_dual_certificate",
+  "classification": "checker_rejected_free_angle_and_misreconstructed_native_residual_scale",
+  "frozen_identity": {
+    "commit": "9c2fe161c3cece10ac11a967af902558f5acfbfb",
+    "tag": "experiment-2000-gpu-lp-certificate-v13"
+  },
+  "timings_seconds": {
+    "total_wall": 3.023588047013618,
+    "cuopt_solve": 1.388015313
+  },
+  "continuous_solve": {
+    "status": "Optimal",
+    "solved_by": "PDLP",
+    "original_integer_columns": 432,
+    "native_integer_columns": 0,
+    "primal_objective": 1118296.700341088,
+    "dual_objective_candidate": 1118296.699947574,
+    "native_primal_residual": 3.049302346279941e-7,
+    "native_dual_residual": 2.9777493564987766e-5,
+    "native_absolute_gap": 0.0003935140557587147,
+    "maximum_independent_row_violation": 1.1291185690595229e-7,
+    "incompatible_bound_column": 5516,
+    "incompatible_bound_column_name": "theta_b7095"
+  },
+  "contingency_screen_performed": false,
+  "accepted_bound": null,
+  "artifact_sha256": {
+    "result_json": "cac181b54e8c1c35dbbba8ed2e344a45aa3c2b1c1fa86ebca60e1f91c56dd225",
+    "run_registry": "ef6e6b477ed8bef588d2c012780fbb6e0546694aa968187b2fc0267857a1ef61",
+    "worker_console": "8f56f8f72fab58e7c27f553557e38b18e331786eb325e5c2186de760f245b78e",
+    "launcher_console": "b063716a65ca4f04d897a7b5ac34eb2e7791e7b32a19e79b0b1da8208d629fcd"
+  }
+}

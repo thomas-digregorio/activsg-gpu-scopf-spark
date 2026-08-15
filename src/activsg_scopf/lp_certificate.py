@@ -30,11 +30,15 @@ from .paths import guard_output_path, guard_runtime_environment
 from .provenance import build_source_manifest, write_json_atomic
 from .screening import ContingencyScreener, add_security_pairs
 from .solution import serialize_solution
-from .solvers.cuopt_lp import ContinuousSolveResult, solve_cuopt_continuous_pdlp
+from .solvers.cuopt_lp import (
+    ContinuousSolveResult,
+    derive_rate_a_angle_bounds,
+    solve_cuopt_continuous_pdlp,
+)
 from .verify import verify_serialized_solution
 
 LP_CERTIFICATE_KIND = "gpu_lp_relaxation_certificate"
-LP_CERTIFICATE_POLICY = "full_fractional_n_minus_1_pdlp_fp64_v1"
+LP_CERTIFICATE_POLICY = "full_fractional_n_minus_1_pdlp_fp64_v2"
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -58,6 +62,7 @@ def validate_lp_certificate_config(config: RunConfig) -> dict[str, Any]:
     registered_identities = {
         "activsg2000-gpu-lp-certificate-v12": "experiment-2000-gpu-lp-certificate-v12",
         "activsg2000-gpu-lp-certificate-v13": "experiment-2000-gpu-lp-certificate-v13",
+        "activsg2000-gpu-lp-certificate-v14": "experiment-2000-gpu-lp-certificate-v14",
     }
     required_tag = registered_identities.get(config.benchmark_id)
     if required_tag is None:
@@ -120,6 +125,13 @@ def validate_lp_certificate_config(config: RunConfig) -> dict[str, Any]:
         "pdlp_optimality_tolerance": 1e-8,
         "dual_certificate_residual_tolerance": 1e-7,
     }
+    if config.benchmark_id == "activsg2000-gpu-lp-certificate-v14":
+        required_profile.update(
+            {
+                "per_constraint_residual": True,
+                "redundant_angle_bounds": "rate_a_dc_shortest_path_v1",
+            }
+        )
     for key, expected in required_profile.items():
         if profile.get(key) != expected:
             raise ScopfError(
@@ -250,6 +262,19 @@ def run_lp_relaxation_certificate(
             chunk_columns=int(config.model["lodf_build_chunk_columns"]),
         )
         master = build_master(case, network, segments=int(config.model["pwl_segments"]))
+        redundant_bounds = None
+        redundant_bounds_policy = profile.get("redundant_angle_bounds")
+        if redundant_bounds_policy is not None:
+            if redundant_bounds_policy != "rate_a_dc_shortest_path_v1":
+                raise ScopfError(
+                    f"Unsupported redundant angle-bound policy: {redundant_bounds_policy!r}"
+                )
+            redundant_bounds = derive_rate_a_angle_bounds(
+                network,
+                master.index.theta_by_bus,
+                total_columns=master.canonical.num_columns,
+            )
+            payload["redundant_angle_bounds"] = redundant_bounds.audit
         payload["timings_seconds"]["model_and_factor_build"] = time.perf_counter() - started
         _, _, _, original_integrality = master.canonical.column_arrays()
         payload["relaxation_identity"] = {
@@ -306,12 +331,15 @@ def run_lp_relaxation_certificate(
                 master.canonical,
                 time_limit_seconds=solver_budget,
                 optimality_tolerance=float(profile["pdlp_optimality_tolerance"]),
+                primal_feasibility_tolerance=float(config.model["model_residual_tolerance_pu"]),
                 certificate_residual_tolerance=float(
                     profile["dual_certificate_residual_tolerance"]
                 ),
                 native_scaling_mode=str(profile["native_scaling_mode"]),
                 native_base_mva=float(case.base_mva),
                 log_to_console=True,
+                per_constraint_residual=bool(profile.get("per_constraint_residual", False)),
+                redundant_bounds=redundant_bounds,
             )
             solve_wall = time.perf_counter() - started
             solve_wall_total += solve_wall

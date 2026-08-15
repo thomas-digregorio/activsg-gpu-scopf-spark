@@ -360,6 +360,18 @@ reported primal, dual, and gap residuals against the same absolute-plus-scaled
 thresholds used by cuOpt. Any replacement run must use the distinct v13
 configuration, tag, registry, and output paths.
 
+The single approved v13 replacement also stopped after its first `Optimal`
+PDLP solve, in `3.024` seconds end to end. It translated zero integer columns
+and used no branch-and-bound, but the checker found one syntactically unbounded
+angle column and also attempted to reconstruct a post-presolve cuOpt residual
+threshold from the pre-presolve RHS. No contingency screen ran and no bound was
+accepted. Version 0.20.2 preserves that failure and prepares the distinct v14
+identity. V14 derives finite redundant bounds for every angle from the existing
+DC flow equations, finite `RATE_A` limits, and fixed reference angle; uses the
+model's `1e-6` primal tolerance; and enables cuOpt's per-constraint PDLP
+residual mode. The derivation changes no physical feasible point, PMIN value,
+cost, outage, or security tolerance.
+
 That ACTIVSg2000 campaign is now closed. The `1e-3` run completed
 `optimal_verified` with accepted fixed-commitment pricing; the `1e-4` run hit
 its restricted-master solver budget above the requested gap and its provisional
@@ -423,6 +435,10 @@ bash scripts/spark-gap-2000-gpu-1e-3-v9.sh
 # One authorized 10-minute computational replacement
 bash scripts/spark-build-2000-gpu-commitment-trace-v11.sh
 bash scripts/spark-gap-2000-gpu-commitment-trace-v11.sh
+# Preserved v12 and v13 LP-certificate failures; do not rerun either identity
+# V14 is a separately guarded replacement and requires explicit launch approval
+bash scripts/spark-build-2000-gpu-lp-certificate-v14.sh
+bash scripts/spark-run-2000-gpu-lp-certificate-v14.sh
 ```
 
 Continue with `1e-4` through `1e-7` only after the prior level finishes

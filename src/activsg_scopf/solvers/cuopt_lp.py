@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import hashlib
+import heapq
+import re
 from dataclasses import dataclass
 from math import isfinite
 from pathlib import Path
@@ -14,6 +16,7 @@ from scipy import sparse
 
 from ..canonical import CanonicalMILP
 from ..errors import ScopfError
+from ..network import NetworkData
 from .cuopt import audit_cuopt_native_log, native_scaling_vectors
 
 
@@ -28,6 +31,131 @@ class ContinuousSolveResult:
     values: np.ndarray | None
     solve_time_seconds: float
     statistics: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class RedundantColumnBounds:
+    """Finite bounds rigorously implied by the unchanged canonical model."""
+
+    lower: np.ndarray
+    upper: np.ndarray
+    audit: dict[str, Any]
+
+
+def derive_rate_a_angle_bounds(
+    network: NetworkData,
+    theta_columns: np.ndarray,
+    *,
+    total_columns: int,
+) -> RedundantColumnBounds:
+    """Bound every bus angle using finite RATE_A paths to the reference bus.
+
+    For branch ``e``, the existing DC equation and ``RATE_A`` constraint imply
+    ``|theta_i - theta_j| <= |shift_e| + RATE_A_e / |baseMVA * b_e|``.
+    Summing those inequalities along any path to the fixed reference angle is
+    valid; shortest paths provide the tightest bounds available from this
+    symmetric construction.  These bounds are redundant, not a model relaxation
+    or restriction.
+    """
+
+    columns = np.asarray(theta_columns, dtype=np.int64)
+    bus_count = int(network.bus_ids.size)
+    if columns.shape != (bus_count,):
+        raise ScopfError("Theta-column identities do not match the network buses")
+    if np.any(columns < 0) or np.any(columns >= total_columns):
+        raise ScopfError("Theta-column identities contain an invalid canonical column")
+    if np.unique(columns).size != columns.size:
+        raise ScopfError("Theta-column identities are not unique")
+    if not (0 <= int(network.reference_bus_index) < bus_count):
+        raise ScopfError("The network reference-bus index is invalid")
+
+    adjacency: list[list[tuple[int, float]]] = [[] for _ in range(bus_count)]
+    finite_edge_count = 0
+    for active_index in range(network.active_branch_source_rows.size):
+        rate = float(network.rate_a_mw[active_index])
+        susceptance = float(network.susceptance_pu[active_index])
+        shift = float(network.phase_shift_rad[active_index])
+        if not (
+            isfinite(rate)
+            and rate > 0.0
+            and isfinite(susceptance)
+            and susceptance != 0.0
+            and isfinite(shift)
+        ):
+            continue
+        coefficient = float(network.base_mva) * susceptance
+        weight = abs(shift) + rate / abs(coefficient)
+        if not isfinite(weight) or weight <= 0.0:
+            raise ScopfError("A RATE_A-implied angle-difference bound is invalid")
+        source = int(network.from_bus_index[active_index])
+        target = int(network.to_bus_index[active_index])
+        adjacency[source].append((target, weight))
+        adjacency[target].append((source, weight))
+        finite_edge_count += 1
+
+    distances = np.full(bus_count, np.inf, dtype=np.float64)
+    reference = int(network.reference_bus_index)
+    distances[reference] = 0.0
+    queue: list[tuple[float, int]] = [(0.0, reference)]
+    while queue:
+        distance, bus = heapq.heappop(queue)
+        if distance != distances[bus]:
+            continue
+        for neighbor, weight in adjacency[bus]:
+            candidate = distance + weight
+            if candidate < distances[neighbor]:
+                distances[neighbor] = candidate
+                heapq.heappush(queue, (candidate, neighbor))
+    if not np.all(np.isfinite(distances)):
+        unreachable = network.bus_ids[~np.isfinite(distances)]
+        raise ScopfError(
+            "Finite-RATE_A branches do not connect every bus to the reference; "
+            f"unreachable bus count={unreachable.size}"
+        )
+
+    lower = np.full(total_columns, -np.inf, dtype=np.float64)
+    upper = np.full(total_columns, np.inf, dtype=np.float64)
+    lower[columns] = -distances
+    upper[columns] = distances
+    digest = hashlib.sha256(distances.tobytes()).hexdigest()
+    return RedundantColumnBounds(
+        lower=lower,
+        upper=upper,
+        audit={
+            "policy": "rate_a_dc_shortest_path_v1",
+            "proof": (
+                "existing_dc_flow_equation_and_rate_a_imply_each_edge_angle_bound; "
+                "shortest_path_sums_to_fixed_reference_bound_each_bus_angle"
+            ),
+            "reference_bus_id": int(network.bus_ids[reference]),
+            "bounded_theta_column_count": int(columns.size),
+            "finite_rate_a_edge_count": finite_edge_count,
+            "maximum_absolute_angle_bound_rad": float(np.max(distances)),
+            "angle_bound_vector_sha256": digest,
+            "canonical_physical_feasible_set_changed": False,
+        },
+    )
+
+
+def _pdlp_log_metrics(native_log: str) -> dict[str, float | None]:
+    """Extract cuOpt's own final absolute/relative PDLP residual telemetry."""
+
+    metrics: dict[str, float | None] = {}
+    patterns = {
+        "gap": r"Duality gap \(abs/rel\):\s+([+\-0-9.eE]+)\s*/\s*([+\-0-9.eE]+)",
+        "primal": r"Primal infeasibility \(abs/rel\):\s+([+\-0-9.eE]+)\s*/\s*([+\-0-9.eE]+)",
+        "dual": r"Dual infeasibility \(abs/rel\):\s+([+\-0-9.eE]+)\s*/\s*([+\-0-9.eE]+)",
+    }
+    for name, pattern in patterns.items():
+        matches = re.findall(pattern, native_log)
+        if not matches:
+            metrics[f"{name}_absolute"] = None
+            metrics[f"{name}_relative"] = None
+            continue
+        absolute, relative = matches[-1]
+        metrics[f"{name}_absolute"] = float(absolute)
+        metrics[f"{name}_relative"] = float(relative)
+    return metrics
 
 
 def _row_types(values: np.ndarray) -> np.ndarray:
@@ -58,6 +186,7 @@ def validate_numeric_lp_certificate(
     native_dual_residual: float,
     native_gap: float,
     optimality_tolerance: float,
+    primal_feasibility_tolerance: float,
     residual_tolerance: float,
 ) -> dict[str, Any]:
     """Independently check cuOpt's FP64 LP primal/dual certificate.
@@ -83,8 +212,8 @@ def validate_numeric_lp_certificate(
         raise ScopfError("LP certificate column-vector dimensions are inconsistent")
     if row_dual.shape != row_rhs.shape or row_types.shape != row_rhs.shape:
         raise ScopfError("LP certificate row-vector dimensions are inconsistent")
-    if residual_tolerance < 0:
-        raise ScopfError("LP certificate residual tolerance must be nonnegative")
+    if residual_tolerance < 0 or primal_feasibility_tolerance < 0:
+        raise ScopfError("LP certificate tolerances must be nonnegative")
     if not all(
         np.all(np.isfinite(values))
         for values in (objective, row_rhs, primal, row_dual, reduced_cost)
@@ -120,18 +249,14 @@ def validate_numeric_lp_certificate(
         if returned_reduced_cost_mismatch.size
         else 0.0
     )
-    allowed_primal_residual = optimality_tolerance * (1.0 + float(np.linalg.norm(row_rhs)))
-    allowed_dual_residual = optimality_tolerance * (1.0 + float(np.linalg.norm(objective)))
-    allowed_gap = optimality_tolerance * (
+    reported_gap_threshold = optimality_tolerance * (
         1.0 + abs(float(reported_primal_objective)) + abs(float(reported_dual_objective))
     )
-    effective_primal_tolerance = max(residual_tolerance, allowed_primal_residual)
-    effective_dual_tolerance = max(residual_tolerance, allowed_dual_residual)
     effective_reduced_cost = implied_reduced_cost.copy()
     needs_missing_lower = (effective_reduced_cost > 0.0) & ~np.isfinite(column_lower)
     needs_missing_upper = (effective_reduced_cost < 0.0) & ~np.isfinite(column_upper)
     numerically_zero_unbounded = (needs_missing_lower | needs_missing_upper) & (
-        np.abs(effective_reduced_cost) <= effective_dual_tolerance
+        np.abs(effective_reduced_cost) <= residual_tolerance
     )
     effective_reduced_cost[numerically_zero_unbounded] = 0.0
     stationarity_adjustment = implied_reduced_cost - effective_reduced_cost
@@ -165,7 +290,6 @@ def validate_numeric_lp_certificate(
     )
     objective_tolerance = max(
         1e-5,
-        allowed_gap,
         residual_tolerance * objective_scale,
     )
     primal_objective_error = abs(reconstructed_primal - float(reported_primal_objective))
@@ -182,6 +306,10 @@ def validate_numeric_lp_certificate(
         if reconstructed_dual is None
         else min(float(reported_dual_objective), reconstructed_dual) - objective_tolerance
     )
+    reconstructed_bound_not_above_primal = bool(
+        conservative_numerical_lower_bound is not None
+        and conservative_numerical_lower_bound <= reconstructed_primal + objective_tolerance
+    )
     native_metrics_finite = all(
         isfinite(float(value))
         for value in (
@@ -192,23 +320,20 @@ def validate_numeric_lp_certificate(
     )
     passed = bool(
         native_metrics_finite
-        and maximum_primal_row_violation <= effective_primal_tolerance
-        and maximum_primal_bound_violation <= residual_tolerance
+        and maximum_primal_row_violation <= primal_feasibility_tolerance
+        and maximum_primal_bound_violation <= primal_feasibility_tolerance
         and maximum_row_dual_sign_violation <= residual_tolerance
-        and maximum_stationarity_residual <= effective_dual_tolerance
+        and maximum_stationarity_residual <= residual_tolerance
         and incompatible_bound_columns.size == 0
         and primal_objective_error <= objective_tolerance
-        and dual_objective_error is not None
-        and dual_objective_error <= objective_tolerance
-        and abs(float(native_primal_residual)) <= allowed_primal_residual
-        and abs(float(native_dual_residual)) <= allowed_dual_residual
-        and abs(float(native_gap)) <= allowed_gap
-        and dual_not_above_primal
+        and reconstructed_dual is not None
+        and reconstructed_bound_not_above_primal
     )
     return {
         "passed": passed,
         "certificate_kind": "independently_reconstructed_fp64_numerical_lp_dual_v1",
         "formal_exact_rational_certificate": False,
+        "primal_feasibility_tolerance": float(primal_feasibility_tolerance),
         "residual_tolerance": float(residual_tolerance),
         "objective_consistency_tolerance": objective_tolerance,
         "reconstructed_primal_objective": reconstructed_primal,
@@ -234,13 +359,14 @@ def validate_numeric_lp_certificate(
         "native_primal_residual": float(native_primal_residual),
         "native_dual_residual": float(native_dual_residual),
         "native_gap": float(native_gap),
+        "native_metrics_used_as_telemetry_only": True,
         "optimality_tolerance": float(optimality_tolerance),
-        "allowed_primal_residual": allowed_primal_residual,
-        "allowed_dual_residual": allowed_dual_residual,
-        "allowed_gap": allowed_gap,
-        "effective_primal_tolerance": effective_primal_tolerance,
-        "effective_dual_tolerance": effective_dual_tolerance,
+        "reported_gap_threshold": reported_gap_threshold,
         "dual_not_above_primal": dual_not_above_primal,
+        "reported_dual_objective_consistent": bool(
+            dual_objective_error is not None and dual_objective_error <= objective_tolerance
+        ),
+        "reconstructed_bound_not_above_primal": reconstructed_bound_not_above_primal,
     }
 
 
@@ -249,10 +375,13 @@ def solve_cuopt_continuous_pdlp(
     *,
     time_limit_seconds: float,
     optimality_tolerance: float,
+    primal_feasibility_tolerance: float,
     certificate_residual_tolerance: float,
     native_scaling_mode: str,
     native_base_mva: float,
     log_to_console: bool,
+    per_constraint_residual: bool = False,
+    redundant_bounds: RedundantColumnBounds | None = None,
 ) -> ContinuousSolveResult:
     """Relax every integer column and solve the resulting LP using PDLP only."""
 
@@ -272,6 +401,23 @@ def solve_cuopt_continuous_pdlp(
         raise ScopfError("The cuOpt LP adapter requires the DGX Spark runtime") from exc
 
     objective, lower, upper, original_integrality = model.column_arrays()
+    redundant_bounds_audit: dict[str, Any] | None = None
+    if redundant_bounds is not None:
+        candidate_lower = np.asarray(redundant_bounds.lower, dtype=np.float64)
+        candidate_upper = np.asarray(redundant_bounds.upper, dtype=np.float64)
+        if candidate_lower.shape != lower.shape or candidate_upper.shape != upper.shape:
+            raise ScopfError("Redundant LP bounds do not match the canonical columns")
+        effective_lower = np.maximum(lower, candidate_lower)
+        effective_upper = np.minimum(upper, candidate_upper)
+        if np.any(effective_lower > effective_upper):
+            raise ScopfError("Redundant LP bounds conflict with canonical bounds")
+        tightened = np.flatnonzero((effective_lower > lower) | (effective_upper < upper))
+        if any(not model.variable_names[int(index)].startswith("theta_") for index in tightened):
+            raise ScopfError("Only provably redundant theta bounds are accepted by this adapter")
+        lower = effective_lower
+        upper = effective_upper
+        redundant_bounds_audit = dict(redundant_bounds.audit)
+        redundant_bounds_audit["tightened_native_column_count"] = int(tightened.size)
     column_scale, row_scale = native_scaling_vectors(
         model,
         mode=native_scaling_mode,
@@ -330,14 +476,23 @@ def solve_cuopt_continuous_pdlp(
     settings.set_parameter("method", 1)
     settings.set_parameter("pdlp_solver_mode", 4)
     settings.set_parameter("pdlp_precision", 1)
+    settings.set_parameter("per_constraint_residual", bool(per_constraint_residual))
     settings.set_parameter("log_to_console", bool(log_to_console))
     settings.set_optimality_tolerance(float(optimality_tolerance))
     requested_parameters = {
         "method": 1,
         "pdlp_solver_mode": 4,
         "pdlp_precision": 1,
+        "per_constraint_residual": bool(per_constraint_residual),
     }
-    readback = {name: int(settings.get_parameter(name)) for name in requested_parameters}
+    readback = {
+        name: (
+            bool(settings.get_parameter(name))
+            if isinstance(expected, bool)
+            else int(settings.get_parameter(name))
+        )
+        for name, expected in requested_parameters.items()
+    }
     if readback != requested_parameters:
         raise ScopfError(
             "cuOpt continuous PDLP parameter readback mismatch: "
@@ -358,6 +513,7 @@ def solve_cuopt_continuous_pdlp(
     finally:
         native_log_path.unlink(missing_ok=True)
     native_log_audit = audit_cuopt_native_log(native_log)
+    native_log_metrics = _pdlp_log_metrics(native_log)
     status_value = solution.get_termination_status()
     status = str(getattr(status_value, "name", status_value))
     error_status_value = solution.get_error_status()
@@ -407,6 +563,7 @@ def solve_cuopt_continuous_pdlp(
             native_dual_residual=lp_stats["dual_residual"],
             native_gap=lp_stats["gap"],
             optimality_tolerance=float(optimality_tolerance),
+            primal_feasibility_tolerance=float(primal_feasibility_tolerance),
             residual_tolerance=float(certificate_residual_tolerance),
         )
         dual_certificate.update(
@@ -447,11 +604,14 @@ def solve_cuopt_continuous_pdlp(
             "canonical_rows_translated": model.num_rows,
             "native_constraints_translated": native_constraint_count,
             "native_scaling_mode": native_scaling_mode,
+            "redundant_bounds": redundant_bounds_audit,
             "method_parameters_requested": requested_parameters,
             "method_parameters_readback": readback,
             "optimality_tolerance": float(optimality_tolerance),
+            "primal_feasibility_tolerance": float(primal_feasibility_tolerance),
             "certificate_residual_tolerance": float(certificate_residual_tolerance),
             "native_log_audit": native_log_audit,
+            "native_log_final_metrics": native_log_metrics,
             "native_log_branch_and_bound_markers_absent": no_branch_and_bound,
             "native_log_sha256": hashlib.sha256(native_log.encode("utf-8")).hexdigest(),
             "native_log_bytes": len(native_log.encode("utf-8")),
