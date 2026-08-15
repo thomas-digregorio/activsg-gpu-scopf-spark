@@ -1,0 +1,31 @@
+{
+  "schema_version": "1.0.0",
+  "benchmark_id": "activsg2000-gpu-lp-certificate-v12",
+  "status": "failed_continuous_dual_certificate",
+  "classification": "independent_checker_bug_after_optimal_continuous_pdlp_solve",
+  "frozen_identity": {
+    "commit": "fcd9b59ce23d891b08b478a112fb4d71100702d4",
+    "tag": "experiment-2000-gpu-lp-certificate-v12"
+  },
+  "timings_seconds": {
+    "total_wall": 3.063650171010522,
+    "cuopt_solve": 1.398478224
+  },
+  "continuous_solve": {
+    "status": "Optimal",
+    "solved_by": "PDLP",
+    "native_integer_columns": 0,
+    "iterations": 22800,
+    "primal_objective": 1118296.700341088,
+    "dual_objective_candidate": 1118296.699947574,
+    "native_primal_residual": 3.049302346279941e-7,
+    "native_dual_residual": 2.9777493564987766e-5,
+    "native_absolute_gap": 0.0003935140557587147
+  },
+  "artifact_sha256": {
+    "result_json": "fe465489b2c551fcf677f55f1126e87a0f6aefd64624761549469692bbc80c2f",
+    "run_registry": "1d27265d86c23eccdb9c1d353607e9dd0689b94247ff13cc723d7617beea724f",
+    "worker_console": "17bc2cd811f58ab1228c878d35de042d4c552373dad7852b95e7056d716142b1",
+    "launcher_console": "e7d99b20481c4f842440cf98cf2158a88b561d5737112534a4d7c238075bd8d0"
+  }
+}

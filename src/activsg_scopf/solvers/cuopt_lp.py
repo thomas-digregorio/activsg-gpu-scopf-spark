@@ -57,14 +57,15 @@ def validate_numeric_lp_certificate(
     native_primal_residual: float,
     native_dual_residual: float,
     native_gap: float,
+    optimality_tolerance: float,
     residual_tolerance: float,
 ) -> dict[str, Any]:
     """Independently check cuOpt's FP64 LP primal/dual certificate.
 
-    This is a numerical certificate at ``residual_tolerance`` rather than an
-    exact rational certificate.  The returned dual objective is accepted only
-    when row-multiplier signs, stationarity, bound compatibility, objectives,
-    and cuOpt's own residuals all pass.
+    This is a numerical certificate rather than an exact rational certificate.
+    The returned dual objective is accepted only when row-multiplier signs,
+    stationarity, bound compatibility, objectives, and cuOpt's own scaled
+    residuals all pass.
     """
 
     matrix = sparse.csr_matrix(matrix, dtype=np.float64)
@@ -109,33 +110,64 @@ def validate_numeric_lp_certificate(
     sign_violation[lower] = np.maximum(-row_dual[lower], 0.0)
     sign_violation[upper] = np.maximum(row_dual[upper], 0.0)
     maximum_row_dual_sign_violation = float(np.max(sign_violation)) if sign_violation.size else 0.0
-    stationarity = objective - np.asarray(matrix.T @ row_dual).ravel() - reduced_cost
-    maximum_stationarity_residual = (
-        float(np.max(np.abs(stationarity))) if stationarity.size else 0.0
+    dual_feasible_row_dual = row_dual.copy()
+    dual_feasible_row_dual[lower] = np.maximum(dual_feasible_row_dual[lower], 0.0)
+    dual_feasible_row_dual[upper] = np.minimum(dual_feasible_row_dual[upper], 0.0)
+    implied_reduced_cost = objective - np.asarray(matrix.T @ dual_feasible_row_dual).ravel()
+    returned_reduced_cost_mismatch = reduced_cost - implied_reduced_cost
+    maximum_returned_reduced_cost_mismatch = (
+        float(np.max(np.abs(returned_reduced_cost_mismatch)))
+        if returned_reduced_cost_mismatch.size
+        else 0.0
     )
-
-    positive_reduced_cost = reduced_cost > residual_tolerance
-    negative_reduced_cost = reduced_cost < -residual_tolerance
+    allowed_primal_residual = optimality_tolerance * (1.0 + float(np.linalg.norm(row_rhs)))
+    allowed_dual_residual = optimality_tolerance * (1.0 + float(np.linalg.norm(objective)))
+    allowed_gap = optimality_tolerance * (
+        1.0 + abs(float(reported_primal_objective)) + abs(float(reported_dual_objective))
+    )
+    effective_primal_tolerance = max(residual_tolerance, allowed_primal_residual)
+    effective_dual_tolerance = max(residual_tolerance, allowed_dual_residual)
+    effective_reduced_cost = implied_reduced_cost.copy()
+    needs_missing_lower = (effective_reduced_cost > 0.0) & ~np.isfinite(column_lower)
+    needs_missing_upper = (effective_reduced_cost < 0.0) & ~np.isfinite(column_upper)
+    numerically_zero_unbounded = (needs_missing_lower | needs_missing_upper) & (
+        np.abs(effective_reduced_cost) <= effective_dual_tolerance
+    )
+    effective_reduced_cost[numerically_zero_unbounded] = 0.0
+    stationarity_adjustment = implied_reduced_cost - effective_reduced_cost
+    maximum_stationarity_residual = (
+        float(np.max(np.abs(stationarity_adjustment))) if stationarity_adjustment.size else 0.0
+    )
+    positive_reduced_cost = effective_reduced_cost > 0.0
+    negative_reduced_cost = effective_reduced_cost < 0.0
     missing_lower = positive_reduced_cost & ~np.isfinite(column_lower)
     missing_upper = negative_reduced_cost & ~np.isfinite(column_upper)
     incompatible_bound_columns = np.flatnonzero(missing_lower | missing_upper)
     bound_term = np.zeros(objective.size, dtype=np.float64)
     usable_positive = positive_reduced_cost & np.isfinite(column_lower)
     usable_negative = negative_reduced_cost & np.isfinite(column_upper)
-    bound_term[usable_positive] = column_lower[usable_positive] * reduced_cost[usable_positive]
-    bound_term[usable_negative] = column_upper[usable_negative] * reduced_cost[usable_negative]
+    bound_term[usable_positive] = (
+        column_lower[usable_positive] * effective_reduced_cost[usable_positive]
+    )
+    bound_term[usable_negative] = (
+        column_upper[usable_negative] * effective_reduced_cost[usable_negative]
+    )
     reconstructed_primal = float(objective @ primal + objective_offset)
     reconstructed_dual = (
         None
         if incompatible_bound_columns.size
-        else float(row_rhs @ row_dual + np.sum(bound_term) + objective_offset)
+        else float(row_rhs @ dual_feasible_row_dual + np.sum(bound_term) + objective_offset)
     )
     objective_scale = max(
         1.0,
         abs(float(reported_primal_objective)),
         abs(float(reported_dual_objective)),
     )
-    objective_tolerance = max(1e-5, residual_tolerance * objective_scale)
+    objective_tolerance = max(
+        1e-5,
+        allowed_gap,
+        residual_tolerance * objective_scale,
+    )
     primal_objective_error = abs(reconstructed_primal - float(reported_primal_objective))
     dual_objective_error = (
         None
@@ -144,6 +176,11 @@ def validate_numeric_lp_certificate(
     )
     dual_not_above_primal = bool(
         float(reported_dual_objective) <= float(reported_primal_objective) + objective_tolerance
+    )
+    conservative_numerical_lower_bound = (
+        None
+        if reconstructed_dual is None
+        else min(float(reported_dual_objective), reconstructed_dual) - objective_tolerance
     )
     native_metrics_finite = all(
         isfinite(float(value))
@@ -155,17 +192,17 @@ def validate_numeric_lp_certificate(
     )
     passed = bool(
         native_metrics_finite
-        and maximum_primal_row_violation <= residual_tolerance
+        and maximum_primal_row_violation <= effective_primal_tolerance
         and maximum_primal_bound_violation <= residual_tolerance
         and maximum_row_dual_sign_violation <= residual_tolerance
-        and maximum_stationarity_residual <= residual_tolerance
+        and maximum_stationarity_residual <= effective_dual_tolerance
         and incompatible_bound_columns.size == 0
         and primal_objective_error <= objective_tolerance
         and dual_objective_error is not None
         and dual_objective_error <= objective_tolerance
-        and abs(float(native_primal_residual)) <= residual_tolerance
-        and abs(float(native_dual_residual)) <= residual_tolerance
-        and abs(float(native_gap)) <= objective_tolerance
+        and abs(float(native_primal_residual)) <= allowed_primal_residual
+        and abs(float(native_dual_residual)) <= allowed_dual_residual
+        and abs(float(native_gap)) <= allowed_gap
         and dual_not_above_primal
     )
     return {
@@ -178,17 +215,31 @@ def validate_numeric_lp_certificate(
         "reconstructed_dual_objective": reconstructed_dual,
         "reported_primal_objective": float(reported_primal_objective),
         "reported_dual_objective": float(reported_dual_objective),
+        "conservative_numerical_lower_bound": conservative_numerical_lower_bound,
         "primal_objective_error": primal_objective_error,
         "dual_objective_error": dual_objective_error,
         "maximum_primal_row_violation": maximum_primal_row_violation,
         "maximum_primal_bound_violation": maximum_primal_bound_violation,
         "maximum_row_dual_sign_violation": maximum_row_dual_sign_violation,
         "maximum_stationarity_residual": maximum_stationarity_residual,
+        "stationarity_policy": (
+            "derive_c_minus_ATy; only numerically zero residuals on columns "
+            "without the required finite bound"
+        ),
+        "maximum_returned_reduced_cost_mismatch": (maximum_returned_reduced_cost_mismatch),
+        "returned_reduced_cost_used_for_certificate": False,
+        "implied_reduced_cost_policy": "objective_minus_matrix_transpose_times_row_dual",
         "incompatible_bound_column_count": int(incompatible_bound_columns.size),
         "incompatible_bound_columns": [int(value) for value in incompatible_bound_columns[:100]],
         "native_primal_residual": float(native_primal_residual),
         "native_dual_residual": float(native_dual_residual),
         "native_gap": float(native_gap),
+        "optimality_tolerance": float(optimality_tolerance),
+        "allowed_primal_residual": allowed_primal_residual,
+        "allowed_dual_residual": allowed_dual_residual,
+        "allowed_gap": allowed_gap,
+        "effective_primal_tolerance": effective_primal_tolerance,
+        "effective_dual_tolerance": effective_dual_tolerance,
         "dual_not_above_primal": dual_not_above_primal,
     }
 
@@ -355,6 +406,7 @@ def solve_cuopt_continuous_pdlp(
             native_primal_residual=lp_stats["primal_residual"],
             native_dual_residual=lp_stats["dual_residual"],
             native_gap=lp_stats["gap"],
+            optimality_tolerance=float(optimality_tolerance),
             residual_tolerance=float(certificate_residual_tolerance),
         )
         dual_certificate.update(

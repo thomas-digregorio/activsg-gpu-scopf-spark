@@ -349,6 +349,17 @@ activsg-scopf lp-certificate \
   --output results/experiments/activsg2000-gpu-lp-certificate-v12-dgx-spark.json
 ```
 
+The frozen v12 launch stopped after its first continuous solve because the new
+independent checker incorrectly trusted cuOpt 26.06's low-level reduced-cost
+array. PDLP itself returned `Optimal` in 1.398 seconds with zero integer
+columns, primal objective `1,118,296.700341`, and dual objective
+`1,118,296.699948`; no contingency screen was reached and no bound was
+accepted. Version 0.20.1 preserves that failed attempt and corrects the checker
+by deriving the bound multipliers from `c - A^T y`. It also evaluates the
+reported primal, dual, and gap residuals against the same absolute-plus-scaled
+thresholds used by cuOpt. Any replacement run must use the distinct v13
+configuration, tag, registry, and output paths.
+
 That ACTIVSg2000 campaign is now closed. The `1e-3` run completed
 `optimal_verified` with accepted fixed-commitment pricing; the `1e-4` run hit
 its restricted-master solver budget above the requested gap and its provisional

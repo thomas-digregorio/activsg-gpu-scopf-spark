@@ -55,6 +55,24 @@ def _write_console(path: Path, stdout: str | bytes | None, stderr: str | bytes |
 def validate_lp_certificate_config(config: RunConfig) -> dict[str, Any]:
     """Fail closed if the registered continuous experiment was altered."""
 
+    registered_identities = {
+        "activsg2000-gpu-lp-certificate-v12": "experiment-2000-gpu-lp-certificate-v12",
+        "activsg2000-gpu-lp-certificate-v13": "experiment-2000-gpu-lp-certificate-v13",
+    }
+    required_tag = registered_identities.get(config.benchmark_id)
+    if required_tag is None:
+        raise ScopfError(f"Unregistered GPU LP-certificate benchmark id: {config.benchmark_id!r}")
+    observed_tag = str(config.raw["benchmark"].get("required_git_tag", ""))
+    if observed_tag != required_tag:
+        raise ScopfError(
+            f"LP-certificate required tag changed: expected {required_tag!r}, "
+            f"observed {observed_tag!r}"
+        )
+    experiment_suite_id = str(config.raw["benchmark"].get("experiment_suite_id", ""))
+    if experiment_suite_id != config.benchmark_id:
+        raise ScopfError(
+            "LP-certificate experiment_suite_id must equal its registered benchmark id"
+        )
     if config.case_name != "ACTIVSg2000":
         raise ScopfError("This LP-certificate experiment is registered only for ACTIVSg2000")
     if config.benchmark_kind != LP_CERTIFICATE_KIND:
@@ -125,7 +143,7 @@ def validate_lp_certificate_config(config: RunConfig) -> dict[str, Any]:
     return {
         "profile": profile,
         "reference_incumbent": reference,
-        "experiment_suite_id": str(config.raw["benchmark"].get("experiment_suite_id", "")),
+        "experiment_suite_id": experiment_suite_id,
     }
 
 
@@ -306,11 +324,15 @@ def run_lp_relaxation_certificate(
             }
             payload["constraint_generation_rounds"].append(round_payload)
             payload["objective"] = last_solve.primal_objective
-            dual_passed = bool(
-                last_solve.statistics.get("dual_certificate", {}).get("passed", False)
-            )
+            dual_certificate = last_solve.statistics.get("dual_certificate", {})
+            dual_passed = bool(dual_certificate.get("passed", False))
+            conservative_bound = dual_certificate.get("conservative_numerical_lower_bound")
             payload["dual_objective_candidate"] = last_solve.dual_objective
-            payload["bound"] = last_solve.dual_objective if dual_passed else None
+            payload["bound"] = (
+                float(conservative_bound)
+                if dual_passed and conservative_bound is not None
+                else None
+            )
             if (
                 not last_solve.optimal
                 or last_solve.values is None
@@ -396,7 +418,9 @@ def run_lp_relaxation_certificate(
             incumbent = float(reference["objective"])
             requested_gap = float(config.model["mip_relative_gap_tolerance"])
             required_bound = incumbent - requested_gap * abs(incumbent)
-            dual_bound = float(last_solve.dual_objective)
+            if payload["bound"] is None:
+                raise ScopfError("Passing LP dual certificate has no conservative bound")
+            dual_bound = float(payload["bound"])
             relative_gap = (incumbent - dual_bound) / abs(incumbent)
             bound_margin = dual_bound - required_bound
             dual_passed = bool(last_solve.statistics["dual_certificate"]["passed"])
