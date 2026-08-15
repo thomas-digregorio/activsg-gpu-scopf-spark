@@ -13,6 +13,10 @@ from . import __version__
 from .config import load_config
 from .errors import DeadlineExceeded, ScopfError
 from .experiments import run_one_shot_gap_experiment
+from .lp_certificate import (
+    run_lp_certificate_worker_serialized,
+    run_one_shot_lp_certificate,
+)
 from .matpower import read_contingency_table, read_matpower_case
 from .official import run_controlled
 from .paths import guard_input_path, guard_output_path, guard_runtime_environment
@@ -35,6 +39,7 @@ def _parser() -> argparse.ArgumentParser:
         "verify",
         "benchmark",
         "gap-experiment",
+        "lp-certificate",
         "seeded-round2-diagnostic",
     ):
         command = subcommands.add_parser(name)
@@ -64,6 +69,14 @@ def _worker_parser() -> argparse.ArgumentParser:
 
 def _seeded_worker_parser() -> argparse.ArgumentParser:
     worker = argparse.ArgumentParser(prog="activsg-scopf _seeded_round2_worker")
+    worker.add_argument("--config", type=Path, required=True)
+    worker.add_argument("--output", type=Path, required=True)
+    worker.add_argument("--checkpoint", type=Path, required=True)
+    return worker
+
+
+def _lp_certificate_worker_parser() -> argparse.ArgumentParser:
+    worker = argparse.ArgumentParser(prog="activsg-scopf _lp_certificate_worker")
     worker.add_argument("--config", type=Path, required=True)
     worker.add_argument("--output", type=Path, required=True)
     worker.add_argument("--checkpoint", type=Path, required=True)
@@ -142,6 +155,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     elif raw_arguments and raw_arguments[0] == "_seeded_round2_worker":
         args = _seeded_worker_parser().parse_args(raw_arguments[1:])
         args.command = "_seeded_round2_worker"
+    elif raw_arguments and raw_arguments[0] == "_lp_certificate_worker":
+        args = _lp_certificate_worker_parser().parse_args(raw_arguments[1:])
+        args.command = "_lp_certificate_worker"
     else:
         args = _parser().parse_args(raw_arguments)
     try:
@@ -152,6 +168,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         elif args.command == "_seeded_round2_worker":
             config = load_config(args.config)
             result = run_seeded_round2_worker_serialized(
+                config,
+                output_path=args.output,
+                checkpoint_path=args.checkpoint,
+            )
+            response = {"status": result["status"], "output": str(args.output)}
+        elif args.command == "_lp_certificate_worker":
+            config = load_config(args.config)
+            result = run_lp_certificate_worker_serialized(
                 config,
                 output_path=args.output,
                 checkpoint_path=args.checkpoint,
@@ -189,6 +213,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         elif args.command == "gap-experiment":
             config = load_config(args.config)
             result = run_one_shot_gap_experiment(config, output_path=args.output)
+            response = {"status": result["status"], "output": str(args.output)}
+        elif args.command == "lp-certificate":
+            config = load_config(args.config)
+            result = run_one_shot_lp_certificate(config, output_path=args.output)
             response = {"status": result["status"], "output": str(args.output)}
         elif args.command == "seeded-round2-diagnostic":
             config = load_config(args.config)

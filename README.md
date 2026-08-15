@@ -330,6 +330,25 @@ exact within-solve unit flips. Its component probe also confirms that the
 corrected cuOpt adapter translates a five-column canonical MIP start into the
 proper four-column native vector with no assignment-size rejection.
 
+The separately authorized v12 experiment asks a different question: can the
+DGX Spark certify the `1e-3` gap using the continuous relaxation rather than a
+CPU branch-and-bound proof? It relaxes all 432 source-online commitment columns
+to `[0, 1]`, explicitly selects FP64 PDLP, and exhaustively screens each
+fractional restricted-master solution before adding every newly violated N-1
+row. The adapter translates zero integer variables and independently checks the
+returned row duals, reduced costs, primal/dual objectives, stationarity, and
+residuals. The resulting bound is a numerical LP lower-bound certificate, not
+an exact rational certificate and not an integer solution. It is compared with
+the independently verified v11 feasible objective only after the final
+fractional screen and a fresh raw-input verification pass. The one-shot command
+has a hard 600-second worker boundary:
+
+```console
+activsg-scopf lp-certificate \
+  --config configs/activsg2000-gpu-lp-certificate-v12.json \
+  --output results/experiments/activsg2000-gpu-lp-certificate-v12-dgx-spark.json
+```
+
 That ACTIVSg2000 campaign is now closed. The `1e-3` run completed
 `optimal_verified` with accepted fixed-commitment pricing; the `1e-4` run hit
 its restricted-master solver budget above the requested gap and its provisional

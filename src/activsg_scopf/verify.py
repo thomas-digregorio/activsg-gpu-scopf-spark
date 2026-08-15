@@ -35,6 +35,8 @@ class VerificationResult:
     maximum_model_residual_pu: float
     maximum_security_violation_pu: float
     maximum_integrality_violation: float
+    integrality_required: bool
+    fractional_online_commitments: int
     maximum_angle_limit_violation_rad: float
     objective_recalculated: float
     objective_difference: float
@@ -50,6 +52,8 @@ class VerificationResult:
             "maximum_model_residual_pu": self.maximum_model_residual_pu,
             "maximum_security_violation_pu": self.maximum_security_violation_pu,
             "maximum_integrality_violation": self.maximum_integrality_violation,
+            "integrality_required": self.integrality_required,
+            "fractional_online_commitments": self.fractional_online_commitments,
             "maximum_angle_limit_violation_rad": self.maximum_angle_limit_violation_rad,
             "objective_recalculated": self.objective_recalculated,
             "objective_difference": self.objective_difference,
@@ -63,6 +67,8 @@ class VerificationResult:
 def verify_serialized_solution(
     config_or_path: RunConfig | str,
     payload: dict[str, Any],
+    *,
+    require_integrality: bool = True,
 ) -> VerificationResult:
     """Reread immutable raw inputs and verify without trusting the master model."""
 
@@ -109,6 +115,8 @@ def verify_serialized_solution(
     dispatch_definition_violation_mw = 0.0
     segment_bound_violation_mw = 0.0
     integrality_violation = 0.0
+    fractional_online_commitments = 0
+    model_tolerance_pu = float(config.model["model_residual_tolerance_pu"])
     objective = 0.0
     for generator_index, source in enumerate(case.gen):
         record = generators[generator_index + 1]
@@ -125,6 +133,9 @@ def verify_serialized_solution(
             abs(commitment - round(commitment)),
             -commitment,
             commitment - 1.0,
+        )
+        fractional_online_commitments += int(
+            abs(commitment - round(commitment)) > model_tolerance_pu
         )
         bound_violation_mw = max(
             bound_violation_mw,
@@ -157,7 +168,6 @@ def verify_serialized_solution(
     demand = case.bus[:, PD] + case.bus[:, GS]
     injection = generation_at_bus - demand
     global_balance_mw = abs(float(np.sum(injection)))
-    model_tolerance_pu = float(config.model["model_residual_tolerance_pu"])
     balance_tolerance_mw = model_tolerance_pu * case.base_mva
     angles_records = solution["bus_angles_rad"]
     angle_by_bus = {int(record["bus"]): float(record["angle_rad"]) for record in angles_records}
@@ -240,7 +250,7 @@ def verify_serialized_solution(
     passed = (
         model_residual_pu <= model_tolerance_pu
         and security_violation_pu <= float(config.model["security_violation_tolerance_pu"])
-        and integrality_violation <= model_tolerance_pu
+        and (not require_integrality or integrality_violation <= model_tolerance_pu)
         and angle_violation <= model_tolerance_pu
         and reference_angle_residual <= model_tolerance_pu
         and objective_difference <= objective_tolerance
@@ -252,6 +262,8 @@ def verify_serialized_solution(
         maximum_model_residual_pu=model_residual_pu,
         maximum_security_violation_pu=security_violation_pu,
         maximum_integrality_violation=integrality_violation,
+        integrality_required=bool(require_integrality),
+        fractional_online_commitments=int(fractional_online_commitments),
         maximum_angle_limit_violation_rad=angle_violation,
         objective_recalculated=objective,
         objective_difference=objective_difference,

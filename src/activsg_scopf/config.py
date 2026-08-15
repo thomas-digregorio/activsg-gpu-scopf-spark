@@ -94,7 +94,11 @@ def load_config(path: str | Path) -> RunConfig:
             (
                 1800.0
                 if benchmark.get("kind")
-                in {"gap_sensitivity_experiment", "seeded_round2_diagnostic"}
+                in {
+                    "gap_sensitivity_experiment",
+                    "seeded_round2_diagnostic",
+                    "gpu_lp_relaxation_certificate",
+                }
                 else 300.0
             ),
         )
