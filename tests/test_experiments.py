@@ -189,6 +189,22 @@ def test_activsg2000_gpu_v9_registers_feasibility_checked_start() -> None:
     assert profile["mip_start_precheck_time_limit_seconds"] == 10.0
 
 
+@pytest.mark.parametrize(
+    "config_path",
+    sorted((ROOT / "configs").glob("*.json")),
+    ids=lambda path: path.name,
+)
+def test_every_gap_experiment_config_is_registered(config_path: Path) -> None:
+    config = load_config(config_path)
+    if config.benchmark_kind != "gap_sensitivity_experiment":
+        pytest.skip("not a one-shot gap experiment")
+
+    suite_id, gap_label = _experiment_identity(config)
+
+    assert suite_id == config.raw["benchmark"]["experiment_suite_id"]
+    assert gap_label == config.raw["benchmark"]["gap_label"]
+
+
 def test_next_gap_requires_prior_success_and_pricing() -> None:
     successful = {
         "runs": {

@@ -516,6 +516,33 @@ def test_activsg2000_gpu_v10_adds_bounded_commitment_trace_only() -> None:
     )
 
 
+def test_activsg2000_gpu_v11_changes_only_frozen_identity_after_v10() -> None:
+    v10 = load_config(
+        ROOT / "configs" / "activsg2000-gpu-commitment-trace-v10.json"
+    )
+    v11 = load_config(
+        ROOT / "configs" / "activsg2000-gpu-commitment-trace-v11.json"
+    )
+
+    assert v11.raw["raw_inputs"] == v10.raw["raw_inputs"]
+    assert v11.model == v10.model
+    assert v11.runtime == v10.runtime
+    assert v11.raw["platforms"] == v10.raw["platforms"]
+    assert v11.benchmark_id == "activsg2000-gpu-commitment-trace-v11-1e-3"
+    assert v11.raw["benchmark"]["required_git_tag"] == (
+        "experiment-2000-gpu-commitment-trace-v11"
+    )
+    assert v11.raw["benchmark"]["experiment_suite_id"] == (
+        "activsg2000-gpu-commitment-trace-v11"
+    )
+    assert v11.raw["benchmark"]["initialization"] == (
+        v10.raw["benchmark"]["initialization"]
+    )
+    assert v11.raw["benchmark"]["diagnostic_change"] == (
+        v10.raw["benchmark"]["diagnostic_change"]
+    )
+
+
 def test_1935_second_outer_deadline_is_authorized_only_for_v7_v8_and_v9(
     tmp_path: Path,
 ) -> None:
