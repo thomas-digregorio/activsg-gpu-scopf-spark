@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from activsg_scopf.canonical import CanonicalMILP
@@ -11,7 +12,10 @@ from activsg_scopf.network import build_contingency_catalog, build_network
 from activsg_scopf.pricing import run_fixed_commitment_pricing
 from activsg_scopf.solution import serialize_solution
 from activsg_scopf.solvers import create_solver_session, solve_canonical
-from activsg_scopf.solvers.highs import _require_run_not_error
+from activsg_scopf.solvers.highs import (
+    _require_run_not_error,
+    complete_fixed_integer_start,
+)
 from activsg_scopf.verify import verify_serialized_solution
 
 from .helpers import triangle_case, write_triangle_matpower
@@ -86,6 +90,30 @@ def test_highs_session_can_run_without_a_time_limit() -> None:
     assert result.values[x] == pytest.approx(1.0)
     assert result.statistics["requested_call_budget_seconds"] is None
     assert result.statistics["native_time_limit_seconds"] is None
+
+
+def test_fixed_integer_start_completion_distinguishes_extendable_commitment() -> None:
+    model = CanonicalMILP()
+    commitment = model.add_variable(
+        "u", lower=0.0, upper=1.0, integer=True
+    )
+    dispatch = model.add_variable("pg", lower=0.0, upper=10.0)
+    model.add_row("balance", {dispatch: 1.0}, lower=5.0, upper=5.0)
+    model.add_row(
+        "capacity", {dispatch: 1.0, commitment: -10.0}, upper=0.0
+    )
+
+    infeasible = complete_fixed_integer_start(
+        model, np.asarray([0.0, 0.0]), time_limit_seconds=5.0
+    )
+    feasible = complete_fixed_integer_start(
+        model, np.asarray([1.0, 5.0]), time_limit_seconds=5.0
+    )
+
+    assert infeasible.status == "Infeasible"
+    assert not infeasible.has_incumbent
+    assert feasible.optimal and feasible.values is not None
+    np.testing.assert_allclose(feasible.values, np.asarray([1.0, 5.0]))
 
 
 def test_highs_adapter_and_independent_checker_use_one_tiny_solve(tmp_path: Path) -> None:

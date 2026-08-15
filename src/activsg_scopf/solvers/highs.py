@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -336,3 +337,42 @@ def solve_highs(
     return HighsSession(
         model, mip_relative_gap=mip_relative_gap, threads=threads
     ).solve(time_limit_seconds=time_limit_seconds)
+
+
+def complete_fixed_integer_start(
+    model: CanonicalMILP,
+    values: np.ndarray,
+    *,
+    time_limit_seconds: float,
+    threads: int = 0,
+) -> SolveResult:
+    """Find a feasible continuous completion of one prior integer assignment."""
+
+    candidate = np.asarray(values, dtype=np.float64)
+    if candidate.shape != (model.num_columns,) or not np.all(np.isfinite(candidate)):
+        raise ScopfError("MIP-start completion received an invalid canonical vector")
+    _, lower, upper, integrality = model.column_arrays()
+    integer_columns = np.flatnonzero(integrality)
+    fixed_values = np.rint(candidate[integer_columns])
+    if np.any(fixed_values < lower[integer_columns]) or np.any(
+        fixed_values > upper[integer_columns]
+    ):
+        raise ScopfError("MIP-start completion has an integer value outside its bounds")
+    continuous = deepcopy(model)
+    for column, value in zip(integer_columns, fixed_values, strict=True):
+        index = int(column)
+        continuous.column_lower[index] = float(value)
+        continuous.column_upper[index] = float(value)
+        continuous.integrality[index] = 0
+    result = solve_highs(
+        continuous,
+        time_limit_seconds=float(time_limit_seconds),
+        mip_relative_gap=0.0,
+        threads=threads,
+    )
+    result.statistics["fixed_integer_completion"] = {
+        "integer_columns": int(integer_columns.size),
+        "status": result.status,
+        "has_incumbent": result.has_incumbent,
+    }
+    return result

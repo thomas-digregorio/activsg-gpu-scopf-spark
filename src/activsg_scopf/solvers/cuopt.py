@@ -10,7 +10,7 @@ from tempfile import NamedTemporaryFile
 import numpy as np
 
 from ..canonical import CanonicalMILP
-from ..errors import ScopfError
+from ..errors import MipStartSolveError, ScopfError
 from .common import SolveResult
 
 NATIVE_OPTIMAL_ONLY = "native_optimal_only"
@@ -242,7 +242,7 @@ def audit_cuopt_native_log(native_log: str) -> dict[str, object]:
         line for line in lines if MIP_START_REJECTION_TEXT in line
     ]
     if rejection_lines:
-        raise ScopfError(
+        raise MipStartSolveError(
             "cuOpt rejected the submitted MIP start: " + rejection_lines[0]
         )
     error_lines = [line for line in lines if line.startswith("Error ")]

@@ -60,7 +60,7 @@ def _solve_with_mip_start_fallback(
     rebuild_session: Callable[[], SolverSession],
     emit_diagnostic: Callable[..., None],
 ) -> tuple[SolverSession, SolveResult, dict[str, Any] | None]:
-    """Retry the same master cold only after a HiGHS partial-start internal error."""
+    """Retry the same master cold only after a native MIP-start failure."""
 
     started = time.perf_counter()
     try:
@@ -297,6 +297,12 @@ def run_end_to_end(
                 ),
                 cuopt_pdlp_profile=dict(
                     profile.get("cuopt_pdlp_profile", {})
+                ),
+                mip_start_precheck=str(
+                    profile.get("mip_start_precheck", "none")
+                ),
+                mip_start_precheck_time_limit_seconds=float(
+                    profile.get("mip_start_precheck_time_limit_seconds", 10.0)
                 ),
             )
 

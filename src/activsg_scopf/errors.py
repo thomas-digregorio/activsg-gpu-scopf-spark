@@ -18,4 +18,4 @@ class DeadlineExceeded(ScopfError):
 
 
 class MipStartSolveError(ScopfError):
-    """HiGHS errored while attempting to process a supplied partial MIP start."""
+    """A native solver rejected or errored while processing a supplied MIP start."""

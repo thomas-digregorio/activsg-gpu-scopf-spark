@@ -21,11 +21,11 @@ from activsg_scopf.seeded_diagnostic import (
     deserialize_solution_values,
     security_pairs_from_ids,
 )
-from activsg_scopf.solvers.cuopt import (
-    INTEGER_ONLY_MIP_START,
-    fixed_or_unused_columns,
-    solve_cuopt,
+from activsg_scopf.solvers.common import (
+    HIGHS_FIXED_COMMITMENT_PRECHECK,
+    RebuildingSolverSession,
 )
+from activsg_scopf.solvers.cuopt import fixed_or_unused_columns
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_CONFIG = ROOT / "configs" / "activsg2000-gpu-gap-1e-3-v8.json"
@@ -101,13 +101,11 @@ def main() -> None:
         - expected_eliminated_columns
     )
     profile = config.raw["platforms"]["dgx_spark"]
-    result = solve_cuopt(
-        master.canonical,
-        time_limit_seconds=float(arguments.time_limit_seconds),
+    session = RebuildingSolverSession(
+        model=master.canonical,
+        solver="cuopt",
         mip_relative_gap=float(config.model["mip_relative_gap_tolerance"]),
         threads=int(profile["solver_threads"]),
-        mip_start_values=prior_values,
-        mip_start_mode=INTEGER_ONLY_MIP_START,
         native_scaling_mode=str(profile["native_scaling_mode"]),
         native_base_mva=float(case.base_mva),
         log_to_console=True,
@@ -116,20 +114,22 @@ def main() -> None:
         mip_certificate_residual_tolerance=float(
             profile["mip_certificate_residual_tolerance"]
         ),
+        mip_start_precheck=HIGHS_FIXED_COMMITMENT_PRECHECK,
+        mip_start_precheck_time_limit_seconds=10.0,
+    )
+    session.previous_values = prior_values.copy()
+    result = session.solve(
+        time_limit_seconds=float(arguments.time_limit_seconds)
     )
     statistics = result.statistics
     start_contract = statistics["mip_start_native_contract"]
     native_log_audit = statistics["native_log_audit"]
+    precheck = statistics["mip_start_feasibility_precheck"]
     passed = bool(
-        start_contract.get("contract_passed")
-        and start_contract.get("native_log_contract_passed")
+        precheck.get("prior_commitment_extendable") is False
+        and precheck.get("decision") == "solve_cold"
+        and start_contract.get("submitted") is False
         and native_log_audit.get("mip_start_rejection_count") == 0
-        and statistics.get("native_free_variable_split_columns")
-        == expected_free_columns
-        and statistics.get("native_fixed_or_unused_columns_eliminated")
-        == expected_eliminated_columns
-        and statistics.get("native_columns_translated")
-        == expected_native_columns
     )
     payload = {
         "schema_version": "1.0.0",
@@ -144,7 +144,9 @@ def main() -> None:
             "fixed_or_unused_columns_requiring_native_elimination": (
                 expected_eliminated_columns
             ),
-            "native_columns_expected": expected_native_columns,
+            "native_columns_expected_if_start_submitted": (
+                expected_native_columns
+            ),
         },
         "prior_round_solution_on_round2_master": canonical_feasibility_audit(
             master.canonical,
@@ -158,6 +160,7 @@ def main() -> None:
             "mip_gap": result.mip_gap,
             "solve_time_seconds": result.solve_time_seconds,
             "has_incumbent": result.has_incumbent,
+            "mip_start_feasibility_precheck": precheck,
             "mip_start_native_contract": start_contract,
             "native_log_audit": native_log_audit,
             "native_columns_translated": statistics[
