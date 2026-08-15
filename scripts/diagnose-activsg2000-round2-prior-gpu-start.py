@@ -80,11 +80,14 @@ def main() -> None:
     prior_values = deserialize_solution_values(
         checkpoint["solution"], case, network, master
     )
+    _, column_lower, column_upper, _ = master.canonical.column_arrays()
     row_lower, row_upper = master.canonical.row_bound_arrays()
     equality_rows = int(
         np.count_nonzero(np.isfinite(row_lower) & (row_lower == row_upper))
     )
-    expected_auxiliary_columns = master.canonical.num_rows - equality_rows
+    expected_free_columns = int(
+        np.count_nonzero(np.isneginf(column_lower) & np.isposinf(column_upper))
+    )
     profile = config.raw["platforms"]["dgx_spark"]
     result = solve_cuopt(
         master.canonical,
@@ -109,8 +112,10 @@ def main() -> None:
         start_contract.get("contract_passed")
         and start_contract.get("native_log_contract_passed")
         and native_log_audit.get("mip_start_rejection_count") == 0
-        and statistics.get("native_auxiliary_slack_columns")
-        == expected_auxiliary_columns
+        and statistics.get("native_free_variable_split_columns")
+        == expected_free_columns
+        and statistics.get("native_columns_translated")
+        == master.canonical.num_columns + expected_free_columns
     )
     payload = {
         "schema_version": "1.0.0",
@@ -121,7 +126,7 @@ def main() -> None:
             "rows": master.canonical.num_rows,
             "nonzeros": int(master.canonical.matrix_csr().nnz),
             "equality_rows": equality_rows,
-            "explicit_native_auxiliary_columns_expected": expected_auxiliary_columns,
+            "free_columns_requiring_native_split": expected_free_columns,
         },
         "prior_round_solution_on_round2_master": canonical_feasibility_audit(
             master.canonical,
@@ -137,11 +142,14 @@ def main() -> None:
             "has_incumbent": result.has_incumbent,
             "mip_start_native_contract": start_contract,
             "native_log_audit": native_log_audit,
-            "native_auxiliary_slack_columns": statistics[
-                "native_auxiliary_slack_columns"
+            "native_columns_translated": statistics[
+                "native_columns_translated"
             ],
-            "native_explicit_start_slack_translation": statistics[
-                "native_explicit_start_slack_translation"
+            "native_free_variable_split_columns": statistics[
+                "native_free_variable_split_columns"
+            ],
+            "native_explicit_free_variable_split": statistics[
+                "native_explicit_free_variable_split"
             ],
         },
         "passed": passed,

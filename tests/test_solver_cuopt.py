@@ -10,10 +10,10 @@ from activsg_scopf.solvers.cuopt import (
     INTEGER_ONLY_MIP_START,
     NO_NATIVE_SCALING,
     POWER_SYSTEM_PER_UNIT_SCALING,
-    _linear_activity_bounds,
     audit_cuopt_native_log,
     audit_mip_start_readback,
     evaluate_mip_gap_certificate,
+    free_continuous_columns,
     native_scaling_audit,
     native_scaling_vectors,
     normalize_cuopt_pdlp_profile,
@@ -229,26 +229,23 @@ def test_cuopt_native_log_rejects_failed_start_and_records_fallback_warning() ->
     assert audit["barrier_numerical_warning_count"] == 1
 
 
-def test_native_linear_activity_bounds_cover_mixed_signs_and_infinity() -> None:
-    minimum, maximum = _linear_activity_bounds(
-        [0, 1, 2],
-        [2.0, -3.0, 0.0],
-        np.asarray([-1.0, 4.0, -np.inf]),
-        np.asarray([5.0, 8.0, np.inf]),
+def test_native_free_column_split_selects_only_free_continuous_columns() -> None:
+    columns = free_continuous_columns(
+        np.asarray([-np.inf, 0.0, -np.inf, 0.0]),
+        np.asarray([np.inf, np.inf, 4.0, 1.0]),
+        np.asarray([0, 0, 0, 1]),
     )
 
-    assert minimum == -26.0
-    assert maximum == -2.0
+    np.testing.assert_array_equal(columns, np.asarray([0]))
 
-    minimum, maximum = _linear_activity_bounds(
-        [0],
-        [1.0],
-        np.asarray([-np.inf]),
-        np.asarray([3.0]),
-    )
 
-    assert minimum == -np.inf
-    assert maximum == 3.0
+def test_native_free_column_split_rejects_free_integer_column() -> None:
+    with pytest.raises(ScopfError, match="continuous columns only"):
+        free_continuous_columns(
+            np.asarray([-np.inf]),
+            np.asarray([np.inf]),
+            np.asarray([1]),
+        )
 
 
 def _scaling_model() -> CanonicalMILP:

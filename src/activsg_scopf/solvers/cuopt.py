@@ -30,7 +30,7 @@ POWER_SYSTEM_PER_UNIT_SCALING = "power_system_per_unit_v1"
 SUPPORTED_NATIVE_SCALING_MODES = frozenset(
     {NO_NATIVE_SCALING, POWER_SYSTEM_PER_UNIT_SCALING}
 )
-MIP_START_NATIVE_POLICY = "presolve_off_original_space_readback_v1"
+MIP_START_NATIVE_POLICY = "presolve_off_explicit_free_split_readback_v2"
 MIP_START_REJECTION_TEXT = "Error cannot add the provided initial solution!"
 BARRIER_NUMERICAL_WARNING = (
     "Barrier Solve status A numerical error was encountered."
@@ -373,26 +373,24 @@ def _nonzero_range(entries: np.ndarray) -> dict[str, float | None]:
     }
 
 
-def _linear_activity_bounds(
-    indices: list[int],
-    coefficients: list[float],
+def free_continuous_columns(
     lower: np.ndarray,
     upper: np.ndarray,
-) -> tuple[float, float]:
-    """Return safe interval bounds for one native linear expression."""
+    integrality: np.ndarray,
+) -> np.ndarray:
+    """Return columns requiring an explicit exact native positive/negative split."""
 
-    minimum = 0.0
-    maximum = 0.0
-    for index, coefficient in zip(indices, coefficients, strict=True):
-        if coefficient == 0.0:
-            continue
-        if coefficient >= 0.0:
-            minimum += coefficient * float(lower[index])
-            maximum += coefficient * float(upper[index])
-        else:
-            minimum += coefficient * float(upper[index])
-            maximum += coefficient * float(lower[index])
-    return minimum, maximum
+    lower_values = np.asarray(lower, dtype=np.float64)
+    upper_values = np.asarray(upper, dtype=np.float64)
+    integer_values = np.asarray(integrality)
+    if not (
+        lower_values.shape == upper_values.shape == integer_values.shape
+    ):
+        raise ScopfError("cuOpt free-column audit arrays have different shapes")
+    free = np.isneginf(lower_values) & np.isposinf(upper_values)
+    if np.any(integer_values[free] > 0):
+        raise ScopfError("cuOpt explicit free-column splitting supports continuous columns only")
+    return np.flatnonzero(free)
 
 
 def native_scaling_audit(
@@ -535,17 +533,6 @@ def solve_cuopt(
     native_objective = objective * column_scale
     native_lower = lower / column_scale
     native_upper = upper / column_scale
-    problem = Problem("activsg_preventive_scuc")
-    variables = [
-        problem.addVariable(
-            lb=float(native_lower[index]),
-            ub=float(native_upper[index]),
-            obj=float(native_objective[index]),
-            vtype=INTEGER if integrality[index] else CONTINUOUS,
-            name=name,
-        )
-        for index, name in enumerate(model.variable_names)
-    ]
     mip_start_columns = np.empty(0, dtype=np.int64)
     mip_start_selected_values = np.empty(0, dtype=np.float64)
     mip_start_bound_projection_count = 0
@@ -571,88 +558,107 @@ def solve_cuopt(
             mip_start_bound_projection_maximum_delta = float(
                 np.max(projection_delta)
             )
-        for index, value in zip(
-            mip_start_columns, mip_start_selected_values, strict=True
-        ):
-            variables[int(index)].setMIPStart(
-                float(value / column_scale[int(index)])
+    explicit_free_split = bool(mip_start_columns.size)
+    split_columns = (
+        free_continuous_columns(native_lower, native_upper, integrality)
+        if explicit_free_split
+        else np.empty(0, dtype=np.int64)
+    )
+    split_column_set = {int(index) for index in split_columns}
+    problem = Problem("activsg_preventive_scuc")
+    native_variables = []
+    column_components = []
+    for index, name in enumerate(model.variable_names):
+        if index in split_column_set:
+            positive = problem.addVariable(
+                lb=0.0,
+                ub=float("inf"),
+                obj=float(native_objective[index]),
+                vtype=CONTINUOUS,
+                name=f"{name}__native_positive",
             )
+            positive_index = len(native_variables)
+            native_variables.append(positive)
+            negative = problem.addVariable(
+                lb=0.0,
+                ub=float("inf"),
+                obj=-float(native_objective[index]),
+                vtype=CONTINUOUS,
+                name=f"{name}__native_negative",
+            )
+            negative_index = len(native_variables)
+            native_variables.append(negative)
+            column_components.append(
+                [
+                    (positive, 1.0, positive_index),
+                    (negative, -1.0, negative_index),
+                ]
+            )
+        else:
+            variable = problem.addVariable(
+                lb=float(native_lower[index]),
+                ub=float(native_upper[index]),
+                obj=float(native_objective[index]),
+                vtype=INTEGER if integrality[index] else CONTINUOUS,
+                name=name,
+            )
+            native_index = len(native_variables)
+            native_variables.append(variable)
+            column_components.append([(variable, 1.0, native_index)])
+    native_mip_start_columns: list[int] = []
+    native_mip_start_values: list[float] = []
+    for index, value in zip(
+        mip_start_columns, mip_start_selected_values, strict=True
+    ):
+        canonical_index = int(index)
+        native_value = float(value / column_scale[canonical_index])
+        components = column_components[canonical_index]
+        component_values = (
+            (max(native_value, 0.0), max(-native_value, 0.0))
+            if canonical_index in split_column_set
+            else (native_value,)
+        )
+        for (variable, _, native_index), component_value in zip(
+            components, component_values, strict=True
+        ):
+            variable.setMIPStart(component_value)
+            native_mip_start_columns.append(native_index)
+            native_mip_start_values.append(component_value)
     objective_columns = np.flatnonzero(native_objective)
+    objective_variables = []
+    objective_coefficients: list[float] = []
+    for index in objective_columns:
+        for variable, multiplier, _ in column_components[int(index)]:
+            objective_variables.append(variable)
+            objective_coefficients.append(
+                float(native_objective[int(index)]) * multiplier
+            )
     objective_expression = LinearExpression(
-        [variables[int(index)] for index in objective_columns],
-        native_objective[objective_columns].tolist(),
+        objective_variables,
+        objective_coefficients,
         0.0,
     )
     problem.setObjective(objective_expression, sense=MINIMIZE)
     row_lower, row_upper = model.row_bound_arrays()
     native_constraint_count = 0
-    native_auxiliary_slack_columns = 0
-    explicit_start_slacks = bool(mip_start_columns.size)
     for row, name in enumerate(model.row_names):
         indices, coefficients = model.row_entries(row)
-        native_coefficients = [
-            float(coefficient) * column_scale[index] * row_scale[row]
-            for index, coefficient in zip(indices, coefficients, strict=True)
-        ]
+        expression_variables = []
+        native_coefficients: list[float] = []
+        for index, coefficient in zip(indices, coefficients, strict=True):
+            scaled_coefficient = (
+                float(coefficient) * column_scale[index] * row_scale[row]
+            )
+            for variable, multiplier, _ in column_components[index]:
+                expression_variables.append(variable)
+                native_coefficients.append(scaled_coefficient * multiplier)
         expression = LinearExpression(
-            [variables[index] for index in indices], native_coefficients, 0.0
+            expression_variables, native_coefficients, 0.0
         )
         lo = float(row_lower[row] * row_scale[row])
         hi = float(row_upper[row] * row_scale[row])
         if isfinite(lo) and isfinite(hi) and lo == hi:
             problem.addConstraint(expression == lo, name=name)
-            native_constraint_count += 1
-        elif explicit_start_slacks and isfinite(lo) and isfinite(hi):
-            activity = problem.addVariable(
-                lb=lo,
-                ub=hi,
-                vtype=CONTINUOUS,
-                name=f"native_activity_{row:05d}",
-            )
-            problem.addConstraint(expression - activity == 0.0, name=name)
-            native_auxiliary_slack_columns += 1
-            native_constraint_count += 1
-        elif explicit_start_slacks and isfinite(hi):
-            activity_minimum, _ = _linear_activity_bounds(
-                indices,
-                native_coefficients,
-                native_lower,
-                native_upper,
-            )
-            slack_upper = (
-                max(0.0, hi - activity_minimum)
-                if isfinite(activity_minimum)
-                else float("inf")
-            )
-            slack = problem.addVariable(
-                lb=0.0,
-                ub=slack_upper,
-                vtype=CONTINUOUS,
-                name=f"native_upper_slack_{row:05d}",
-            )
-            problem.addConstraint(expression + slack == hi, name=name)
-            native_auxiliary_slack_columns += 1
-            native_constraint_count += 1
-        elif explicit_start_slacks and isfinite(lo):
-            _, activity_maximum = _linear_activity_bounds(
-                indices,
-                native_coefficients,
-                native_lower,
-                native_upper,
-            )
-            slack_upper = (
-                max(0.0, activity_maximum - lo)
-                if isfinite(activity_maximum)
-                else float("inf")
-            )
-            slack = problem.addVariable(
-                lb=0.0,
-                ub=slack_upper,
-                vtype=CONTINUOUS,
-                name=f"native_lower_slack_{row:05d}",
-            )
-            problem.addConstraint(expression - slack == lo, name=name)
-            native_auxiliary_slack_columns += 1
             native_constraint_count += 1
         else:
             if isfinite(lo):
@@ -693,14 +699,27 @@ def solve_cuopt(
         )
     else:
         native_initial_primal = np.empty(0, dtype=np.float64)
+    native_mip_start_column_array = np.asarray(
+        native_mip_start_columns, dtype=np.int64
+    )
+    native_mip_start_value_array = np.asarray(
+        native_mip_start_values, dtype=np.float64
+    )
     mip_start_contract = audit_mip_start_readback(
-        columns=mip_start_columns,
-        expected_native_values=(
-            mip_start_selected_values / column_scale[mip_start_columns]
-        ),
+        columns=native_mip_start_column_array,
+        expected_native_values=native_mip_start_value_array,
         native_initial_primal=native_initial_primal,
-        total_columns=model.num_columns + native_auxiliary_slack_columns,
+        total_columns=len(native_variables),
         presolve_readback=mip_start_presolve_readback,
+    )
+    mip_start_contract["submitted_canonical_columns"] = int(
+        mip_start_columns.size
+    )
+    mip_start_contract["submitted_native_columns"] = int(
+        native_mip_start_column_array.size
+    )
+    mip_start_contract["explicit_free_split_columns"] = int(
+        split_columns.size
     )
     with NamedTemporaryFile(
         mode="w", prefix="activsg-cuopt-native-", suffix=".log", delete=False
@@ -722,14 +741,25 @@ def solve_cuopt(
     has_incumbent = (
         status in {"Optimal", "FeasibleFound", "TimeLimit"}
         and np.isfinite(problem.ObjValue)
-        and all(np.isfinite(variable.getValue()) for variable in variables)
+        and all(np.isfinite(variable.getValue()) for variable in native_variables)
     )
-    native_values = (
-        np.asarray([variable.getValue() for variable in variables], dtype=np.float64)
-        if has_incumbent
-        else None
+    canonical_native_values = None
+    if has_incumbent:
+        canonical_native_values = np.asarray(
+            [
+                sum(
+                    multiplier * float(variable.getValue())
+                    for variable, multiplier, _ in components
+                )
+                for components in column_components
+            ],
+            dtype=np.float64,
+        )
+    values = (
+        None
+        if canonical_native_values is None
+        else canonical_native_values * column_scale
     )
-    values = None if native_values is None else native_values * column_scale
     objective_value = float(problem.ObjValue) if has_incumbent else None
     raw_bound = getattr(stats, "solution_bound", None)
     raw_gap = getattr(stats, "mip_gap", None)
@@ -827,8 +857,9 @@ def solve_cuopt(
             "canonical_rows_translated": model.num_rows,
             "canonical_nonzeros_translated": int(model.matrix_csr().nnz),
             "native_constraints_added": native_constraint_count,
-            "native_auxiliary_slack_columns": native_auxiliary_slack_columns,
-            "native_explicit_start_slack_translation": explicit_start_slacks,
+            "native_columns_translated": len(native_variables),
+            "native_free_variable_split_columns": int(split_columns.size),
+            "native_explicit_free_variable_split": explicit_free_split,
             "native_scaling_mode": native_scaling_mode,
             "native_base_mva": float(native_base_mva),
             "native_column_scale_minimum": float(np.min(column_scale)),
