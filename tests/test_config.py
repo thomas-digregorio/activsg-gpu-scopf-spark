@@ -424,7 +424,55 @@ def test_activsg2000_gpu_v8_changes_only_bugfix_identity() -> None:
     }
 
 
-def test_1935_second_outer_deadline_is_authorized_only_for_v7_and_v8(
+def test_activsg2000_gpu_v9_changes_only_start_policy_and_identity() -> None:
+    v8 = load_config(ROOT / "configs" / "activsg2000-gpu-gap-1e-3-v8.json")
+    v9 = load_config(ROOT / "configs" / "activsg2000-gpu-gap-1e-3-v9.json")
+
+    assert v9.case_name == v8.case_name == "ACTIVSg2000"
+    assert v9.model == v8.model
+    assert v9.runtime == v8.runtime
+    assert v9.raw["raw_inputs"] == v8.raw["raw_inputs"]
+    v8_profile = v8.raw["platforms"]["dgx_spark"]
+    v9_profile = v9.raw["platforms"]["dgx_spark"]
+    assert {
+        key: value
+        for key, value in v9_profile.items()
+        if key
+        not in {
+            "solver_session",
+            "mip_start_precheck",
+            "mip_start_precheck_time_limit_seconds",
+        }
+    } == {
+        key: value
+        for key, value in v8_profile.items()
+        if key != "solver_session"
+    }
+    assert v9_profile["solver_session"] == (
+        "rebuild_each_round_with_feasibility_checked_mip_start"
+    )
+    assert v9_profile["mip_start_precheck"] == (
+        "highs_fixed_commitment_lp_v1"
+    )
+    assert v9_profile["mip_start_precheck_time_limit_seconds"] == 10.0
+    assert v9.benchmark_id == "activsg2000-gpu-gap-v9-1e-3"
+    assert v9.raw["benchmark"]["required_git_tag"] == (
+        "experiment-2000-gpu-gap-v9"
+    )
+    assert v9.raw["benchmark"]["experiment_suite_id"] == (
+        "activsg2000-gpu-gap-sensitivity-v9"
+    )
+    assert v9.raw["benchmark"]["pricing"] == v8.raw["benchmark"]["pricing"]
+    assert v9.raw["benchmark"]["initialization"] == {
+        "external_cpu_mip_start": False,
+        "round_1": "cold",
+        "later_rounds": (
+            "prior_gpu_commitment_if_fixed_commitment_lp_extendable_else_cold"
+        ),
+    }
+
+
+def test_1935_second_outer_deadline_is_authorized_only_for_v7_v8_and_v9(
     tmp_path: Path,
 ) -> None:
     v6 = load_config(ROOT / "configs" / "activsg2000-gpu-gap-1e-3-v6.json")

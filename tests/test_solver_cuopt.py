@@ -179,7 +179,7 @@ def test_full_mip_start_can_project_numerical_excess_to_exact_bounds() -> None:
     np.testing.assert_array_equal(values, np.asarray([1.0, 10.0, -2.0]))
 
 
-def test_cuopt_mip_start_requires_original_space_readback_and_presolve_off() -> None:
+def test_cuopt_mip_start_requires_native_space_readback_and_presolve_off() -> None:
     audit = audit_mip_start_readback(
         columns=np.asarray([0, 2]),
         expected_native_values=np.asarray([1.0, 0.0]),
@@ -189,7 +189,7 @@ def test_cuopt_mip_start_requires_original_space_readback_and_presolve_off() -> 
     )
 
     assert audit["contract_passed"] is True
-    assert audit["original_space_vector_readback"] is True
+    assert audit["native_translated_vector_readback"] is True
     assert audit["presolve_parameter_readback"] == 0
 
 

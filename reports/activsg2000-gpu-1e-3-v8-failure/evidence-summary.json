@@ -1,0 +1,56 @@
+{
+  "schema_version": "1.0.0",
+  "benchmark_id": "activsg2000-gpu-gap-v8-1e-3",
+  "classification": "failed_mip_start_rejected_no_final_result",
+  "frozen_identity": {
+    "commit": "53b734ca75ad4f07425b313b9f5c32d50c10b881",
+    "tag": "experiment-2000-gpu-gap-v8",
+    "config_sha256": "f6bc1f857a8cc233641082e8e3753622e44197a871f23b7fa34e20a95b38d67b"
+  },
+  "started_at_utc": "2026-08-15T01:25:31.099112+00:00",
+  "operator_stop_elapsed_seconds_approximate": 342,
+  "retained_ignored_evidence": {
+    "checkpoint": {
+      "path": "results/checkpoints/activsg2000-gpu-gap-v8-1e-3-dgx_spark.json",
+      "sha256": "1849b2df910678b03c4f7513dd659fc4f05b5f385f70f332c7ccad4c2f934887"
+    },
+    "events": {
+      "path": "results/diagnostics/activsg2000-gpu-gap-v8-1e-3-dgx_spark-events.jsonl",
+      "sha256": "5a60688c6536cd153642cf9ee3b815e31c587c9b9b402a1d78dc5a1de3914532"
+    },
+    "registry": {
+      "path": "results/experiments/activsg2000-gpu-gap-sensitivity-v8-run-registry.json",
+      "sha256": "67d21877f134225affb704bb9dcba239a93b004da163a1a7c8e9491873c47558"
+    }
+  },
+  "round_1": {
+    "adapter_wall_time_seconds": 5.5022636499779765,
+    "objective": 1118442.384611587,
+    "bound": 1118297.105971293,
+    "mip_gap": 0.00012989371852447946,
+    "screen_wall_time_seconds": 1.0304197070072405,
+    "screened_sides": 17563400,
+    "added_pairs": 173,
+    "maximum_violation_pu": 2.0459100279296125
+  },
+  "round_2_observed_native_error": {
+    "assignment_size": 11214,
+    "initial_solution_size": 9220,
+    "raw_log_retained": false,
+    "reason": "temporary container log lost when operator stopped docker run --rm"
+  },
+  "fixed_commitment_diagnostic": {
+    "solver": "HiGHS 1.15.1",
+    "status": "Infeasible",
+    "solve_time_seconds": 0.009923100005835295,
+    "integer_columns_fixed": 432,
+    "prior_solution_maximum_round2_row_violation_mw": 204.59100279297104,
+    "maximum_row_name": "c2440_m2453_lower"
+  },
+  "acceptance": {
+    "requested_gap_certified": false,
+    "final_exhaustive_screen_zero_above_tolerance": false,
+    "independent_verification_passed": false,
+    "pricing_available": false
+  }
+}

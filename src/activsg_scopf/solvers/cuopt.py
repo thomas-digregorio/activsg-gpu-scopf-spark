@@ -270,7 +270,7 @@ def audit_mip_start_readback(
     total_columns: int,
     presolve_readback: int | None,
 ) -> dict[str, object]:
-    """Verify the exact original-space start accepted by the pinned API contract."""
+    """Verify the exact explicit native-space start before the pinned solver call."""
 
     selected = np.asarray(columns, dtype=np.int64)
     expected = np.asarray(expected_native_values, dtype=np.float64)
@@ -281,11 +281,11 @@ def audit_mip_start_readback(
             "submitted": False,
             "contract_passed": None,
             "presolve_parameter_readback": presolve_readback,
-            "original_space_vector_readback": False,
+            "native_translated_vector_readback": False,
         }
     if observed.shape != (total_columns,):
         raise ScopfError(
-            "cuOpt MIP-start original-space readback has the wrong shape: "
+            "cuOpt MIP-start native-space readback has the wrong shape: "
             f"expected {(total_columns,)}, observed {observed.shape}"
         )
     if expected.shape != selected.shape:
@@ -295,7 +295,7 @@ def audit_mip_start_readback(
             "cuOpt MIP starts require presolve=0 in the pinned 26.6.0 API"
         )
     if not np.array_equal(observed[selected], expected):
-        raise ScopfError("cuOpt MIP-start original-space value readback failed")
+        raise ScopfError("cuOpt MIP-start native-space value readback failed")
     unselected = np.ones(total_columns, dtype=bool)
     unselected[selected] = False
     if not np.all(np.isnan(observed[unselected])):
@@ -305,7 +305,7 @@ def audit_mip_start_readback(
         "submitted": True,
         "contract_passed": True,
         "presolve_parameter_readback": 0,
-        "original_space_vector_readback": True,
+        "native_translated_vector_readback": True,
         "submitted_columns": int(selected.size),
     }
 

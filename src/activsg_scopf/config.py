@@ -14,6 +14,7 @@ from .paths import assert_approved_activsg_name, guard_input_path
 EXTENDED_DEADLINE_SUITES = {
     "activsg2000-gpu-gap-sensitivity-v7": 1935.0,
     "activsg2000-gpu-gap-sensitivity-v8": 1935.0,
+    "activsg2000-gpu-gap-sensitivity-v9": 1935.0,
 }
 
 

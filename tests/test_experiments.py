@@ -167,6 +167,28 @@ def test_activsg2000_gpu_v8_registers_fixed_start_and_same_budget() -> None:
     )
 
 
+def test_activsg2000_gpu_v9_registers_feasibility_checked_start() -> None:
+    config = load_config(ROOT / "configs" / "activsg2000-gpu-gap-1e-3-v9.json")
+
+    assert _experiment_identity(config) == (
+        "activsg2000-gpu-gap-sensitivity-v9",
+        "1e-3",
+    )
+    runtime = config.runtime
+    available = (
+        runtime["deadline_seconds"]
+        - runtime["verification_reserve_seconds"]
+        - runtime["serialization_reserve_seconds"]
+    )
+    assert available == 1800.0
+    profile = config.raw["platforms"]["dgx_spark"]
+    assert profile["solver_session"] == (
+        "rebuild_each_round_with_feasibility_checked_mip_start"
+    )
+    assert profile["mip_start_precheck"] == "highs_fixed_commitment_lp_v1"
+    assert profile["mip_start_precheck_time_limit_seconds"] == 10.0
+
+
 def test_next_gap_requires_prior_success_and_pricing() -> None:
     successful = {
         "runs": {

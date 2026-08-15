@@ -261,16 +261,24 @@ the separate 1,935-second guard at `1,805.749` seconds. See the
 [v7 report](reports/activsg2000-gpu-1e-3-v7/README.md). No v7 retry was
 performed.
 
-The separately authorized v8 replacement fixes that start defect without using
-a CPU initialization. Whenever a later round has a prior GPU commitment, the
-adapter now disables cuOpt presolve as required by the pinned 26.6.0 start
-contract, reads the exact original-space start vector back before solving,
-captures the native log, and fails closed on any rejection. It also fixes the
-constraint-generation controller so newly violated pairs are added and solved
-again while budget remains even if the current restricted-master gap is not yet
-certified. V8 keeps the v7 raw inputs, exact-PMIN model, PDLP profile,
-tolerances, dynamic screening, 1,800-second solver allowance, and 1,935-second
-outer guard. Exactly one v8 optimization run is authorized.
+The separately authorized v8 replacement attempted to correct that start
+defect without using a CPU initialization. Its single run is now closed as a
+failed attempt. Round 1 completed, added 173 security rows, and round 2 then
+reported a native start-vector mismatch (`11214` assignment values versus
+`9220` supplied values). The operator stopped the run after approximately 342
+seconds. There is no v8 final result, independent verification, or pricing.
+See the [v8 failed-attempt record](reports/activsg2000-gpu-1e-3-v8-failure/README.md).
+
+The authorized v9 replacement fixes both native start translation and start
+feasibility handling. For a later round, it first fixes the prior GPU
+commitment in a bounded HiGHS continuous LP. If that commitment is extendable,
+the resulting feasible full solution is submitted to cuOpt after exact native
+free-variable splitting and fixed/unused-column elimination. If it is not
+extendable, the reason is logged and that same restricted master is solved
+cold. V9 has no external CPU initialization and keeps the v8 raw inputs,
+exact-PMIN model, PDLP profile, tolerances, dynamic screening, 1,800-second
+solver allowance, and 1,935-second outer guard. Exactly one v9 optimization
+run is authorized.
 
 That ACTIVSg2000 campaign is now closed. The `1e-3` run completed
 `optimal_verified` with accepted fixed-commitment pricing; the `1e-4` run hit
@@ -328,6 +336,9 @@ bash scripts/spark-gap-2000-gpu-1e-3-v7.sh
 # One authorized corrected-start 30-minute run
 bash scripts/spark-build-2000-gpu-1e-3-v8.sh
 bash scripts/spark-gap-2000-gpu-1e-3-v8.sh
+# One authorized feasibility-checked-start replacement
+bash scripts/spark-build-2000-gpu-1e-3-v9.sh
+bash scripts/spark-gap-2000-gpu-1e-3-v9.sh
 ```
 
 Continue with `1e-4` through `1e-7` only after the prior level finishes
