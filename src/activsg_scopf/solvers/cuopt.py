@@ -329,6 +329,13 @@ def _native(value: object) -> object:
     return value.item() if isinstance(value, np.generic) else value
 
 
+def _callback_metric(value: object) -> float | None:
+    """Normalize finite cuOpt callback metrics and discard native sentinels."""
+
+    observed = float(value)
+    return observed if np.isfinite(observed) and abs(observed) < 1e19 else None
+
+
 def evaluate_mip_gap_certificate(
     *,
     native_status: str,
@@ -1070,8 +1077,8 @@ def solve_cuopt(
                     incumbent_trace.record_callback(
                         extract_commitments(solution),
                         elapsed_seconds=elapsed,
-                        objective=float(solution_cost[0]),
-                        bound=float(solution_bound[0]),
+                        objective=_callback_metric(solution_cost[0]),
+                        bound=_callback_metric(solution_bound[0]),
                     )
                 except Exception as exc:  # pragma: no cover - native callback
                     incumbent_trace.record_callback_error(
@@ -1086,9 +1093,13 @@ def solve_cuopt(
         native_log_path = Path(native_log_stream.name)
     settings.set_parameter("log_file", str(native_log_path))
     native_log = ""
+    callback_solve_wall_time_seconds: float | None = None
     try:
         incumbent_callback_clock["started"] = time.perf_counter()
         problem.solve(settings)
+        callback_solve_wall_time_seconds = (
+            time.perf_counter() - incumbent_callback_clock["started"]
+        )
         native_log = native_log_path.read_text(encoding="utf-8", errors="replace")
     finally:
         native_log_path.unlink(missing_ok=True)
@@ -1173,13 +1184,15 @@ def solve_cuopt(
         "policy": INCUMBENT_COMMITMENT_TRACE_POLICY,
     }
     if incumbent_trace is not None:
+        if callback_solve_wall_time_seconds is None:
+            raise ScopfError("cuOpt incumbent trace has no solver wall time")
         incumbent_trace_payload = incumbent_trace.finalize(
             (
                 None
                 if values is None
                 else values[np.flatnonzero(integrality)]
             ),
-            solve_time_seconds=float(problem.SolveTime),
+            solve_time_seconds=callback_solve_wall_time_seconds,
             objective=objective_value,
             bound=bound_value,
         )

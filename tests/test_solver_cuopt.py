@@ -11,6 +11,7 @@ from activsg_scopf.solvers.cuopt import (
     NO_NATIVE_SCALING,
     POWER_SYSTEM_PER_UNIT_SCALING,
     IncumbentCommitmentTrace,
+    _callback_metric,
     audit_cuopt_native_log,
     audit_mip_start_readback,
     evaluate_mip_gap_certificate,
@@ -30,6 +31,12 @@ PDLP_PROFILE = {
     "batch_reliability_branching": True,
     "reliability_branching_factor": 1,
 }
+
+
+def test_callback_metric_discards_cuopt_no_bound_sentinel() -> None:
+    assert _callback_metric(-1e20) is None
+    assert _callback_metric(float("inf")) is None
+    assert _callback_metric(123.0) == 123.0
 
 
 def test_incumbent_commitment_trace_compresses_stable_callbacks() -> None:
