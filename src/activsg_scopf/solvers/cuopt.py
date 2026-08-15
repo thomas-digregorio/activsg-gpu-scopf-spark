@@ -393,6 +393,16 @@ def free_continuous_columns(
     return np.flatnonzero(free)
 
 
+def fixed_or_unused_columns(model: CanonicalMILP) -> np.ndarray:
+    """Return canonical columns cuOpt otherwise removes before applying a start."""
+
+    objective, lower, upper, _ = model.column_arrays()
+    column_nonzeros = np.diff(model.matrix_csr().tocsc().indptr)
+    fixed = np.isfinite(lower) & np.isfinite(upper) & (lower == upper)
+    unused_zero_cost = (column_nonzeros == 0) & (objective == 0.0)
+    return np.flatnonzero(fixed | unused_zero_cost)
+
+
 def native_scaling_audit(
     model: CanonicalMILP,
     values: np.ndarray,
@@ -564,12 +574,51 @@ def solve_cuopt(
         if explicit_free_split
         else np.empty(0, dtype=np.int64)
     )
+    eliminated_columns = (
+        fixed_or_unused_columns(model)
+        if explicit_free_split
+        else np.empty(0, dtype=np.int64)
+    )
     split_column_set = {int(index) for index in split_columns}
+    eliminated_column_set = {int(index) for index in eliminated_columns}
+    selected_native_value_by_column = {
+        int(index): float(value / column_scale[int(index)])
+        for index, value in zip(
+            mip_start_columns, mip_start_selected_values, strict=True
+        )
+    }
+    eliminated_native_value_by_column: dict[int, float] = {}
+    for index in eliminated_columns:
+        canonical_index = int(index)
+        if (
+            isfinite(float(native_lower[canonical_index]))
+            and native_lower[canonical_index] == native_upper[canonical_index]
+        ):
+            native_value = float(native_lower[canonical_index])
+            selected_value = selected_native_value_by_column.get(canonical_index)
+            if selected_value is not None and not np.isclose(
+                selected_value, native_value, rtol=0.0, atol=1e-9
+            ):
+                raise ScopfError(
+                    "cuOpt MIP start conflicts with an eliminated fixed column: "
+                    f"{model.variable_names[canonical_index]}"
+                )
+        elif canonical_index in selected_native_value_by_column:
+            native_value = selected_native_value_by_column[canonical_index]
+        elif isfinite(float(native_lower[canonical_index])):
+            native_value = float(native_lower[canonical_index])
+        elif isfinite(float(native_upper[canonical_index])):
+            native_value = float(native_upper[canonical_index])
+        else:
+            native_value = 0.0
+        eliminated_native_value_by_column[canonical_index] = native_value
     problem = Problem("activsg_preventive_scuc")
     native_variables = []
     column_components = []
     for index, name in enumerate(model.variable_names):
-        if index in split_column_set:
+        if index in eliminated_column_set:
+            column_components.append([])
+        elif index in split_column_set:
             positive = problem.addVariable(
                 lb=0.0,
                 ub=float("inf"),
@@ -613,6 +662,8 @@ def solve_cuopt(
         canonical_index = int(index)
         native_value = float(value / column_scale[canonical_index])
         components = column_components[canonical_index]
+        if not components:
+            continue
         component_values = (
             (max(native_value, 0.0), max(-native_value, 0.0))
             if canonical_index in split_column_set
@@ -627,7 +678,13 @@ def solve_cuopt(
     objective_columns = np.flatnonzero(native_objective)
     objective_variables = []
     objective_coefficients: list[float] = []
+    objective_constant = 0.0
     for index in objective_columns:
+        if int(index) in eliminated_column_set:
+            objective_constant += float(native_objective[int(index)]) * (
+                eliminated_native_value_by_column[int(index)]
+            )
+            continue
         for variable, multiplier, _ in column_components[int(index)]:
             objective_variables.append(variable)
             objective_coefficients.append(
@@ -636,7 +693,7 @@ def solve_cuopt(
     objective_expression = LinearExpression(
         objective_variables,
         objective_coefficients,
-        0.0,
+        objective_constant,
     )
     problem.setObjective(objective_expression, sense=MINIMIZE)
     row_lower, row_upper = model.row_bound_arrays()
@@ -645,18 +702,24 @@ def solve_cuopt(
         indices, coefficients = model.row_entries(row)
         expression_variables = []
         native_coefficients: list[float] = []
+        expression_constant = 0.0
         for index, coefficient in zip(indices, coefficients, strict=True):
             scaled_coefficient = (
                 float(coefficient) * column_scale[index] * row_scale[row]
             )
+            if index in eliminated_column_set:
+                expression_constant += scaled_coefficient * (
+                    eliminated_native_value_by_column[index]
+                )
+                continue
             for variable, multiplier, _ in column_components[index]:
                 expression_variables.append(variable)
                 native_coefficients.append(scaled_coefficient * multiplier)
         expression = LinearExpression(
             expression_variables, native_coefficients, 0.0
         )
-        lo = float(row_lower[row] * row_scale[row])
-        hi = float(row_upper[row] * row_scale[row])
+        lo = float(row_lower[row] * row_scale[row] - expression_constant)
+        hi = float(row_upper[row] * row_scale[row] - expression_constant)
         if isfinite(lo) and isfinite(hi) and lo == hi:
             problem.addConstraint(expression == lo, name=name)
             native_constraint_count += 1
@@ -721,6 +784,15 @@ def solve_cuopt(
     mip_start_contract["explicit_free_split_columns"] = int(
         split_columns.size
     )
+    mip_start_contract["explicit_eliminated_columns"] = int(
+        eliminated_columns.size
+    )
+    mip_start_contract["eliminated_submitted_canonical_columns"] = int(
+        sum(
+            int(index) in eliminated_column_set
+            for index in mip_start_columns
+        )
+    )
     with NamedTemporaryFile(
         mode="w", prefix="activsg-cuopt-native-", suffix=".log", delete=False
     ) as native_log_stream:
@@ -747,11 +819,15 @@ def solve_cuopt(
     if has_incumbent:
         canonical_native_values = np.asarray(
             [
-                sum(
-                    multiplier * float(variable.getValue())
-                    for variable, multiplier, _ in components
+                (
+                    eliminated_native_value_by_column[index]
+                    if not components
+                    else sum(
+                        multiplier * float(variable.getValue())
+                        for variable, multiplier, _ in components
+                    )
                 )
-                for components in column_components
+                for index, components in enumerate(column_components)
             ],
             dtype=np.float64,
         )
@@ -859,6 +935,9 @@ def solve_cuopt(
             "native_constraints_added": native_constraint_count,
             "native_columns_translated": len(native_variables),
             "native_free_variable_split_columns": int(split_columns.size),
+            "native_fixed_or_unused_columns_eliminated": int(
+                eliminated_columns.size
+            ),
             "native_explicit_free_variable_split": explicit_free_split,
             "native_scaling_mode": native_scaling_mode,
             "native_base_mva": float(native_base_mva),

@@ -13,6 +13,7 @@ from activsg_scopf.solvers.cuopt import (
     audit_cuopt_native_log,
     audit_mip_start_readback,
     evaluate_mip_gap_certificate,
+    fixed_or_unused_columns,
     free_continuous_columns,
     native_scaling_audit,
     native_scaling_vectors,
@@ -246,6 +247,20 @@ def test_native_free_column_split_rejects_free_integer_column() -> None:
             np.asarray([np.inf]),
             np.asarray([1]),
         )
+
+
+def test_native_elimination_selects_fixed_and_unused_zero_cost_columns() -> None:
+    model = CanonicalMILP()
+    unused = model.add_variable("unused", lower=0.0, upper=1.0, integer=True)
+    fixed = model.add_variable(
+        "fixed", objective=3.0, lower=2.0, upper=2.0
+    )
+    active = model.add_variable("active", lower=0.0, upper=5.0)
+    model.add_row("balance", {fixed: 1.0, active: 1.0}, lower=4.0, upper=4.0)
+
+    np.testing.assert_array_equal(
+        fixed_or_unused_columns(model), np.asarray([unused, fixed])
+    )
 
 
 def _scaling_model() -> CanonicalMILP:

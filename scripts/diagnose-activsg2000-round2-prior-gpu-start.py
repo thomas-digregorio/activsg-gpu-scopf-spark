@@ -21,7 +21,11 @@ from activsg_scopf.seeded_diagnostic import (
     deserialize_solution_values,
     security_pairs_from_ids,
 )
-from activsg_scopf.solvers.cuopt import INTEGER_ONLY_MIP_START, solve_cuopt
+from activsg_scopf.solvers.cuopt import (
+    INTEGER_ONLY_MIP_START,
+    fixed_or_unused_columns,
+    solve_cuopt,
+)
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_CONFIG = ROOT / "configs" / "activsg2000-gpu-gap-1e-3-v8.json"
@@ -88,6 +92,14 @@ def main() -> None:
     expected_free_columns = int(
         np.count_nonzero(np.isneginf(column_lower) & np.isposinf(column_upper))
     )
+    expected_eliminated_columns = int(
+        fixed_or_unused_columns(master.canonical).size
+    )
+    expected_native_columns = (
+        master.canonical.num_columns
+        + expected_free_columns
+        - expected_eliminated_columns
+    )
     profile = config.raw["platforms"]["dgx_spark"]
     result = solve_cuopt(
         master.canonical,
@@ -114,8 +126,10 @@ def main() -> None:
         and native_log_audit.get("mip_start_rejection_count") == 0
         and statistics.get("native_free_variable_split_columns")
         == expected_free_columns
+        and statistics.get("native_fixed_or_unused_columns_eliminated")
+        == expected_eliminated_columns
         and statistics.get("native_columns_translated")
-        == master.canonical.num_columns + expected_free_columns
+        == expected_native_columns
     )
     payload = {
         "schema_version": "1.0.0",
@@ -127,6 +141,10 @@ def main() -> None:
             "nonzeros": int(master.canonical.matrix_csr().nnz),
             "equality_rows": equality_rows,
             "free_columns_requiring_native_split": expected_free_columns,
+            "fixed_or_unused_columns_requiring_native_elimination": (
+                expected_eliminated_columns
+            ),
+            "native_columns_expected": expected_native_columns,
         },
         "prior_round_solution_on_round2_master": canonical_feasibility_audit(
             master.canonical,
@@ -147,6 +165,9 @@ def main() -> None:
             ],
             "native_free_variable_split_columns": statistics[
                 "native_free_variable_split_columns"
+            ],
+            "native_fixed_or_unused_columns_eliminated": statistics[
+                "native_fixed_or_unused_columns_eliminated"
             ],
             "native_explicit_free_variable_split": statistics[
                 "native_explicit_free_variable_split"
