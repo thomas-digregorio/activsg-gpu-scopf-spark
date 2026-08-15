@@ -373,6 +373,28 @@ def _nonzero_range(entries: np.ndarray) -> dict[str, float | None]:
     }
 
 
+def _linear_activity_bounds(
+    indices: list[int],
+    coefficients: list[float],
+    lower: np.ndarray,
+    upper: np.ndarray,
+) -> tuple[float, float]:
+    """Return safe interval bounds for one native linear expression."""
+
+    minimum = 0.0
+    maximum = 0.0
+    for index, coefficient in zip(indices, coefficients, strict=True):
+        if coefficient == 0.0:
+            continue
+        if coefficient >= 0.0:
+            minimum += coefficient * float(lower[index])
+            maximum += coefficient * float(upper[index])
+        else:
+            minimum += coefficient * float(upper[index])
+            maximum += coefficient * float(lower[index])
+    return minimum, maximum
+
+
 def native_scaling_audit(
     model: CanonicalMILP,
     values: np.ndarray,
@@ -564,6 +586,8 @@ def solve_cuopt(
     problem.setObjective(objective_expression, sense=MINIMIZE)
     row_lower, row_upper = model.row_bound_arrays()
     native_constraint_count = 0
+    native_auxiliary_slack_columns = 0
+    explicit_start_slacks = bool(mip_start_columns.size)
     for row, name in enumerate(model.row_names):
         indices, coefficients = model.row_entries(row)
         native_coefficients = [
@@ -577,6 +601,58 @@ def solve_cuopt(
         hi = float(row_upper[row] * row_scale[row])
         if isfinite(lo) and isfinite(hi) and lo == hi:
             problem.addConstraint(expression == lo, name=name)
+            native_constraint_count += 1
+        elif explicit_start_slacks and isfinite(lo) and isfinite(hi):
+            activity = problem.addVariable(
+                lb=lo,
+                ub=hi,
+                vtype=CONTINUOUS,
+                name=f"native_activity_{row:05d}",
+            )
+            problem.addConstraint(expression - activity == 0.0, name=name)
+            native_auxiliary_slack_columns += 1
+            native_constraint_count += 1
+        elif explicit_start_slacks and isfinite(hi):
+            activity_minimum, _ = _linear_activity_bounds(
+                indices,
+                native_coefficients,
+                native_lower,
+                native_upper,
+            )
+            slack_upper = (
+                max(0.0, hi - activity_minimum)
+                if isfinite(activity_minimum)
+                else float("inf")
+            )
+            slack = problem.addVariable(
+                lb=0.0,
+                ub=slack_upper,
+                vtype=CONTINUOUS,
+                name=f"native_upper_slack_{row:05d}",
+            )
+            problem.addConstraint(expression + slack == hi, name=name)
+            native_auxiliary_slack_columns += 1
+            native_constraint_count += 1
+        elif explicit_start_slacks and isfinite(lo):
+            _, activity_maximum = _linear_activity_bounds(
+                indices,
+                native_coefficients,
+                native_lower,
+                native_upper,
+            )
+            slack_upper = (
+                max(0.0, activity_maximum - lo)
+                if isfinite(activity_maximum)
+                else float("inf")
+            )
+            slack = problem.addVariable(
+                lb=0.0,
+                ub=slack_upper,
+                vtype=CONTINUOUS,
+                name=f"native_lower_slack_{row:05d}",
+            )
+            problem.addConstraint(expression - slack == lo, name=name)
+            native_auxiliary_slack_columns += 1
             native_constraint_count += 1
         else:
             if isfinite(lo):
@@ -623,7 +699,7 @@ def solve_cuopt(
             mip_start_selected_values / column_scale[mip_start_columns]
         ),
         native_initial_primal=native_initial_primal,
-        total_columns=model.num_columns,
+        total_columns=model.num_columns + native_auxiliary_slack_columns,
         presolve_readback=mip_start_presolve_readback,
     )
     with NamedTemporaryFile(
@@ -751,6 +827,8 @@ def solve_cuopt(
             "canonical_rows_translated": model.num_rows,
             "canonical_nonzeros_translated": int(model.matrix_csr().nnz),
             "native_constraints_added": native_constraint_count,
+            "native_auxiliary_slack_columns": native_auxiliary_slack_columns,
+            "native_explicit_start_slack_translation": explicit_start_slacks,
             "native_scaling_mode": native_scaling_mode,
             "native_base_mva": float(native_base_mva),
             "native_column_scale_minimum": float(np.min(column_scale)),

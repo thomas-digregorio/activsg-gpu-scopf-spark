@@ -10,6 +10,7 @@ from activsg_scopf.solvers.cuopt import (
     INTEGER_ONLY_MIP_START,
     NO_NATIVE_SCALING,
     POWER_SYSTEM_PER_UNIT_SCALING,
+    _linear_activity_bounds,
     audit_cuopt_native_log,
     audit_mip_start_readback,
     evaluate_mip_gap_certificate,
@@ -226,6 +227,28 @@ def test_cuopt_native_log_rejects_failed_start_and_records_fallback_warning() ->
     assert audit["mip_start_rejection_count"] == 0
     assert audit["free_variable_warning_count"] == 1
     assert audit["barrier_numerical_warning_count"] == 1
+
+
+def test_native_linear_activity_bounds_cover_mixed_signs_and_infinity() -> None:
+    minimum, maximum = _linear_activity_bounds(
+        [0, 1, 2],
+        [2.0, -3.0, 0.0],
+        np.asarray([-1.0, 4.0, -np.inf]),
+        np.asarray([5.0, 8.0, np.inf]),
+    )
+
+    assert minimum == -26.0
+    assert maximum == -2.0
+
+    minimum, maximum = _linear_activity_bounds(
+        [0],
+        [1.0],
+        np.asarray([-np.inf]),
+        np.asarray([3.0]),
+    )
+
+    assert minimum == -np.inf
+    assert maximum == 3.0
 
 
 def _scaling_model() -> CanonicalMILP:
