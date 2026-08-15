@@ -372,6 +372,15 @@ model's `1e-6` primal tolerance; and enables cuOpt's per-constraint PDLP
 residual mode. The derivation changes no physical feasible point, PMIN value,
 cost, outage, or security tolerance.
 
+The single v14 run is closed as incomplete. Rounds 1 and 2 passed the corrected
+certificate checker, exhaustively screened all 17,563,400 sides, and added 84
+then 20 security pairs. Round 3 reached its 120-second per-round PDLP cap and
+returned `TimeLimit`, so it had no accepted vector to screen. The run stopped
+after 208.669 seconds despite the separate 600-second outer boundary, performed
+no final verification, and accepted no exhaustive LP bound. The tracked
+[v14 report](reports/activsg2000-gpu-lp-certificate-v14/README.md) preserves
+the timing, conservative dual reconstruction, and raw-artifact hashes.
+
 That ACTIVSg2000 campaign is now closed. The `1e-3` run completed
 `optimal_verified` with accepted fixed-commitment pricing; the `1e-4` run hit
 its restricted-master solver budget above the requested gap and its provisional
@@ -436,7 +445,7 @@ bash scripts/spark-gap-2000-gpu-1e-3-v9.sh
 bash scripts/spark-build-2000-gpu-commitment-trace-v11.sh
 bash scripts/spark-gap-2000-gpu-commitment-trace-v11.sh
 # Preserved v12 and v13 LP-certificate failures; do not rerun either identity
-# V14 is a separately guarded replacement and requires explicit launch approval
+# V14 is closed as incomplete; do not rerun this identity
 bash scripts/spark-build-2000-gpu-lp-certificate-v14.sh
 bash scripts/spark-run-2000-gpu-lp-certificate-v14.sh
 ```

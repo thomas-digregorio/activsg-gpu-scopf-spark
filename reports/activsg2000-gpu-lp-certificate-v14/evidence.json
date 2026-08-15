@@ -1,0 +1,58 @@
+{
+  "schema_version": "1.0.0",
+  "benchmark_id": "activsg2000-gpu-lp-certificate-v14",
+  "status": "incomplete_continuous_solve_not_optimal",
+  "frozen_identity": {
+    "commit": "20878c68418685007ca365a9b33b0235404b4998",
+    "tag": "experiment-2000-gpu-lp-certificate-v14",
+    "config_sha256": "751959d764eb85781f1c0d13ac1ce9ec09278f922c0be5d91d3e97b7a9888352"
+  },
+  "total_wall_time_seconds": 208.66916407001554,
+  "round_count": 3,
+  "added_security_pair_count": 104,
+  "last_completed_screen": {
+    "evaluated_sides": 17563400,
+    "new_violated_pairs": 20,
+    "maximum_violation_pu": 0.23488300748261737,
+    "maximum_pair_id": "c2157_m0805_upper"
+  },
+  "rounds": [
+    {
+      "round": 1,
+      "status": "Optimal",
+      "solve_time_seconds": 1.665331697,
+      "primal_objective": 1118296.7001867052,
+      "reported_dual_objective": 1118296.7001869367,
+      "conservative_reconstructed_bound": 869168.6546053478,
+      "new_security_pairs": 84,
+      "maximum_security_violation_pu": 1.5669193413940683
+    },
+    {
+      "round": 2,
+      "status": "Optimal",
+      "solve_time_seconds": 83.995704562,
+      "primal_objective": 1127661.4017712043,
+      "reported_dual_objective": 1127661.401736674,
+      "conservative_reconstructed_bound": 900321.0622542009,
+      "new_security_pairs": 20,
+      "maximum_security_violation_pu": 0.23488300748261737
+    },
+    {
+      "round": 3,
+      "status": "TimeLimit",
+      "solve_time_seconds": 120.005333275,
+      "primal_objective": null,
+      "reported_dual_objective": null,
+      "screen_performed": false
+    }
+  ],
+  "final_exhaustive_screen_passed": false,
+  "independent_final_verification_performed": false,
+  "reference_gap_test_performed": false,
+  "artifact_sha256": {
+    "result_json": "73d913937a95ac95f72d14fc6b3d847e0a6ceac30978d14e66faa60386a2c8a6",
+    "run_registry": "c628017d1824ef6db63c25d83705ea1d458842955a344c6bf0db3b5a22db7dea",
+    "worker_console": "f0ab2d22b090256a14612adfe5a5b44276ae09562bf6ac774dff028e6ca04f6d",
+    "launcher_console": "bc3aec2a254beb4a3df01b4fe3aa602aba9a9f01498257759ae416afdf1dfb6e"
+  }
+}
