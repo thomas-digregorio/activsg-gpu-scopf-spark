@@ -1,0 +1,248 @@
+{
+  "accepted_1e-3": {
+    "final_exhaustive_violation_pu": 7.892776920925826e-10,
+    "maximum_model_residual_pu": 2.4209725779655853e-09,
+    "pricing": {
+      "bus_price_summary_per_mwh": {
+        "maximum": 890.8656261496752,
+        "mean": 15.537987322893517,
+        "median": 20.474541656730487,
+        "minimum": -1941.2268090905695,
+        "p01": -312.6116316778414,
+        "p05": -48.031904754294345,
+        "p95": 59.23387947811669,
+        "p99": 132.07071373988674,
+        "standard_deviation": 89.45473520184693
+      },
+      "bus_price_summary_per_pu_hour": {
+        "maximum": 89086.56261496752,
+        "mean": 1553.7987322893516,
+        "median": 2047.454165673049,
+        "minimum": -194122.68090905694,
+        "p01": -31261.163167784136,
+        "p05": -4803.190475429435,
+        "p95": 5923.38794781167,
+        "p99": 13207.071373988676,
+        "standard_deviation": 8945.473520184692
+      },
+      "mip_minus_pricing_lp_objective": -3.6025885492563248e-06,
+      "pricing_dispatch_difference": {
+        "generators_above_1e-6_mw": 4,
+        "maximum_absolute_mw": 0.2751987011553183,
+        "maximum_absolute_pu": 0.002751987011553183,
+        "sum_absolute_mw": 0.7511712542508805,
+        "sum_absolute_pu": 0.007511712542508805
+      },
+      "pricing_lp_objective": 1133479.385504739,
+      "status": "optimal_secure_fixed_commitment_lp"
+    },
+    "verification": {
+      "checked_security_sides": 17563400,
+      "checked_valid_outages": 2740,
+      "details": {
+        "base_limit_violation_pu": 0.0,
+        "conditional_pmin_pmax_violation_pu": 5.994036200718256e-10,
+        "dc_flow_equation_residual_pu": 2.4209725779655853e-09,
+        "dispatch_definition_violation_pu": 1.1009069567080587e-09,
+        "global_balance_residual_pu": 1.0134317562915385e-09,
+        "independent_base_dc_solution_residual_pu": 1.0126541383215226e-09,
+        "nodal_balance_residual_pu": 8.478167501380085e-10,
+        "reference_angle_residual_rad": 0.0,
+        "segment_bound_violation_pu": 1.2650325231788884e-13
+      },
+      "elapsed_seconds": 1.5144140999909723,
+      "maximum_angle_limit_violation_rad": 0.0,
+      "maximum_integrality_violation": 3.319566843629218e-14,
+      "maximum_model_residual_pu": 2.4209725779655853e-09,
+      "maximum_security_violation_pu": 7.892776920925826e-10,
+      "objective_difference": 4.656612873077393e-10,
+      "objective_recalculated": 1133479.3855011368,
+      "passed": true,
+      "security_check_method": "independent raw-input FP64 sparse factorization, chunked LODF exhaustive screen, and selected explicit post-outage DC solves"
+    }
+  },
+  "accepted_1e-3_vs_provisional_1e-4": {
+    "accepted_1e-3_commitment_count": 327,
+    "commitment_flip_count": 32,
+    "comparison_status": "not_an_accepted_gap_comparison",
+    "mip_dispatch_mw": {
+      "count_above_1_mw": 46,
+      "count_above_1e-2": 49,
+      "count_above_1e-6": 49,
+      "maximum_absolute": 684.2,
+      "mean_absolute": 11.294007002720903,
+      "root_mean_square": 55.67783781849713,
+      "sum_absolute": 6143.939809480171
+    },
+    "off_to_on_count": 15,
+    "on_to_off_count": 17,
+    "pricing_comparison_available": false,
+    "provisional_1e-4_commitment_count": 325,
+    "reason": "The 1e-4 incumbent hit TimeLimit on a restricted master, then its provisional screen found 18 additional violated security pairs."
+  },
+  "base_mva": 100.0,
+  "campaign_status": "stopped_after_1e-4_incomplete",
+  "experiment_suite_id": "activsg2000-gap-sensitivity-v1",
+  "frozen_identity": {
+    "commit": "173fd0c10b8af5ed431956f2eea9726032df6f9e",
+    "config_sha256_by_gap": {
+      "1e-3": "be7a4b2e86cd272d2f4b2ae83686db5fc52f36c04d6ec6793e98d0ee5c7117e6",
+      "1e-4": "3cfeb7b0e135daa029d7a16d41a5c04b2409aee225ba478b5eab8a3aac04ece0"
+    },
+    "tag": "experiment-2000-gap-v1"
+  },
+  "incomplete_1e-4": {
+    "active_stage": "result_serialization",
+    "independent_verification_reached": false,
+    "last_completed_screen": {
+      "evaluated_sides": 17563400,
+      "maximum_pair_id": "c0676_m0680_lower",
+      "maximum_violation_pu": 0.20398906276083464,
+      "new_violated_pairs": 18,
+      "wall_time_seconds": 0.16689549999136943
+    },
+    "pricing_reached": false,
+    "solver_status": "TimeLimit"
+  },
+  "not_started_gap_labels": [
+    "1e-5",
+    "1e-6",
+    "1e-7"
+  ],
+  "raw_result_evidence": {
+    "1e-3": {
+      "bytes": 2502876,
+      "path": "results\\experiments\\activsg2000-gap-v1-1e-3-laptop.json",
+      "sha256": "5573425a8e625c0c964b2c61d33ca80666de74a350e9431a96e5ce9b90e02e3f"
+    },
+    "1e-4": {
+      "bytes": 1876344,
+      "path": "results\\experiments\\activsg2000-gap-v1-1e-4-laptop.json",
+      "sha256": "7116d7ca26f3a7beb11a7f824e4f46c38f29566df43fc4065440e4a5664f8a25"
+    }
+  },
+  "record_audits": {
+    "accepted_conditional_limit_violations_above_1e-6_mw": 0,
+    "accepted_dispatch_pu_mismatches": 0,
+    "accepted_source_limit_mismatches": 0,
+    "accepted_source_offline_availability_violations": 0,
+    "incomplete_conditional_limit_violations_above_1e-6_mw": 0,
+    "incomplete_dispatch_pu_mismatches": 0,
+    "incomplete_source_limit_mismatches": 0,
+    "incomplete_source_offline_availability_violations": 0,
+    "price_pu_conversion_mismatches": 0
+  },
+  "schema_version": "1.0.0",
+  "source_dimensions": {
+    "branches": 3206,
+    "buses": 2000,
+    "contingency_change_rows": 3734,
+    "contingency_table_counts": {
+      "CT_TBRCH": 3190,
+      "CT_TGEN": 544
+    },
+    "gencost_rows": 544,
+    "generators": 544,
+    "source_offline_generators": 112,
+    "source_online_generators": 432
+  },
+  "source_identity": {
+    "case_file": "case_ACTIVSg2000.m",
+    "case_sha256": "8d00618de8fd10bf35a599f59d2deebfecd0d86e28fcff73219ad7c4ebab860b",
+    "contingency_file": "contab_ACTIVSg2000.m",
+    "contingency_sha256": "198b39f0381925a4ddacbe2148973cb1d93ddfe220303829cf87b16d45190bba",
+    "row_identity_convention": {
+      "branch": "branch-row-NNNN is the immutable one-based mpc.branch source row",
+      "contingency_change": "source_row is the immutable one-based chgtab row",
+      "generator": "gen-row-NNNN is the immutable one-based mpc.gen source row"
+    }
+  },
+  "stop_rule": "Do not start a later gap after timeout, nonoptimal termination, verification failure, or missing pricing.",
+  "summary": [
+    {
+      "accepted_added_security_pairs": 106,
+      "achieved_mip_gap": 0.0007763998859633739,
+      "bound": 1132599.3522354912,
+      "commitment_count": 327,
+      "gap_label": "1e-3",
+      "independent_verification_passed": true,
+      "last_screen_maximum_violation_pu": 0.0,
+      "last_screen_new_violated_pairs": 0,
+      "objective": 1133479.3855011363,
+      "pricing_status": "optimal_secure_fixed_commitment_lp",
+      "raw_result_sha256": "5573425a8e625c0c964b2c61d33ca80666de74a350e9431a96e5ce9b90e02e3f",
+      "recorded_rounds": 3,
+      "requested_mip_gap": 0.001,
+      "status": "optimal_verified",
+      "total_wall_seconds": 1007.3702709000063
+    },
+    {
+      "accepted_added_security_pairs": 87,
+      "achieved_mip_gap": 0.00014613129607089713,
+      "bound": 1131175.0591730701,
+      "commitment_count": 325,
+      "gap_label": "1e-4",
+      "independent_verification_passed": null,
+      "last_screen_maximum_violation_pu": 0.20398906276083464,
+      "last_screen_new_violated_pairs": 18,
+      "objective": 1131340.3834095951,
+      "pricing_status": null,
+      "raw_result_sha256": "7116d7ca26f3a7beb11a7f824e4f46c38f29566df43fc4065440e4a5664f8a25",
+      "recorded_rounds": 2,
+      "requested_mip_gap": 0.0001,
+      "status": "incomplete_restricted_master_not_optimal",
+      "total_wall_seconds": 1665.8506764000049
+    },
+    {
+      "accepted_added_security_pairs": null,
+      "achieved_mip_gap": null,
+      "bound": null,
+      "commitment_count": null,
+      "gap_label": "1e-5",
+      "independent_verification_passed": null,
+      "last_screen_maximum_violation_pu": null,
+      "last_screen_new_violated_pairs": null,
+      "objective": null,
+      "pricing_status": null,
+      "raw_result_sha256": null,
+      "recorded_rounds": null,
+      "requested_mip_gap": 1e-05,
+      "status": "not_started_after_1e-4_failure",
+      "total_wall_seconds": null
+    },
+    {
+      "accepted_added_security_pairs": null,
+      "achieved_mip_gap": null,
+      "bound": null,
+      "commitment_count": null,
+      "gap_label": "1e-6",
+      "independent_verification_passed": null,
+      "last_screen_maximum_violation_pu": null,
+      "last_screen_new_violated_pairs": null,
+      "objective": null,
+      "pricing_status": null,
+      "raw_result_sha256": null,
+      "recorded_rounds": null,
+      "requested_mip_gap": 1e-06,
+      "status": "not_started_after_1e-4_failure",
+      "total_wall_seconds": null
+    },
+    {
+      "accepted_added_security_pairs": null,
+      "achieved_mip_gap": null,
+      "bound": null,
+      "commitment_count": null,
+      "gap_label": "1e-7",
+      "independent_verification_passed": null,
+      "last_screen_maximum_violation_pu": null,
+      "last_screen_new_violated_pairs": null,
+      "objective": null,
+      "pricing_status": null,
+      "raw_result_sha256": null,
+      "recorded_rounds": null,
+      "requested_mip_gap": 1e-07,
+      "status": "not_started_after_1e-4_failure",
+      "total_wall_seconds": null
+    }
+  ]
+}

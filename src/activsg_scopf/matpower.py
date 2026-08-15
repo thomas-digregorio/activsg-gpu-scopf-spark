@@ -10,6 +10,7 @@ from pathlib import Path
 import numpy as np
 import numpy.typing as npt
 
+from .cases import infer_registered_case, validate_registered_dimensions
 from .errors import ProvenanceError
 from .paths import guard_input_path
 
@@ -112,13 +113,16 @@ def _numeric_rows(lines: list[str], start: int, name: str) -> tuple[FloatArray, 
 def read_matpower_case(
     path: str | Path,
     *,
-    expected_sha256: str = EXPECTED_CASE_SHA256,
+    expected_sha256: str | None = None,
 ) -> MatpowerCase:
     source = guard_input_path(path)
+    registration = infer_registered_case(source.name)
+    expected_sha256 = expected_sha256 or registration.case_sha256
     observed_hash = sha256_file(source)
     if expected_sha256 and observed_hash.casefold() != expected_sha256.casefold():
         raise ProvenanceError(
-            f"ACTIVSg500 case hash mismatch: expected {expected_sha256}, observed {observed_hash}"
+            f"{registration.case_name} case hash mismatch: expected {expected_sha256}, "
+            f"observed {observed_hash}"
         )
     lines = source.read_text(encoding="utf-8").splitlines()
     base_mva: float | None = None
@@ -141,7 +145,7 @@ def read_matpower_case(
     if missing:
         raise ProvenanceError(f"Missing MATPOWER matrices: {sorted(missing)}")
     case = MatpowerCase(
-        case_name="ACTIVSg500",
+        case_name=registration.case_name,
         source_path=source,
         sha256=observed_hash,
         base_mva=base_mva,
@@ -151,6 +155,13 @@ def read_matpower_case(
         gencost=matrices["gencost"],
     )
     validate_case(case)
+    if expected_sha256.casefold() == registration.case_sha256.casefold():
+        validate_registered_dimensions(
+            registration,
+            buses=case.bus.shape[0],
+            generators=case.gen.shape[0],
+            branches=case.branch.shape[0],
+        )
     return case
 
 
@@ -186,13 +197,15 @@ def validate_case(case: MatpowerCase) -> None:
 def read_contingency_table(
     path: str | Path,
     *,
-    expected_sha256: str = EXPECTED_CONTINGENCY_SHA256,
+    expected_sha256: str | None = None,
 ) -> ContingencyTable:
     source = guard_input_path(path)
+    registration = infer_registered_case(source.name, contingency=True)
+    expected_sha256 = expected_sha256 or registration.contingency_sha256
     observed_hash = sha256_file(source)
     if expected_sha256 and observed_hash.casefold() != expected_sha256.casefold():
         raise ProvenanceError(
-            "ACTIVSg500 contingency hash mismatch: "
+            f"{registration.case_name} contingency hash mismatch: "
             f"expected {expected_sha256}, observed {observed_hash}"
         )
     lines = source.read_text(encoding="utf-8").splitlines()

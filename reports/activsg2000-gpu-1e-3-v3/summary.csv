@@ -1,0 +1,3 @@
+platform,result_status,objective,bound,mip_gap,commitment_count,rounds,added_pairs,last_completed_screen_new_violations,pricing_status,wall_seconds
+laptop_cpu,optimal_verified,1133479.3855011363,1132599.3522354912,0.0007763998859633739,327,3,106,0,optimal_secure_fixed_commitment_lp,1007.3702709000063
+dgx_spark,incomplete_no_incumbent,,,,,2,173,173,not_reached,1667.1162451249984

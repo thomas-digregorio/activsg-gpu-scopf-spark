@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/thomas-digregorio/activsg-gpu-scopf-spark/result.schema.json",
-  "title": "ACTIVSg500 end-to-end result",
+  "title": "Approved ACTIVSg end-to-end result",
   "type": "object",
   "required": [
     "schema_version",
@@ -16,7 +16,7 @@
   ],
   "properties": {
     "schema_version": {"const": "1.0.0"},
-    "case_name": {"const": "ACTIVSg500"},
+    "case_name": {"enum": ["ACTIVSg500", "ACTIVSg2000", "ACTIVSg10k"]},
     "interval_hours": {"const": 1.0},
     "official": {"type": "boolean"},
     "platform": {"enum": ["laptop_cpu", "dgx_spark"]},

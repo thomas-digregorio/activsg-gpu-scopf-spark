@@ -1,0 +1,48 @@
+{
+  "schema_version": "1.0.0",
+  "case_name": "ACTIVSg2000",
+  "experiment_suite_id": "activsg2000-gpu-gap-sensitivity-v2",
+  "gap_label": "1e-3",
+  "status": "failed_exception",
+  "error_type": "TypeError",
+  "error": "Object of type bool is not JSON serializable",
+  "total_wall_time_seconds": 6.98017456800153,
+  "frozen_identity": {
+    "commit": "de2ff0eaed30a87a8dd20edfbec4e31086879e3e",
+    "tag": "experiment-2000-gpu-gap-v2",
+    "config_sha256": "59b2c0412dc1723ee712bb2ef01b71460f36978bc3751dcd47a240f855925938"
+  },
+  "last_diagnostic_event": {
+    "event": "restricted_master_solve_finished",
+    "round": 1,
+    "native_status": "FeasibleFound",
+    "objective": 1118442.3846114445,
+    "bound": 1118297.105973398,
+    "mip_gap": 0.0001298937165149922,
+    "wall_time_seconds": 5.65025721899292
+  },
+  "completed_exhaustive_screens": 0,
+  "added_security_pairs": 0,
+  "solution_serialized": false,
+  "independent_verification_reached": false,
+  "pricing_reached": false,
+  "retried_under_same_identity": false,
+  "raw_evidence": {
+    "result": {
+      "bytes": 714620,
+      "sha256": "898dbb5380d8b939d21767bfd9d4c15ead01867325723b04ec90a30656b90c5d"
+    },
+    "registry": {
+      "bytes": 936,
+      "sha256": "d9e7d36594f10f119af1e5624b909e998e3986073aa56007c515ae24be3d93ef"
+    },
+    "checkpoint": {
+      "bytes": 713877,
+      "sha256": "353b0884efb7f9def67b7be8ca5c7536a37f74b8e270375dcc22acd79af3c2d9"
+    },
+    "diagnostic_events": {
+      "bytes": 2377,
+      "sha256": "eaa9e418b0b6c8aaae7724af7d3635461d415764e4a729c1c62f2b3828464fb9"
+    }
+  }
+}

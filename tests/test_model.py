@@ -28,3 +28,12 @@ def test_master_includes_pd_plus_gs_balance_and_dc_flow_rows() -> None:
     assert master.canonical.row_upper[row] == 42
     assert sum(name.startswith("dc_flow_l") for name in master.canonical.row_names) == 3
 
+
+def test_fixed_output_generator_keeps_ten_zero_segments_without_zero_columns() -> None:
+    case, _ = triangle_case()
+    case.gen[0, 8] = case.gen[0, 9]
+    master = build_master(case, build_network(case))
+    segments = master.index.segments_by_generator[0]
+    assert len(segments) == 10
+    assert all(column is None for column in segments)
+    assert not any(name.startswith("pseg_g0001") for name in master.canonical.variable_names)

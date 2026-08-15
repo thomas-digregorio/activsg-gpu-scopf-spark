@@ -15,11 +15,28 @@ That image currently provides Python 3.14.5, cuOpt 26.06.00, CuPy 14.1.1,
 NumPy 2.4.6, and SciPy 1.17.1. The image digest—not the mutable tag—is the
 benchmark identity.
 
+The derived image also installs the ARM64 `highspy==1.15.1` wheel. cuOpt and
+CuPy remain the registered Spark MIP and screening path. HiGHS is used only for
+the post-MIP fixed-commitment pricing LP because the cuOpt adapter does not
+expose the nodal-balance row duals required for prices. The environment checker
+fails closed if that HiGHS version differs.
+
 The repository is mounted read-only at `/workspace`; only its ignored
-`results/` directory is mounted read-write. Raw TAMU files are never included
-in the image or Git history.
+`results/` directory is mounted read-write. Raw TAMU files are copied separately
+to the approved local Spark checkout and are never included in the image or Git
+history.
+
+The derived image installs `git` so the controller can bind every result to the
+mounted checkout commit. Runtime scripts place CuPy and CUDA caches only under
+the ignored, writable `results/` mount; the repository and raw inputs remain
+read-only inside the container.
 
 cuOpt's mixed-integer solver uses both GPU and CPU components. Consequently,
 the comparison is a laptop-CPU system versus a DGX-Spark cuOpt/CuPy system,
 not a claim of pure GPU kernel speedup.
 
+For the pinned cuOpt 26.6.0 expression API, a later-round original-space MIP
+start is run with native presolve disabled. The adapter verifies the submitted
+vector through the generated data model and audits a temporary native log after
+every solve. Any native start rejection or other `Error` line fails the run;
+known barrier-fallback and free-angle warnings are counted in result evidence.

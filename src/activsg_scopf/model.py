@@ -21,7 +21,7 @@ class ModelIndex:
     generator_source_rows: IntArray
     commitment_by_generator: dict[int, int]
     dispatch_by_generator: dict[int, int]
-    segments_by_generator: dict[int, tuple[int, ...]]
+    segments_by_generator: dict[int, tuple[int | None, ...]]
     theta_by_bus: IntArray
     flow_by_active_branch: IntArray
 
@@ -39,7 +39,7 @@ def build_master(case: MatpowerCase, network: NetworkData, *, segments: int = 10
     online = np.flatnonzero(case.gen[:, GEN_STATUS] > 0).astype(np.int64)
     commitment: dict[int, int] = {}
     dispatch: dict[int, int] = {}
-    segment_columns: dict[int, tuple[int, ...]] = {}
+    segment_columns: dict[int, tuple[int | None, ...]] = {}
     for generator_index in online:
         row = int(generator_index) + 1
         curve = curves[int(generator_index)]
@@ -55,11 +55,14 @@ def build_master(case: MatpowerCase, network: NetworkData, *, segments: int = 10
         )
         commitment[int(generator_index)] = u
         dispatch[int(generator_index)] = p
-        y_columns: list[int] = []
+        y_columns: list[int | None] = []
         for segment, (width, slope) in enumerate(
             zip(curve.segment_widths_mw, curve.segment_slopes_per_mwh, strict=True),
             start=1,
         ):
+            if width == 0:
+                y_columns.append(None)
+                continue
             y = model.add_variable(
                 f"pseg_g{row:04d}_s{segment:02d}",
                 objective=float(slope),
@@ -74,7 +77,7 @@ def build_master(case: MatpowerCase, network: NetworkData, *, segments: int = 10
             )
         segment_columns[int(generator_index)] = tuple(y_columns)
         definition = {p: 1.0, u: -curve.pmin_mw}
-        definition.update({column: -1.0 for column in y_columns})
+        definition.update({column: -1.0 for column in y_columns if column is not None})
         model.add_row(f"exact_pmin_dispatch_g{row:04d}", definition, lower=0.0, upper=0.0)
 
     theta_columns = np.empty(len(network.bus_ids), dtype=np.int64)
@@ -99,10 +102,14 @@ def build_master(case: MatpowerCase, network: NetworkData, *, segments: int = 10
         bus_index = bus_lookup[int(case.gen[generator_index, GEN_BUS])]
         generators_at_bus[bus_index].append(dispatch[int(generator_index)])
     demand = case.bus[:, PD] + case.bus[:, GS]
+    incidence_by_bus = network.incidence.tocsc()
     for bus_index, bus_id in enumerate(network.bus_ids):
         coefficients = {column: 1.0 for column in generators_at_bus[bus_index]}
-        for active_index in network.incidence[:, bus_index].nonzero()[0]:
-            incidence_value = float(network.incidence[active_index, bus_index])
+        start = int(incidence_by_bus.indptr[bus_index])
+        stop = int(incidence_by_bus.indptr[bus_index + 1])
+        for position in range(start, stop):
+            active_index = int(incidence_by_bus.indices[position])
+            incidence_value = float(incidence_by_bus.data[position])
             coefficients[int(flow_columns[active_index])] = -incidence_value
         rhs = float(demand[bus_index])
         model.add_row(

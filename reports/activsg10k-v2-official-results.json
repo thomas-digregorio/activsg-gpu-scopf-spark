@@ -1,0 +1,98 @@
+{
+  "schema_version": "1.0.0",
+  "benchmark": {
+    "case_name": "ACTIVSg10k",
+    "benchmark_id": "activsg10k-v2",
+    "commit": "1ab1342d627d8499ed7aafdecd699eb47ac618ad",
+    "config_sha256": "4a6a1b9703de6919947c472bea9d6c7c768972a667918f4cd54f2a71119c8d9e",
+    "tag": "benchmark-10k-v2"
+  },
+  "model_identity": {
+    "reference_benchmark": "activsg10k-v1",
+    "raw_inputs_equal": true,
+    "model_configuration_equal": true,
+    "exact_source_pmin_unchanged": true,
+    "runtime_changes": {
+      "highs_session": "persistent_incremental",
+      "verification_reserve_seconds": 45.0
+    }
+  },
+  "source": {
+    "case_sha256": "ead10b25fecc4dcc02f88bacdfb3526fe8b8985b81f7e539c95abddb32575590",
+    "contingency_sha256": "7e1681a960b0a2a99d824766e0e94cc291fa36a7ec33b6dee24bf12ac67ddef7",
+    "buses": 10000,
+    "generators": 2485,
+    "source_online_generators": 1937,
+    "source_offline_generators": 548,
+    "branches": 12706,
+    "contingency_change_rows": 11806,
+    "source_online_pmin_sum_mw": 85764.93,
+    "source_online_pmax_sum_mw": 170021.33000000002,
+    "pwl_segment_count": 10,
+    "pwl_maximum_absolute_error": 2.587250178001341,
+    "cost_description": "source-derived production-cost curves; not submitted market offers"
+  },
+  "contingencies": {
+    "valid_non_islanding_branch_outages": 8371,
+    "excluded_islanding_bridges": 3435,
+    "deferred_generator_outages": 0,
+    "lodf_fp64_bytes": 850895408,
+    "lodf_selected_validation_columns": [0, 4185, 8370],
+    "lodf_selected_validation_maximum_error_pu": 2.7755272838214152e-13
+  },
+  "laptop_cpu": {
+    "official_run_count": 1,
+    "status": "hard_deadline_exceeded",
+    "total_wall_time_seconds": 300.01039939999464,
+    "base_model": {
+      "columns": 35840,
+      "rows": 33913,
+      "nonzeros": 97141
+    },
+    "peak_process_rss_bytes": 1341493248,
+    "last_completed_round": {
+      "round": 1,
+      "solver": "HiGHS 1.15.1",
+      "solver_status": "Optimal",
+      "objective": 2201957.0404112316,
+      "bound": 2201955.1956132306,
+      "mip_gap": 8.377992699850948e-7,
+      "committed_generators": 1520,
+      "solve_time_seconds": 59.67994489999546,
+      "adapter_wall_time_seconds": 59.682984700004454,
+      "mip_node_count": 35,
+      "simplex_iteration_count": 52891,
+      "maximum_primal_infeasibility": 2.5823241855960077e-7,
+      "screen_time_seconds": 2.0058152999990853,
+      "evaluated_security_sides": 171488782,
+      "new_security_pairs": 322,
+      "maximum_security_violation_pu": 8.2869999999999
+    },
+    "round_2": {
+      "started": true,
+      "completed": false,
+      "checkpoint_elapsed_seconds": 70.9713458000042,
+      "remaining_solver_budget_seconds": 179.02865659999952,
+      "frozen_adapter_native_limit_seconds": 238.70860149999498,
+      "incumbent": null,
+      "bound": null,
+      "mip_gap": null,
+      "note": "The parent watchdog stopped the worker at the global boundary before HiGHS returned. The frozen adapter incorrectly added prior HiGHS runtime to the remaining per-call budget."
+    },
+    "final_independent_verification": null,
+    "acceptance_passed": false
+  },
+  "post_run_correction": {
+    "inside_frozen_benchmark": false,
+    "full_case_rerun_performed": false,
+    "change": "Cap each native HiGHS call at no more than its current remaining deadline budget, including incremental-session setup time, and record wall-clock solve time."
+  },
+  "dgx_spark": {
+    "official_run_count": 0,
+    "status": "not_run_laptop_gate_closed"
+  },
+  "comparison": {
+    "status": "not_available",
+    "reason": "The laptop did not return optimal_verified, so the Spark gate remained closed."
+  }
+}

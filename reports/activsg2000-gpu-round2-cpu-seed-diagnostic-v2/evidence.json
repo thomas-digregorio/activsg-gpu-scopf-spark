@@ -1,0 +1,69 @@
+{
+  "schema_version": "1.0.0",
+  "case_name": "ACTIVSg2000",
+  "diagnostic_id": "activsg2000-gpu-round2-cpu-seed-diagnostic-v2",
+  "frozen_identity": {
+    "commit": "3f070fafa020431744fcb376f9fbd890eb666de5",
+    "config_sha256": "fe2a49f3b25af0fceca4567bde7b5d0e90b76d27bd06e02d4cd4a6e3157c6da2",
+    "tag": "diagnostic-2000-gpu-round2-cpu-seed-v2"
+  },
+  "status": "diagnostic_incumbent_returned_but_acceptance_gate_failed",
+  "adapter_status": "OptimalGapMismatch",
+  "native_status": "Optimal",
+  "native_console_root_status": "INFEASIBLE",
+  "solver_launched": true,
+  "constraint_generation_enabled": false,
+  "fixed_security_rows": 173,
+  "model_dimensions": {
+    "columns": 9220,
+    "rows": 8961,
+    "nonzeros": 27120,
+    "native_constraints": 8961
+  },
+  "mip_start": {
+    "mode": "all_columns",
+    "columns": 9220,
+    "integer_columns": 432,
+    "bound_projection_count": 79,
+    "bound_projection_maximum_delta": 5.994036200718256e-8,
+    "maximum_row_violation": 2.420986220386112e-7,
+    "maximum_column_bound_violation": 0.0,
+    "maximum_integrality_violation": 0.0,
+    "independent_verification_passed": true
+  },
+  "solve": {
+    "native_solve_time_seconds": 1657.746821091,
+    "adapter_wall_time_seconds": 1658.5425148960057,
+    "nodes": 98,
+    "simplex_iterations": 47,
+    "has_incumbent": true,
+    "objective": 1133479.3855011382,
+    "bound": null,
+    "mip_gap": null,
+    "requested_gap_certified": false,
+    "native_max_constraint_violation": 2.4209293769672513e-7,
+    "native_max_integrality_violation": 0.0,
+    "native_max_variable_bound_violation": 0.0
+  },
+  "returned_state_verification": {
+    "passed": true,
+    "checked_valid_outages": 2740,
+    "checked_security_sides": 17563400,
+    "violations_above_tolerance": 0,
+    "maximum_model_residual_pu": 2.4209725779655853e-9,
+    "maximum_security_violation_pu": 1.246871761395596e-9,
+    "objective_difference": 1.862645149230957e-9
+  },
+  "total_wall_time_seconds": 1661.5455359359912,
+  "peak_memory": {
+    "process_rss_bytes": 5642190848,
+    "cuda_device_memory_delta_bytes": 11241918464
+  },
+  "sha256": {
+    "secure_cpu_result": "5573425a8e625c0c964b2c61d33ca80666de74a350e9431a96e5ce9b90e02e3f",
+    "gpu_v3_round2_result": "9b9e7d3b0dfdad0faeb740f639307844920c18eb85c07ac9705f8b84e034366c",
+    "raw_result": "96f4068f4327b859d11cecfc8d3bf63c33a9a71779685d24a532a74379e60929",
+    "console_log": "7a0a638257988bf41715556344a231b7dcac7e721c721ce1aa56fc712b18cabe",
+    "run_registry": "9f8e21ded51d04d531bfdd56df0b531b32140f4b8a0df07f9520f8d4f4543dc6"
+  }
+}

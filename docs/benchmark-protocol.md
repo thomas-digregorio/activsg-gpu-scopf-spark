@@ -4,14 +4,21 @@
 
 An official run requires all of the following to agree:
 
-- clean Git `HEAD` and the configured `benchmark-v1` tag;
+- clean Git `HEAD` and the tag registered by the selected case configuration;
 - complete Git commit hash;
-- SHA-256 of `configs/activsg500.json`;
+- SHA-256 of the selected case configuration;
 - both immutable raw-input hashes; and
 - the registered platform profile.
 
-The detailed result and durable run registry live in ignored `results/`. A
+The ACTIVSg500 tag and evidence remain immutable. ACTIVSg10k uses its own tag,
+output names, checkpoints, and benchmark-ID-specific registry. The detailed
+result and durable run registry live in ignored `results/`. A
 sanitized comparison may be committed only after both one-shot runs finish.
+
+The failed `activsg10k-v1` laptop evidence also remains immutable. The
+explicitly authorized second laptop run is registered as `activsg10k-v2` with
+tag `benchmark-10k-v2`; it has a separate registry, checkpoint, and output. It
+also failed at the parent deadline during round 2 and is closed to reruns.
 
 ## Boundary
 
@@ -28,9 +35,37 @@ two registered raw files are setup and are excluded.
 ## Deadline behavior
 
 The global limit is 300 seconds. Solver calls receive the current remaining
-budget minus 45 seconds for verification and 5 seconds for serialization. Each
+budget minus the configured verification reserve (45 seconds for ACTIVSg500,
+75 seconds for ACTIVSg10k) and 5 seconds for serialization. Each
 adapter also sets its native time limit. The parent process independently kills
 the worker at the global boundary if it has not returned.
+
+ACTIVSg10k v2 restores the verification reserve to 45 seconds using the v1
+measurements (8.84 seconds for model/factor construction and 2.03 seconds per
+complete screen). Its HiGHS adapter loads the canonical model once, appends only
+new security rows, and passes the prior integer assignment as a partial MIP
+start. HiGHS warnings are inspected through model status rather than promoted
+to exceptions. These are runtime changes only; all mathematical inputs and
+acceptance tolerances match v1.
+
+The frozen v2 adapter incorrectly added prior HiGHS runtime to the current
+call's remaining budget when setting the native limit. A post-v2 correction
+caps the native limit at the remaining call budget after incremental setup and
+records independent wall-clock timing. This correction does not retroactively
+change v2 and is covered only by tiny component tests unless a new benchmark is
+explicitly authorized.
+
+ACTIVSg10k v3 is a separately authorized laptop-only profiling run. Its source,
+model, deadline, reserves, tolerances, and dynamic constraint-generation loop
+match v2. It enables flushed one-second HiGHS progress callbacks plus native log
+messages and records row synchronization, MIP-start, solve, screen, and
+verification phase boundaries. No security-pair seed is loaded.
+
+The v3 laptop run is closed after one execution. It returned
+`incomplete_restricted_master_not_optimal` in 283.648 seconds. Its durable logs
+show that round-2 row loading and MIP-start installation were negligible, while
+the infeasible partial-start LP attempt used about 30.73 seconds and the main
+MIP exhausted 178.49 native seconds. No v3 retry or Spark run is permitted.
 
 The ignored registry is written as `started` before worker launch. A timeout,
 exception, infeasibility, nonoptimal solver return, verification failure, or
@@ -51,3 +86,7 @@ Python versions, and solvers differ, so any ratio is labeled system-to-system.
 No isolated screening, same-host CPU, fixed-commitment LP, warmup, or repeated
 timing result belongs to the registered comparison.
 
+The unbounded ACTIVSg10k MIP-gap sensitivity study is a separate experiment,
+not part of this official CPU/Spark comparison. Its one-shot runs and
+fixed-commitment LP prices have their own frozen tag, registry, output names,
+and interpretation contract.

@@ -1,0 +1,102 @@
+{"bound_projection_count": 79, "canonical_columns": 9220, "canonical_rows": 8961, "diagnostic_event": "full_cpu_start_audit_passed", "maximum_row_violation": 2.420986220386112e-07, "maximum_security_violation_pu": 1.246871761395596e-09, "mip_start_bound_policy": "project_numerical_excess_to_exact_bound", "mip_start_columns": 9220, "native_scaling_mode": "power_system_per_unit_v1", "security_rows": 173}
+Setting parameter time_limit to 1.657607e+03
+Setting parameter mip_relative_gap to 1.000000e-03
+Setting parameter random_seed to 0
+Setting parameter log_to_console to true
+cuOpt version: 26.6.0, git hash: df5fe0d1, host arch: aarch64, device archs: 75-real,80-real,86-real,90a-real,100f-real,120a-real,120
+CPU: Unknown, threads (physical/logical): 1/20, RAM: 107.96 GiB
+CUDA 13.0, device: NVIDIA GB10 (ID 0), VRAM: 121.69 GiB
+CUDA device UUID: 9041e1da-22a0-b23a-76f1-06935470d0de
+
+Solving a problem with 8961 constraints, 9220 variables (432 integers), and 27120 nonzeros
+Problem scaling:
+Objective coefficents range:          [4e+02, 9e+03]
+Constraint matrix coefficients range: [7e-04, 6e+00]
+Constraint rhs / bounds range:        [0e+00, 2e+01]
+Variable bounds range:                [1e-03, 4e+01]
+
+MIP row scaling completed
+Presolve is disabled, skipping
+Objective offset 0.000000 scaling_factor 1.000000
+Model fingerprint: 0xec84f8ff
+Free variable found! Make sure the correct bounds are given.
+Unused variables detected, eliminating them! Unused var count 5
+Starting cuOpt presolve
+Running probing cache with 19 tasks
+Unused variables detected, eliminating them! Unused var count 303
+After cuOpt presolve: 8656 constraints, 10911 variables, objective offset 0.000000.
+cuOpt presolve time: 0.89
+Graph construction time 0.002525
+Automorphism group size 8.73535*10^220, 617 dejavu generators (0 move variables)
+Dejavu time 0.007183
+Projected 0 generators onto 10911 binary variables (617 skipped non-binary), 0 stored
+Total symmetry detection time 0.009726
+No exploitable symmetry found (0 generators, 0 non-trivial orbits, max orbit size 0)
+Probing implied bounds: 227 zero entries, 227 one entries
+Reduced cost strengthening enabled: 2
+10575 variable upper bounds in 0.00 seconds
+4275 variable lower bounds in 0.00 seconds
+
+Solving LP root relaxation in concurrent mode
+Skipping column scaling
+Dual Simplex Phase 1
+Dual feasible solution found.
+Dual Simplex Phase 2
+ Iter     Objective           Num Inf.  Sum Inf.     Perturb  Time
+    0 +0.0000000000000000e+00    4108 2.61166968e+05 0.00e+00 1.33
+    1 +0.0000000000000000e+00    4108 2.51767802e+05 0.00e+00 1.33
+ 1000 +0.0000000000000000e+00    3923 2.66129567e+05 0.00e+00 1.35
+ 2000 +0.0000000000000000e+00    3643 8.11154568e+05 0.00e+00 1.41
+ 3000 +5.8297533003368811e+05    5842 6.20392698e+04 2.00e-07 1.45
+ 4000 +7.7703431609587849e+05    5795 1.98791107e+05 3.92e-07 1.53
+ 5000 +7.8523648170494137e+05    5557 1.22297408e+07 3.90e-07 1.70
+ 6000 +7.9297256045406125e+05    4507 7.92584469e+05 1.03e-07 1.92
+ 7000 +8.2498411440111999e+05    3274 1.00717149e+06 0.00e+00 2.15
+ 8000 +8.6360021647796524e+05    4269 4.57931800e+09 0.00e+00 2.37
+ 9000 +8.9979131891027151e+05    1686 1.42266638e+08 1.00e-07 2.55
+10000 +9.1131390463035856e+05     229 8.14645835e+02 0.00e+00 2.89
+Removed perturbation of 8.22e-04.
+
+
+Root relaxation solution found in 10391 iterations and 1.67s by Dual Simplex
+Root relaxation objective +1.12757436e+06
+
+
+ | Explored | Unexplored |    Objective    |     Bound     | IntInf | Depth | Iter/Node | Gap    |  Time  |
+           0            0             +inf    +1.127625e+06       17      0   1.0e+04        -        3.02
+           0            0             +inf    +1.127758e+06       17      0   1.0e+04        -        3.05
+           0            0             +inf    +1.127778e+06       16      0   1.0e+04        -        3.09
+           0            0             +inf    +1.127876e+06       16      0   1.0e+04        -        3.13
+           0            0             +inf    +1.128206e+06       16      0   1.0e+04        -        3.17
+           0            0             +inf    +1.128569e+06       16      0   1.0e+04        -        3.20
+           0            0             +inf    +1.129472e+06       15      0   1.0e+04        -        3.25
+Gomory         cuts : 1
+MIR            cuts : 9
+Knapsack       cuts : 0
+Strong CG      cuts : 0
+Clique         cuts : 0
+Implied Bounds cuts : 0
+Flow Cover     cuts : 0
+Cut generation time: 0.27 seconds
+Cut pool size  : 20
+Size with cuts : 8659 constraints, 19570 variables, 41496 nonzeros
+Strong branching using 19 threads and 15 fractional variables
+Strong branching completed in 0.10s
+Exploring the B&B tree using 19 threads
+
+ | Explored | Unexplored |    Objective    |     Bound     | IntInf | Depth | Iter/Node |   Gap    |  Time  |
+D        162          144    +1.156126e+06    +1.129641e+06        0    143   1.5e+02       2.3%      4.84
+D        628          498    +1.155204e+06    +1.130626e+06        0    165   6.6e+01       2.1%      5.69
+D        825          643    +1.135672e+06    +1.130626e+06        0    149   5.4e+01       0.4%      5.97
+        1031          617    +1.135672e+06    +1.130636e+06       12      8   4.5e+01       0.4%      6.15
+D       1385          849    +1.132678e+06    +1.130636e+06        0    126   3.6e+01       0.2%      6.51
+D       1989          897    +1.132095e+06    +1.130721e+06        0    180   2.8e+01       0.1%      7.20
+        2031          597    +1.132095e+06    +1.130721e+06       12     11   2.7e+01       0.1%      7.27
+D       2700          605    +1.131794e+06    +1.130841e+06        0    140   2.3e+01      0.08%      8.05
+Explored 2709 nodes in 8.05s.
+Absolute Gap 9.532951e+02 Objective 1.1317943544796333e+06 Lower Bound 1.1308410593988446e+06
+Optimal solution found within relative MIP gap tolerance (1.0e-03)
+Adding initial solution success! feas 1 objective 1133479.385501 excess 0.000000
+Solution objective: 1131794.354480 , relative_mip_gap 0.000842 solution_bound 1130841.059399 presolve_time 0.889325 total_solve_time 20.037933 max constraint violation 0.000000 max int violation 0.000000 max var bounds violation 0.000000 nodes 2709 simplex_iterations 62267
+{"output": "/workspace/results/diagnostics/activsg2000-gpu-round2-cpu-seed-diagnostic-v3-dgx-spark.json", "status": "diagnostic_incumbent_returned_but_acceptance_gate_failed"}
+{"output": "/workspace/results/diagnostics/activsg2000-gpu-round2-cpu-seed-diagnostic-v3-dgx-spark.json", "status": "diagnostic_incumbent_returned_but_acceptance_gate_failed"}

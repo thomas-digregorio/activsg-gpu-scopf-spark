@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 from math import pi
+from typing import Any
 
 import numpy as np
 import numpy.typing as npt
@@ -73,9 +74,52 @@ class ContingencyCatalog:
     valid: tuple[ValidOutage, ...]
     excluded: tuple[ExcludedOutage, ...]
     deferred_generator_outages: tuple[ExcludedOutage, ...]
-    lodf: FloatArray
+    lodf: FloatArray | None
+    lodf_operator: LodfOperator
     validation_max_error_pu: float
     validation_columns: tuple[int, ...]
+    build_chunk_columns: int
+
+
+@dataclass(frozen=True)
+class LodfOperator:
+    """Sparse-factor-backed FP64 LODF column generator."""
+
+    network: NetworkData
+    factor: Any
+    keep_buses: npt.NDArray[np.bool_]
+
+    def transaction_columns(
+        self, outage_active_indices: IntArray
+    ) -> tuple[FloatArray, FloatArray]:
+        count = len(outage_active_indices)
+        if count == 0:
+            return (
+                np.empty(
+                    (len(self.network.active_branch_source_rows), 0), dtype=np.float64
+                ),
+                np.empty(0, dtype=np.float64),
+            )
+        transaction_rhs = self.network.incidence[outage_active_indices].T.toarray()
+        theta = np.zeros((len(self.network.bus_ids), count), dtype=np.float64)
+        theta[self.keep_buses, :] = self.factor.solve(
+            transaction_rhs[self.keep_buses, :]
+        )
+        ptdf = self.network.susceptance_pu[:, None] * np.asarray(
+            self.network.incidence @ theta
+        )
+        denominator = 1.0 - ptdf[outage_active_indices, np.arange(count)]
+        return np.asarray(ptdf, dtype=np.float64), np.asarray(denominator, dtype=np.float64)
+
+    def lodf_columns(self, outage_active_indices: IntArray) -> FloatArray:
+        ptdf, denominator = self.transaction_columns(outage_active_indices)
+        valid = np.isfinite(denominator) & (np.abs(denominator) > 1e-10)
+        if not np.all(valid):
+            bad = np.flatnonzero(~valid).tolist()
+            raise ProvenanceError(f"Invalid LODF denominator in requested columns {bad}")
+        lodf = ptdf / denominator[None, :]
+        lodf[outage_active_indices, np.arange(len(outage_active_indices))] = -1.0
+        return np.asarray(lodf, dtype=np.float64)
 
 
 def build_network(case: MatpowerCase) -> NetworkData:
@@ -152,6 +196,60 @@ def _component_count(
     return int(csgraph.connected_components(graph, directed=False, return_labels=False))
 
 
+def _bridge_active_indices(network: NetworkData) -> set[int]:
+    """Return multigraph-aware bridge edge IDs in O(buses + branches)."""
+
+    bus_count = len(network.bus_ids)
+    adjacency: list[list[tuple[int, int]]] = [[] for _ in range(bus_count)]
+    for edge, (from_bus, to_bus) in enumerate(
+        zip(network.from_bus_index, network.to_bus_index, strict=True)
+    ):
+        left = int(from_bus)
+        right = int(to_bus)
+        adjacency[left].append((right, edge))
+        adjacency[right].append((left, edge))
+    discovered = np.full(bus_count, -1, dtype=np.int64)
+    low = np.full(bus_count, -1, dtype=np.int64)
+    parent = np.full(bus_count, -1, dtype=np.int64)
+    parent_edge = np.full(bus_count, -1, dtype=np.int64)
+    next_neighbor = np.zeros(bus_count, dtype=np.int64)
+    bridges: set[int] = set()
+    tick = 0
+    for root in range(bus_count):
+        if discovered[root] >= 0:
+            continue
+        discovered[root] = tick
+        low[root] = tick
+        tick += 1
+        stack = [root]
+        while stack:
+            node = stack[-1]
+            cursor = int(next_neighbor[node])
+            if cursor < len(adjacency[node]):
+                neighbor, edge = adjacency[node][cursor]
+                next_neighbor[node] += 1
+                if edge == parent_edge[node]:
+                    continue
+                if discovered[neighbor] < 0:
+                    parent[neighbor] = node
+                    parent_edge[neighbor] = edge
+                    discovered[neighbor] = tick
+                    low[neighbor] = tick
+                    tick += 1
+                    stack.append(neighbor)
+                else:
+                    low[node] = min(low[node], discovered[neighbor])
+                continue
+            stack.pop()
+            edge = int(parent_edge[node])
+            if edge >= 0:
+                parent_node = int(parent[node])
+                if low[node] > discovered[parent_node]:
+                    bridges.add(edge)
+                low[parent_node] = min(low[parent_node], low[node])
+    return bridges
+
+
 def _reduced_factor(network: NetworkData, keep_lines: npt.NDArray[np.bool_] | None = None):
     if keep_lines is None:
         bbus = network.bbus
@@ -198,6 +296,7 @@ def _candidate_outages(
         int(source_row): active_index
         for active_index, source_row in enumerate(network.active_branch_source_rows)
     }
+    bridge_indices = _bridge_active_indices(network)
     valid: list[ValidOutage] = []
     excluded: list[ExcludedOutage] = []
     deferred: list[ExcludedOutage] = []
@@ -236,15 +335,7 @@ def _candidate_outages(
             excluded.append(ExcludedOutage(label, source_rows, branch_row, "invalid_reactance"))
             continue
         active_index = active_lookup[source_index]
-        if (
-            _component_count(
-                network.from_bus_index,
-                network.to_bus_index,
-                len(network.bus_ids),
-                remove=active_index,
-            )
-            != 1
-        ):
+        if active_index in bridge_indices:
             excluded.append(ExcludedOutage(label, source_rows, branch_row, "islanding_bridge"))
             continue
         valid.append(
@@ -266,22 +357,43 @@ def build_contingency_catalog(
     *,
     validation_columns: int = 3,
     validation_tolerance_pu: float = 1e-9,
+    chunk_columns: int = 256,
+    materialize_lodf: bool = True,
 ) -> ContingencyCatalog:
+    if chunk_columns <= 0:
+        raise ProvenanceError("LODF chunk_columns must be positive")
     candidates, excluded, deferred = _candidate_outages(case, network, table)
     factor, keep_buses = _reduced_factor(network)
-    outage_indices = np.asarray([item.active_branch_index for item in candidates], dtype=np.int64)
-    transaction_rhs = network.incidence[outage_indices].T.toarray()
-    theta = np.zeros((len(network.bus_ids), len(candidates)), dtype=np.float64)
-    theta[keep_buses, :] = factor.solve(transaction_rhs[keep_buses, :])
-    ptdf = network.susceptance_pu[:, None] * np.asarray(network.incidence @ theta)
-    denominator = 1.0 - ptdf[outage_indices, np.arange(len(candidates))]
-    numerically_valid = np.isfinite(denominator) & (np.abs(denominator) > 1e-10)
+    operator = LodfOperator(network, factor, keep_buses)
+    outage_indices = np.asarray(
+        [item.active_branch_index for item in candidates], dtype=np.int64
+    )
+    numerically_valid = np.ones(len(candidates), dtype=bool)
+    lodf_all = (
+        np.empty(
+            (len(network.active_branch_source_rows), len(candidates)), dtype=np.float64
+        )
+        if materialize_lodf
+        else None
+    )
+    for start in range(0, len(candidates), chunk_columns):
+        stop = min(start + chunk_columns, len(candidates))
+        chunk_indices = outage_indices[start:stop]
+        ptdf, denominator = operator.transaction_columns(chunk_indices)
+        valid_chunk = np.isfinite(denominator) & (np.abs(denominator) > 1e-10)
+        numerically_valid[start:stop] = valid_chunk
+        if lodf_all is not None:
+            safe_denominator = np.where(valid_chunk, denominator, 1.0)
+            lodf_chunk = ptdf / safe_denominator[None, :]
+            lodf_chunk[:, ~valid_chunk] = 0.0
+            if np.any(valid_chunk):
+                local = np.flatnonzero(valid_chunk)
+                lodf_chunk[chunk_indices[local], local] = -1.0
+            lodf_all[:, start:stop] = lodf_chunk
     final_valid: list[ValidOutage] = []
-    final_columns: list[int] = []
     for column, item in enumerate(candidates):
         if numerically_valid[column]:
             final_valid.append(item)
-            final_columns.append(column)
         else:
             excluded.append(
                 ExcludedOutage(
@@ -291,17 +403,28 @@ def build_contingency_catalog(
                     "invalid_lodf_denominator",
                 )
             )
-    if final_columns:
-        chosen = np.asarray(final_columns, dtype=np.int64)
-        lodf = ptdf[:, chosen] / denominator[chosen][None, :]
-        final_outage_indices = np.asarray(
-            [item.active_branch_index for item in final_valid], dtype=np.int64
-        )
-        lodf[final_outage_indices, np.arange(len(final_valid))] = -1.0
+    if lodf_all is None:
+        lodf = None
+    elif np.all(numerically_valid):
+        lodf = lodf_all
     else:
-        lodf = np.empty((len(network.active_branch_source_rows), 0), dtype=np.float64)
+        lodf = np.ascontiguousarray(lodf_all[:, numerically_valid])
+    final_outage_indices = np.asarray(
+        [item.active_branch_index for item in final_valid], dtype=np.int64
+    )
     selected = _evenly_spaced_indices(len(final_valid), validation_columns)
-    max_error = validate_lodf_columns(network, tuple(final_valid), lodf, selected)
+    if selected:
+        if lodf is None:
+            selected_lodf = operator.lodf_columns(final_outage_indices[list(selected)])
+        else:
+            selected_lodf = lodf[:, list(selected)]
+        selected_outages = tuple(final_valid[column] for column in selected)
+        local_columns = tuple(range(len(selected)))
+        max_error = validate_lodf_columns(
+            network, selected_outages, selected_lodf, local_columns
+        )
+    else:
+        max_error = 0.0
     if max_error > validation_tolerance_pu:
         raise ProvenanceError(
             f"LODF explicit-solve validation error {max_error:.3e} p.u. exceeds "
@@ -311,9 +434,11 @@ def build_contingency_catalog(
         valid=tuple(final_valid),
         excluded=tuple(sorted(excluded, key=lambda item: item.contingency_label)),
         deferred_generator_outages=tuple(deferred),
-        lodf=np.asarray(lodf, dtype=np.float64),
+        lodf=None if lodf is None else np.asarray(lodf, dtype=np.float64),
+        lodf_operator=LodfOperator(network, factor, keep_buses),
         validation_max_error_pu=max_error,
         validation_columns=selected,
+        build_chunk_columns=chunk_columns,
     )
 
 
@@ -363,5 +488,8 @@ def contingency_catalog_report(catalog: ContingencyCatalog) -> dict[str, object]
         "lodf_validation": {
             "selected_column_indices": list(catalog.validation_columns),
             "maximum_error_pu": catalog.validation_max_error_pu,
+            "materialized": catalog.lodf is not None,
+            "fp64_bytes": 0 if catalog.lodf is None else int(catalog.lodf.nbytes),
+            "build_chunk_columns": catalog.build_chunk_columns,
         },
     }

@@ -57,7 +57,8 @@ def frozen_identity(config: RunConfig) -> dict[str, str]:
 
 
 def _registry_path(config: RunConfig) -> Path:
-    return guard_output_path(config.root / "results" / "official-run-registry.json")
+    name = f"{config.benchmark_id}-official-run-registry.json"
+    return guard_output_path(config.root / "results" / name)
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -67,7 +68,9 @@ def _read_json(path: Path) -> dict[str, Any]:
         raise ProvenanceError(f"Cannot read JSON evidence {path}: {exc}") from exc
 
 
-def validate_laptop_gate(path: Path, identity: dict[str, str]) -> None:
+def validate_laptop_gate(
+    path: Path, identity: dict[str, str], *, case_name: str, benchmark_id: str
+) -> None:
     path = guard_input_path(path)
     result = _read_json(path)
     if result.get("official") is not True or result.get("platform") != "laptop_cpu":
@@ -76,6 +79,8 @@ def validate_laptop_gate(path: Path, identity: dict[str, str]) -> None:
         raise ScopfError("Spark gate is closed because the laptop result did not pass")
     if float(result.get("total_wall_time_seconds", float("inf"))) > 300:
         raise ScopfError("Spark gate is closed because the laptop exceeded 300 seconds")
+    if result.get("case_name") != case_name or result.get("benchmark_id") != benchmark_id:
+        raise ScopfError("Spark gate laptop evidence is for a different case or benchmark")
     observed = result.get("frozen_identity", {})
     for key in ("commit", "tag", "config_sha256"):
         if observed.get(key) != identity[key]:
@@ -128,6 +133,10 @@ def run_controlled(
     official: bool,
     laptop_result: Path | None = None,
 ) -> dict[str, Any]:
+    if config.runtime.get("deadline_seconds") is None:
+        raise ScopfError(
+            "Unbounded gap configurations must use the gap-experiment command"
+        )
     validate_platform(config, platform_name)
     output = guard_output_path(output_path)
     if official and not output.is_relative_to((config.root / "results").resolve()):
@@ -142,11 +151,19 @@ def run_controlled(
     if official and platform_name == "dgx_spark":
         if laptop_result is None:
             raise ScopfError("Spark official benchmark requires --laptop-result evidence")
-        validate_laptop_gate(laptop_result, identity)
+        validate_laptop_gate(
+            laptop_result,
+            identity,
+            case_name=config.case_name,
+            benchmark_id=config.benchmark_id,
+        )
     if official:
         register_start(config, platform_name, identity, output)
     checkpoint = guard_output_path(
-        config.root / "results" / "checkpoints" / f"{platform_name}.json"
+        config.root
+        / "results"
+        / "checkpoints"
+        / f"{config.benchmark_id}-{platform_name}.json"
     )
     deadline_seconds = float(config.runtime["deadline_seconds"])
     command = [

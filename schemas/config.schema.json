@@ -1,22 +1,22 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/thomas-digregorio/activsg-gpu-scopf-spark/config.schema.json",
-  "title": "ACTIVSg500 GPU SCOPF configuration",
+  "title": "Approved ACTIVSg GPU SCOPF configuration",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema_version", "case_name", "raw_inputs", "model", "runtime", "platforms", "benchmark"],
   "properties": {
     "$schema": {"type": "string"},
     "schema_version": {"const": "1.0.0"},
-    "case_name": {"const": "ACTIVSg500"},
+    "case_name": {"enum": ["ACTIVSg500", "ACTIVSg2000", "ACTIVSg10k"]},
     "raw_inputs": {
       "type": "object",
       "additionalProperties": false,
       "required": ["case_file", "case_sha256", "contingency_file", "contingency_sha256"],
       "properties": {
-        "case_file": {"type": "string", "pattern": "ACTIVSg500"},
+        "case_file": {"type": "string", "pattern": "ACTIVSg(500|2000|10k)"},
         "case_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
-        "contingency_file": {"type": "string", "pattern": "ACTIVSg500"},
+        "contingency_file": {"type": "string", "pattern": "ACTIVSg(500|2000|10k)"},
         "contingency_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
       }
     },
@@ -26,4 +26,3 @@
     "benchmark": {"type": "object"}
   }
 }
-

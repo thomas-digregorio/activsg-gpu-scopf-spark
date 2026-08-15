@@ -1,0 +1,14 @@
+metric,value
+status,incomplete_restricted_master_gap_not_certified
+objective,1133047.8684341211
+bound,1130541.7285763328
+mip_gap,0.0022118569988128695
+requested_mip_gap,0.001
+end_to_end_seconds,601.954409463011
+final_commitment_count,328
+round_2_endpoint_hamming,46
+round_3_endpoint_hamming,39
+round_3_distinct_commitments,30
+round_3_final_stability_window_seconds,7.286749484017491
+independent_max_security_violation_pu,1.827470441639889e-10
+pricing_status,withheld_gap_not_certified

@@ -1,0 +1,358 @@
+{
+  "absolute_gap": 2046.4699282408692,
+  "added_security_pairs": 188,
+  "bound": 1130678.342896163,
+  "campaign": "activsg2000-gpu-gap-sensitivity-v9",
+  "commitment_count": 326,
+  "constraint_generation_rounds": [
+    {
+      "adapter_wall_seconds": 5.673060639004689,
+      "added_pair_count": 173,
+      "bound": 1118297.105971293,
+      "mip_gap": 0.00012989371852447946,
+      "native_barrier_warnings": 0,
+      "native_solve_seconds": 5.223284705,
+      "native_start_columns": 0,
+      "native_start_rejections": 0,
+      "native_start_submitted": false,
+      "nodes": 314,
+      "objective": 1118442.384611587,
+      "precheck_decision": null,
+      "precheck_extendable": null,
+      "precheck_status": null,
+      "precheck_wall_seconds": null,
+      "requested_gap_certified": true,
+      "round": 1,
+      "rows_before_solve": 8788,
+      "screen_evaluated_sides": 17563400,
+      "screen_maximum_violation_pu": 2.0459100279296125,
+      "screen_new_violated_pairs": 173,
+      "screen_seconds": 1.0935032989946194,
+      "simplex_iterations": 8102,
+      "solver_budget_seconds": 1799.315751636983,
+      "solver_status": "FeasibleFound"
+    },
+    {
+      "adapter_wall_seconds": 36.09644036201644,
+      "added_pair_count": 13,
+      "bound": 1130923.4979660201,
+      "mip_gap": 0.0009479054091004364,
+      "native_barrier_warnings": 0,
+      "native_solve_seconds": 35.959677678,
+      "native_start_columns": 0,
+      "native_start_rejections": 0,
+      "native_start_submitted": false,
+      "nodes": 60785,
+      "objective": 1131996.5235938209,
+      "precheck_decision": "solve_cold",
+      "precheck_extendable": false,
+      "precheck_status": "Infeasible",
+      "precheck_wall_seconds": 0.025371385010657832,
+      "requested_gap_certified": true,
+      "round": 2,
+      "rows_before_solve": 8961,
+      "screen_evaluated_sides": 17563400,
+      "screen_maximum_violation_pu": 0.29453773144060735,
+      "screen_new_violated_pairs": 13,
+      "screen_seconds": 0.046219125011703,
+      "simplex_iterations": 508601,
+      "solver_budget_seconds": 1792.4937673549866,
+      "solver_status": "FeasibleFound"
+    },
+    {
+      "adapter_wall_seconds": 1759.8888329979964,
+      "added_pair_count": 2,
+      "bound": 1130678.342896163,
+      "mip_gap": 0.001806678820017039,
+      "native_barrier_warnings": 0,
+      "native_solve_seconds": 1753.117399075,
+      "native_start_columns": 0,
+      "native_start_rejections": 0,
+      "native_start_submitted": false,
+      "nodes": 3465577,
+      "objective": 1132724.8128244039,
+      "precheck_decision": "solve_cold",
+      "precheck_extendable": false,
+      "precheck_status": "Unknown",
+      "precheck_wall_seconds": 3.8371679349802434,
+      "requested_gap_certified": false,
+      "round": 3,
+      "rows_before_solve": 8974,
+      "screen_evaluated_sides": 17563400,
+      "screen_maximum_violation_pu": 0.05459646406736852,
+      "screen_new_violated_pairs": 2,
+      "screen_seconds": 0.04757560498546809,
+      "simplex_iterations": 21503856,
+      "solver_budget_seconds": 1756.2976589069876,
+      "solver_status": "FeasibleFound"
+    }
+  ],
+  "controller_acceptance_gates": {
+    "final_exhaustive_screen_maximum_violation_pu": 0.05459646406736852,
+    "final_exhaustive_screen_new_violations": 2,
+    "final_exhaustive_screen_round": 3,
+    "final_exhaustive_screen_tolerance_pu": 1e-05,
+    "final_exhaustive_screen_zero_above_tolerance": false,
+    "independent_verification_passed": false,
+    "requested_mip_gap_certified": false,
+    "requested_mip_gap_tolerance": 0.001
+  },
+  "dispatch_total_mw": 67109.20999999892,
+  "dispatch_total_pu": 671.0920999999892,
+  "failure_gates": [
+    "requested_mip_gap_not_certified",
+    "final_exhaustive_screen_has_two_violations",
+    "independent_security_verification_failed"
+  ],
+  "final_model_after_unresolved_rows": {
+    "columns": 9220,
+    "last_solved_rows": 8974,
+    "nonzeros": 27150,
+    "rows": 8976
+  },
+  "frozen_identity": {
+    "commit": "c3bbc80db65aff27287ed479c48dcc2cb8d20f99",
+    "config_sha256": "2ec50634b9c361da8d5801486410a44d9b0ae99ebb5f921f807be68e5bfa9386",
+    "tag": "experiment-2000-gpu-gap-v9"
+  },
+  "initialization": {
+    "external_cpu_mip_start": false,
+    "later_rounds": "prior_gpu_commitment_if_fixed_commitment_lp_extendable_else_cold",
+    "round_1": "cold"
+  },
+  "mip_gap": 0.001806678820017039,
+  "mip_start_behavior": {
+    "native_start_rejections_in_official_run": 0,
+    "native_starts_submitted_in_official_run": 0,
+    "round_1": "cold",
+    "round_2": "solve_cold",
+    "round_2_precheck_status": "Infeasible",
+    "round_3": "solve_cold",
+    "round_3_precheck_status": "Unknown",
+    "unextendable_prior_start_diagnostic": {
+      "canonical_dimensions": {
+        "columns": 9220,
+        "equality_rows": 5638,
+        "fixed_or_unused_columns_requiring_native_elimination": 5,
+        "free_columns_requiring_native_split": 1999,
+        "native_columns_expected_if_start_submitted": 11214,
+        "nonzeros": 27120,
+        "rows": 8961
+      },
+      "checkpoint": "/workspace/results/checkpoints/activsg2000-gpu-gap-v8-1e-3-dgx_spark.json",
+      "diagnostic": "exact_v8_round2_prior_gpu_integer_start",
+      "passed": true,
+      "prior_round_solution_on_round2_master": {
+        "maximum_column_bound_violation": 1.5347723092418164e-12,
+        "maximum_column_bound_violation_name": "pg_g0277",
+        "maximum_integrality_violation": 7.993605777301127e-15,
+        "maximum_integrality_violation_name": "u_g0493",
+        "maximum_row_violation": 204.59100279296126,
+        "maximum_row_violation_name": "c2440_m2453_lower",
+        "objective_difference": 2.3283064365386963e-09,
+        "objective_expected": 1118442.384611587,
+        "objective_recalculated": 1118442.3846115847
+      },
+      "schema_version": "1.0.0",
+      "solve": {
+        "bound": 1130831.9300897196,
+        "has_incumbent": true,
+        "mip_gap": 0.020946352512749105,
+        "mip_start_feasibility_precheck": {
+          "decision": "solve_cold",
+          "has_incumbent": false,
+          "maximum_canonical_column_violation": null,
+          "maximum_canonical_row_violation": null,
+          "maximum_prior_commitment_difference": null,
+          "policy": "highs_fixed_commitment_lp_v1",
+          "prior_commitment_extendable": false,
+          "solver_status": "Infeasible",
+          "time_limit_seconds": 10.0,
+          "wall_time_seconds": 0.03377132798777893
+        },
+        "mip_start_native_contract": {
+          "contract_passed": null,
+          "eliminated_submitted_canonical_columns": 0,
+          "explicit_eliminated_columns": 0,
+          "explicit_free_split_columns": 0,
+          "original_space_vector_readback": false,
+          "policy": "presolve_off_explicit_free_split_readback_v2",
+          "presolve_parameter_readback": null,
+          "submitted": false,
+          "submitted_canonical_columns": 0,
+          "submitted_native_columns": 0
+        },
+        "native_columns_translated": 9220,
+        "native_explicit_free_variable_split": false,
+        "native_fixed_or_unused_columns_eliminated": 0,
+        "native_free_variable_split_columns": 0,
+        "native_log_audit": {
+          "barrier_numerical_warning_count": 0,
+          "bytes": 8701,
+          "free_variable_warning_count": 2,
+          "mip_start_rejection_count": 0,
+          "presolve_disabled_message_count": 0,
+          "sha256": "054178628c7f5afae9831e48e14b1e608e5b3903b02fce0f1b414e0593a0002d"
+        },
+        "objective": 1155025.5014033325,
+        "solve_time_seconds": 15.487493829,
+        "status": "FeasibleFound"
+      }
+    },
+    "valid_full_start_translation_diagnostic": {
+      "canonical_feasibility": {
+        "maximum_column_bound_violation": 5.994036200718256e-08,
+        "maximum_column_bound_violation_name": "pg_g0352",
+        "maximum_integrality_violation": 3.319566843629218e-14,
+        "maximum_integrality_violation_name": "u_g0420",
+        "maximum_row_violation": 2.420986220386112e-07,
+        "maximum_row_violation_name": "dc_flow_l1756",
+        "objective_difference": 6.984919309616089e-10,
+        "objective_expected": 1133479.3855011363,
+        "objective_recalculated": 1133479.3855011356
+      },
+      "diagnostic": "exact_v8_round2_known_secure_full_start",
+      "expected_native_columns": 11214,
+      "passed": true,
+      "schema_version": "1.0.0",
+      "secure_result_sha256": "5573425a8e625c0c964b2c61d33ca80666de74a350e9431a96e5ce9b90e02e3f",
+      "solve": {
+        "bound": 1129351.8837756442,
+        "has_incumbent": true,
+        "mip_gap": 0.003530721946801452,
+        "mip_start_native_contract": {
+          "contract_passed": true,
+          "eliminated_submitted_canonical_columns": 5,
+          "explicit_eliminated_columns": 5,
+          "explicit_free_split_columns": 1999,
+          "native_log_contract_passed": true,
+          "native_rejection_detected": false,
+          "native_translated_vector_readback": true,
+          "policy": "presolve_off_explicit_free_split_readback_v2",
+          "presolve_parameter_readback": 0,
+          "submitted": true,
+          "submitted_canonical_columns": 9220,
+          "submitted_columns": 11214,
+          "submitted_native_columns": 11214
+        },
+        "native_columns_translated": 11214,
+        "native_log_audit": {
+          "barrier_numerical_warning_count": 0,
+          "bytes": 6167,
+          "free_variable_warning_count": 0,
+          "mip_start_rejection_count": 0,
+          "presolve_disabled_message_count": 1,
+          "sha256": "f53add2b9c3ae7d81926406b8e3ef8e004a1148586cf98f001f616fb4317a318"
+        },
+        "objective": 1133353.4396384622,
+        "solve_time_seconds": 15.52092598,
+        "status": "FeasibleFound"
+      }
+    }
+  },
+  "objective": 1132724.8128244039,
+  "peak_memory": {
+    "cuda_device_memory_delta_bytes": 24096477184,
+    "cupy_pool_used_bytes": 70301696,
+    "process_rss_bytes": 18188279808
+  },
+  "postrun_independent_verification": {
+    "checked_security_sides": 17563400,
+    "checked_valid_outages": 2740,
+    "details": {
+      "base_limit_violation_pu": 0.0,
+      "conditional_pmin_pmax_violation_pu": 2.1266401972752647e-11,
+      "dc_flow_equation_residual_pu": 3.647977422360782e-09,
+      "dispatch_definition_violation_pu": 3.068066689593252e-11,
+      "global_balance_residual_pu": 1.0613803169690072e-11,
+      "independent_base_dc_solution_residual_pu": 1.3387594322011865e-09,
+      "nodal_balance_residual_pu": 1.1729426319107006e-10,
+      "reference_angle_residual_rad": 0.0,
+      "segment_bound_violation_pu": 3.771312151457096e-12
+    },
+    "elapsed_seconds": 1.3435055000009015,
+    "maximum_angle_limit_violation_rad": 0.0,
+    "maximum_integrality_violation": 2.220446049250313e-16,
+    "maximum_model_residual_pu": 3.647977422360782e-09,
+    "maximum_security_violation_pu": 0.054596464067250564,
+    "objective_difference": 2.561137080192566e-09,
+    "objective_recalculated": 1132724.8128244013,
+    "passed": false,
+    "security_check_method": "independent raw-input FP64 sparse factorization, chunked LODF exhaustive screen, and selected explicit post-outage DC solves"
+  },
+  "postrun_safety_fix": {
+    "change": "HiGHS has_incumbent now requires explicit feasible primal solution status; Unknown vectors cannot be reused",
+    "official_v9_math_affected": false,
+    "official_v9_start_decision_affected": false,
+    "package_version": "0.18.1"
+  },
+  "pricing_status": "withheld_gap_and_security_not_certified",
+  "raw_evidence": {
+    "checkpoint": {
+      "bytes": 1825013,
+      "sha256": "900567b36ced3bf6119dfe90cd9b6b7194cec735b900b191cb22432e4561dbc1"
+    },
+    "config": {
+      "bytes": 3093,
+      "sha256": "2ec50634b9c361da8d5801486410a44d9b0ae99ebb5f921f807be68e5bfa9386"
+    },
+    "cuopt_console": {
+      "bytes": 127,
+      "sha256": "a4451bdb6cda8ce16ac7790cb3994bdfd994b964757b38022cbe5b8cc1985e3c"
+    },
+    "events": {
+      "bytes": 5717,
+      "sha256": "7624ba1c9901bbaed466bc5c011579f377312b5ac6316350bbd04ce5a8168914"
+    },
+    "independent_verification": {
+      "bytes": 1151,
+      "sha256": "2eda725135cc187fc5dd0ccf990095e7660172cc666f0e222da270115ad88b98"
+    },
+    "invalid_start_diagnostic": {
+      "bytes": 11361,
+      "sha256": "62e2eb9c55f71fba05e468d0f515e31862fd35960ef7e7d458230b29fe621222"
+    },
+    "launcher_console": {
+      "bytes": 127,
+      "sha256": "a4451bdb6cda8ce16ac7790cb3994bdfd994b964757b38022cbe5b8cc1985e3c"
+    },
+    "registry": {
+      "bytes": 990,
+      "sha256": "6a5a5b0367876eedd5f49d74dce06e91ec2930736106ca3ba2cd7ef8ae5e71e9"
+    },
+    "result": {
+      "bytes": 1825847,
+      "sha256": "8d057b77666e7b2f39ffc410edeb5b3f479e408f1764c64be0fbb28a727a4ffa"
+    },
+    "valid_start_diagnostic": {
+      "bytes": 8068,
+      "sha256": "050fe704e1bebefc49f988cb6374ef0005f4d0b63a4e663d45cf6d47b21e3a11"
+    },
+    "worker_console": {
+      "bytes": 211412,
+      "sha256": "a60c8e6cf911204fd6b2208d90c53d31f3476b32d2ab9d571d1b9e065e029e4a"
+    }
+  },
+  "requested_mip_gap": 0.001,
+  "schema_version": "1.0.0",
+  "screen_seconds": 1.1872980289917905,
+  "solver_rounds_seconds": 1801.6583339990175,
+  "source_identity": {
+    "case_file": "case_ACTIVSg2000.m",
+    "case_sha256": "8d00618de8fd10bf35a599f59d2deebfecd0d86e28fcff73219ad7c4ebab860b",
+    "contingency_file": "contab_ACTIVSg2000.m",
+    "contingency_sha256": "198b39f0381925a4ddacbe2148973cb1d93ddfe220303829cf87b16d45190bba",
+    "row_identity_convention": {
+      "branch": "branch-row-NNNN is the immutable one-based mpc.branch source row",
+      "contingency_change": "source_row is the immutable one-based chgtab row",
+      "generator": "gen-row-NNNN is the immutable one-based mpc.gen source row"
+    }
+  },
+  "status": "deadline_budget_exhausted",
+  "success": false,
+  "total_wall_time_seconds": 1805.7195047150017,
+  "unresolved_pair_ids": [
+    "c0675_m0681_lower",
+    "c0676_m0680_lower"
+  ]
+}

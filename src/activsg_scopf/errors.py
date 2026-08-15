@@ -6,7 +6,7 @@ class ScopfError(RuntimeError):
 
 
 class ScopeViolation(ScopfError):
-    """The request escaped the approved ACTIVSg500-only scope."""
+    """The request escaped the explicitly approved ACTIVSg case scope."""
 
 
 class ProvenanceError(ScopfError):
@@ -16,3 +16,6 @@ class ProvenanceError(ScopfError):
 class DeadlineExceeded(ScopfError):
     """The global end-to-end deadline no longer permits more work."""
 
+
+class MipStartSolveError(ScopfError):
+    """A native solver rejected or errored while processing a supplied MIP start."""
