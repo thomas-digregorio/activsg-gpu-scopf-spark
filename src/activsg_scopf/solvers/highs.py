@@ -32,6 +32,29 @@ def _require_run_not_error(status: object) -> None:
         raise ScopfError(f"HiGHS solve failed with {status}")
 
 
+def _validated_primal_values(
+    solution: object,
+    info: object,
+    *,
+    expected_columns: int,
+) -> np.ndarray | None:
+    """Return a solver-certified finite primal vector, never a stale/invalid one."""
+
+    import highspy
+
+    if (
+        not solution.value_valid
+        or info.primal_solution_status
+        != highspy.SolutionStatus.kSolutionStatusFeasible
+        or not np.isfinite(info.objective_function_value)
+    ):
+        return None
+    values = np.asarray(solution.col_value, dtype=np.float64)
+    if values.shape != (expected_columns,) or not np.all(np.isfinite(values)):
+        return None
+    return values
+
+
 class HighsSession:
     """Persistent HiGHS model with incremental row loading and partial MIP starts."""
 
@@ -258,12 +281,12 @@ class HighsSession:
         status = self.highs.getModelStatus()
         info = self.highs.getInfo()
         solution = self.highs.getSolution()
-        has_incumbent = bool(
-            solution.value_valid and np.isfinite(info.objective_function_value)
+        values = _validated_primal_values(
+            solution,
+            info,
+            expected_columns=self.model.num_columns,
         )
-        values = (
-            np.asarray(solution.col_value, dtype=np.float64) if has_incumbent else None
-        )
+        has_incumbent = values is not None
         if values is not None:
             self.previous_values = values.copy()
         self.last_row_duals = (
@@ -320,6 +343,9 @@ class HighsSession:
                 "highs_run_time_before_seconds": highs_run_time_before,
                 "highs_run_time_after_seconds": highs_run_time_after,
                 "mip_node_count": int(info.mip_node_count),
+                "primal_solution_status": highspy.SolutionStatus(
+                    info.primal_solution_status
+                ).name,
                 "max_integrality_violation": float(info.max_integrality_violation),
                 "max_primal_infeasibility": float(info.max_primal_infeasibility),
                 "simplex_iteration_count": int(info.simplex_iteration_count),

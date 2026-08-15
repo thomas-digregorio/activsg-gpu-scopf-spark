@@ -280,6 +280,27 @@ exact-PMIN model, PDLP profile, tolerances, dynamic screening, 1,800-second
 solver allowance, and 1,935-second outer guard. Exactly one v9 optimization
 run is authorized.
 
+That single v9 run is now closed without a retry. Both later-round prior GPU
+commitments failed the bounded fixed-commitment feasibility gate, so rounds 2
+and 3 correctly solved cold; no start reached cuOpt and native log audits show
+zero start rejections or barrier warnings. Round 1 added 173 contingency pairs,
+round 2 added 13, and round 3's mandatory exhaustive screen exposed two more
+after the solve allowance was exhausted. The final solved-master objective was
+`1,132,724.812824`, the bound was `1,130,678.342896`, and the gap was
+`0.0018067`, above the requested `0.001`. Independent raw-input verification
+passed exact PMIN/PMAX and all base-model checks but confirmed a maximum N-1
+violation of `0.054596464` p.u. for the two unresolved pairs. Pricing is
+withheld. The [v9 report](reports/activsg2000-gpu-1e-3-v9/README.md) preserves
+the frozen run, all generator rows, blank price identities, native evidence,
+and the separate diagnostic proving that a genuinely feasible 9,220-column
+canonical start translates to 11,214 native columns and is accepted by cuOpt.
+
+Post-run inspection also tightened HiGHS incumbent classification: version
+0.18.1 requires explicit feasible-primal status before a finite vector can be
+exposed or reused. The frozen v9 controller had already rejected the affected
+`Unknown` precheck vector by direct residual checks, so this telemetry fix does
+not alter the recorded solve or its cold-start decision.
+
 That ACTIVSg2000 campaign is now closed. The `1e-3` run completed
 `optimal_verified` with accepted fixed-commitment pricing; the `1e-4` run hit
 its restricted-master solver budget above the requested gap and its provisional

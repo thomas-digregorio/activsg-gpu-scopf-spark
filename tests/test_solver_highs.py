@@ -14,6 +14,7 @@ from activsg_scopf.solution import serialize_solution
 from activsg_scopf.solvers import create_solver_session, solve_canonical
 from activsg_scopf.solvers.highs import (
     _require_run_not_error,
+    _validated_primal_values,
     complete_fixed_integer_start,
 )
 from activsg_scopf.verify import verify_serialized_solution
@@ -27,6 +28,34 @@ def test_highs_warning_is_preserved_for_model_status_extraction() -> None:
     _require_run_not_error(highspy.HighsStatus.kWarning)
     with pytest.raises(ScopfError, match="HiGHS"):
         _require_run_not_error(highspy.HighsStatus.kError)
+
+
+def test_highs_rejects_finite_vector_without_feasible_primal_status() -> None:
+    import highspy
+
+    class NativeSolution:
+        value_valid = True
+        col_value = [1.0e12]
+
+    class NativeInfo:
+        objective_function_value = 1.0
+        primal_solution_status = highspy.SolutionStatus.kSolutionStatusNone
+
+    assert (
+        _validated_primal_values(
+            NativeSolution(), NativeInfo(), expected_columns=1
+        )
+        is None
+    )
+    NativeInfo.primal_solution_status = (
+        highspy.SolutionStatus.kSolutionStatusFeasible
+    )
+    np.testing.assert_array_equal(
+        _validated_primal_values(
+            NativeSolution(), NativeInfo(), expected_columns=1
+        ),
+        np.asarray([1.0e12]),
+    )
 
 
 def test_persistent_highs_session_appends_rows_logs_and_resolves(
