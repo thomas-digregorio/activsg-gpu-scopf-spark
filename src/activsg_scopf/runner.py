@@ -437,17 +437,21 @@ def run_end_to_end(
                 ),
                 "independent_verification_passed": False,
             }
-            if not last_solve.requested_gap_certified:
-                payload["status"] = (
-                    "incomplete_restricted_master_gap_not_certified"
-                )
-                break
             if not screened.violations:
+                if not last_solve.requested_gap_certified:
+                    payload["status"] = (
+                        "incomplete_restricted_master_gap_not_certified"
+                    )
+                    break
                 if screened.maximum_violation_pu <= tolerance:
                     secure = True
                     break
                 payload["status"] = "failed_enforced_pair_residual"
                 break
+            if not last_solve.requested_gap_certified:
+                payload["status"] = (
+                    "incomplete_restricted_master_gap_not_certified"
+                )
             add_security_pairs(
                 master.canonical,
                 master.index,

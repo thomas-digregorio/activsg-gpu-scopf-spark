@@ -7,12 +7,14 @@ incumbent is independently N-1 secure, but the requested `1e-3` MIP gap was
 not certified, so the overall result remains incomplete and pricing is
 intentionally withheld.
 
-Round 1 started cold. Rounds 2 and 3 each received the prior GPU solution's
-432 integer commitment columns; no
-CPU commitment, CPU dispatch, or CPU bound initialized the run. V7 preserves
-the v6 exact-PMIN model, inputs, tolerances, dynamic add-resolve-screen loop,
-and cuOpt PDLP policy. Its substantive runtime change was increasing the
-cumulative cuOpt allowance from 900 to 1,800 seconds.
+Round 1 started cold. The adapter submitted the prior GPU solution's
+432 integer commitment columns in
+rounds 2 and 3, but retrospective native-log inspection found that cuOpt
+rejected both starts after internal model expansion. No CPU commitment, CPU
+dispatch, or CPU bound initialized the run. V7 preserves the v6 exact-PMIN
+model, inputs, tolerances, dynamic add-resolve-screen loop, and cuOpt PDLP
+policy. Its substantive runtime change was increasing the cumulative cuOpt
+allowance from 900 to 1,800 seconds.
 
 Every round requested and read back method 1 (PDLP), Stable3 mode 4, FP64
 precision 1, batched PDLP strong branching, batched PDLP reliability

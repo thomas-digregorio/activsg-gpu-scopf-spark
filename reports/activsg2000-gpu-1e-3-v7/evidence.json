@@ -154,6 +154,7 @@
   "mip_gap": 0.0019746926850804586,
   "native_log_confirmation": "Cooperative batch PDLP and Dual Simplex for strong branching",
   "objective": 1133078.5283831311,
+  "observed_mip_start_status": "submitted_by_adapter_but_rejected_by_cuopt_in_rounds_2_and_3",
   "outer_boundary_passed": true,
   "outer_boundary_seconds": 1935.0,
   "pdlp_parameters_requested_and_read_back": {
@@ -228,8 +229,8 @@
       "sha256": "9cbc76a041ca8e7c4a1c0d2f8b29433ccdb4447ea23b91ba06c6dee20c97d9de"
     },
     "v6_evidence": {
-      "bytes": 9934,
-      "sha256": "5c99e9016a77bfca40fc751cfe1b47698a73305d45d478b804861f4bfe66c66a"
+      "bytes": 10030,
+      "sha256": "fb7f9946394b0f020d52d51a8a2dc575e4eb0bf12a7ab346dfa9810bcabb23c6"
     },
     "worker_console": {
       "bytes": 165725,

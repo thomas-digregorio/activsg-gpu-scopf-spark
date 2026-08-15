@@ -158,6 +158,9 @@ def _audit(
     cooperative = "Cooperative batch PDLP and Dual Simplex for strong branching"
     if console.count(cooperative) != 3:
         raise ValueError("Native console did not confirm cooperative batch PDLP")
+    rejection = "Error cannot add the provided initial solution!"
+    if console.count(rejection) != 2:
+        raise ValueError("GPU v7 native MIP-start rejection evidence changed")
 
 
 def _generator_rows(
@@ -371,6 +374,9 @@ def main() -> None:
         "success": False,
         "failure_gate": "requested_mip_gap_not_certified",
         "initialization": config["benchmark"]["initialization"],
+        "observed_mip_start_status": (
+            "submitted_by_adapter_but_rejected_by_cuopt_in_rounds_2_and_3"
+        ),
         "solver_allowance_seconds": SOLVER_ALLOWANCE_SECONDS,
         "solver_allowance_overrun_seconds": solver_overrun,
         "outer_boundary_seconds": OUTER_BOUNDARY_SECONDS,
@@ -451,12 +457,14 @@ incumbent is independently N-1 secure, but the requested `1e-3` MIP gap was
 not certified, so the overall result remains incomplete and pricing is
 intentionally withheld.
 
-Round 1 started cold. Rounds 2 and 3 each received the prior GPU solution's
-{second['partial_integer_mip_start_columns']} integer commitment columns; no
-CPU commitment, CPU dispatch, or CPU bound initialized the run. V7 preserves
-the v6 exact-PMIN model, inputs, tolerances, dynamic add-resolve-screen loop,
-and cuOpt PDLP policy. Its substantive runtime change was increasing the
-cumulative cuOpt allowance from 900 to 1,800 seconds.
+Round 1 started cold. The adapter submitted the prior GPU solution's
+{second['partial_integer_mip_start_columns']} integer commitment columns in
+rounds 2 and 3, but retrospective native-log inspection found that cuOpt
+rejected both starts after internal model expansion. No CPU commitment, CPU
+dispatch, or CPU bound initialized the run. V7 preserves the v6 exact-PMIN
+model, inputs, tolerances, dynamic add-resolve-screen loop, and cuOpt PDLP
+policy. Its substantive runtime change was increasing the cumulative cuOpt
+allowance from 900 to 1,800 seconds.
 
 Every round requested and read back method 1 (PDLP), Stable3 mode 4, FP64
 precision 1, batched PDLP strong branching, batched PDLP reliability

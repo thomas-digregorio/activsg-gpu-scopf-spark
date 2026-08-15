@@ -112,6 +112,10 @@ def _audit(
         raise ValueError("Independent verification of the final incumbent did not pass")
     if gpu.get("pricing") is not None:
         raise ValueError("Gap-uncertified GPU result must not contain accepted pricing")
+    console = WORKER_CONSOLE_PATH.read_text(encoding="utf-8")
+    rejection = "Error cannot add the provided initial solution!"
+    if console.count(rejection) != 2:
+        raise ValueError("GPU v5 native MIP-start rejection evidence changed")
 
 
 def main() -> None:
@@ -231,6 +235,9 @@ def main() -> None:
         "success": False,
         "failure_gate": "requested_mip_gap_not_certified",
         "initialization": config["benchmark"]["initialization"],
+        "observed_mip_start_status": (
+            "submitted_by_adapter_but_rejected_by_cuopt_in_rounds_2_and_3"
+        ),
         "solver_allowance_seconds": 900.0,
         "frozen_identity": gpu["frozen_identity"],
         "source_identity": gpu["source_manifest"]["source_identity"],
@@ -296,9 +303,11 @@ The one authorized v5 run ended
 `incomplete_restricted_master_gap_not_certified` after
 {gpu['total_wall_time_seconds']:.3f} seconds. It is not a successful SCOPF
 result, but it is not infeasible. Round 1 started cold. Rounds 2 and 3 each
-received the prior GPU solution's {second['partial_integer_mip_start_columns']}
-commitment columns as a partial integer MIP start. No CPU commitment, dispatch,
-or lower bound initialized this run.
+had {second['partial_integer_mip_start_columns']} prior-GPU commitment columns
+submitted by the adapter, but retrospective native-log inspection found that
+cuOpt rejected both starts after internal model expansion. No CPU commitment,
+dispatch, or lower bound initialized this run. This historical defect is
+preserved rather than relabeled as successful start reuse.
 
 The frozen controller reserved 900 seconds for raw loading and cumulative cuOpt
 rounds after retaining 120 seconds for verification and 15 seconds for

@@ -148,6 +148,9 @@ def _audit(
     cooperative = "Cooperative batch PDLP and Dual Simplex for strong branching"
     if console.count(cooperative) != 3:
         raise ValueError("Native console did not confirm cooperative batch PDLP")
+    rejection = "Error cannot add the provided initial solution!"
+    if console.count(rejection) != 2:
+        raise ValueError("GPU v6 native MIP-start rejection evidence changed")
 
 
 def _generator_rows(
@@ -348,6 +351,9 @@ def main() -> None:
         "success": False,
         "failure_gate": "requested_mip_gap_not_certified",
         "initialization": config["benchmark"]["initialization"],
+        "observed_mip_start_status": (
+            "submitted_by_adapter_but_rejected_by_cuopt_in_rounds_2_and_3"
+        ),
         "solver_allowance_seconds": 900.0,
         "pdlp_profile": PDLP_PROFILE,
         "pdlp_parameters_requested_and_read_back": PDLP_PARAMETERS,
@@ -417,9 +423,11 @@ The one authorized v6 run ended
 `incomplete_restricted_master_gap_not_certified` after
 {gpu['total_wall_time_seconds']:.3f} seconds. It is not a successful SCOPF
 result, but it is not infeasible. The final incumbent is independently secure.
-Round 1 started cold; rounds 2 and 3 each received the prior GPU solution's
-{second['partial_integer_mip_start_columns']} commitment columns. No CPU
-commitment, dispatch, or lower bound initialized the run.
+Round 1 started cold; the adapter submitted the prior GPU solution's
+{second['partial_integer_mip_start_columns']} commitment columns in rounds 2
+and 3. Retrospective native-log inspection found that cuOpt rejected both
+starts after internal model expansion. No CPU commitment, dispatch, or lower
+bound initialized the run, and the rejected starts are not counted as reuse.
 
 Relative to v5, v6 changed only the registered cuOpt policy and frozen identity.
 Every round selected method 1 (PDLP), Stable3 mode 4, FP64 precision 1, batched

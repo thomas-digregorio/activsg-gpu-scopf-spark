@@ -394,7 +394,37 @@ def test_activsg2000_gpu_v7_changes_only_runtime_and_frozen_identity() -> None:
     }
 
 
-def test_1935_second_outer_deadline_is_authorized_only_for_v7(
+def test_activsg2000_gpu_v8_changes_only_bugfix_identity() -> None:
+    v7 = load_config(ROOT / "configs" / "activsg2000-gpu-gap-1e-3-v7.json")
+    v8 = load_config(ROOT / "configs" / "activsg2000-gpu-gap-1e-3-v8.json")
+
+    assert v8.case_name == v7.case_name == "ACTIVSg2000"
+    assert v8.model == v7.model
+    assert v8.runtime == v7.runtime
+    assert v8.raw["raw_inputs"] == v7.raw["raw_inputs"]
+    assert v8.raw["platforms"] == v7.raw["platforms"]
+    assert v8.benchmark_id == "activsg2000-gpu-gap-v8-1e-3"
+    assert v8.raw["benchmark"]["required_git_tag"] == (
+        "experiment-2000-gpu-gap-v8"
+    )
+    assert v8.raw["benchmark"]["experiment_suite_id"] == (
+        "activsg2000-gpu-gap-sensitivity-v8"
+    )
+    assert v8.raw["benchmark"]["initialization"] == (
+        v7.raw["benchmark"]["initialization"]
+    )
+    assert v8.raw["benchmark"]["pricing"] == v7.raw["benchmark"]["pricing"]
+    assert v8.raw["benchmark"]["bugfix_change"] == {
+        "comparison_baseline": "activsg2000-gpu-gap-v7-1e-3",
+        "mip_start_policy": "presolve_off_original_space_readback_v1",
+        "native_log_policy": "fail_on_mip_start_rejection_or_native_error_v1",
+        "constraint_generation_policy": (
+            "add_violations_and_resolve_even_when_current_gap_is_uncertified"
+        ),
+    }
+
+
+def test_1935_second_outer_deadline_is_authorized_only_for_v7_and_v8(
     tmp_path: Path,
 ) -> None:
     v6 = load_config(ROOT / "configs" / "activsg2000-gpu-gap-1e-3-v6.json")

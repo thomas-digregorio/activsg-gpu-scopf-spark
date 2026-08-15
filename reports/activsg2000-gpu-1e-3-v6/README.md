@@ -4,9 +4,11 @@ The one authorized v6 run ended
 `incomplete_restricted_master_gap_not_certified` after
 902.887 seconds. It is not a successful SCOPF
 result, but it is not infeasible. The final incumbent is independently secure.
-Round 1 started cold; rounds 2 and 3 each received the prior GPU solution's
-432 commitment columns. No CPU
-commitment, dispatch, or lower bound initialized the run.
+Round 1 started cold; the adapter submitted the prior GPU solution's
+432 commitment columns in rounds 2
+and 3. Retrospective native-log inspection found that cuOpt rejected both
+starts after internal model expansion. No CPU commitment, dispatch, or lower
+bound initialized the run, and the rejected starts are not counted as reuse.
 
 Relative to v5, v6 changed only the registered cuOpt policy and frozen identity.
 Every round selected method 1 (PDLP), Stable3 mode 4, FP64 precision 1, batched

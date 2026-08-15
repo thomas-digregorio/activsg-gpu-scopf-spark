@@ -4,9 +4,11 @@ The one authorized v5 run ended
 `incomplete_restricted_master_gap_not_certified` after
 902.938 seconds. It is not a successful SCOPF
 result, but it is not infeasible. Round 1 started cold. Rounds 2 and 3 each
-received the prior GPU solution's 432
-commitment columns as a partial integer MIP start. No CPU commitment, dispatch,
-or lower bound initialized this run.
+had 432 prior-GPU commitment columns
+submitted by the adapter, but retrospective native-log inspection found that
+cuOpt rejected both starts after internal model expansion. No CPU commitment,
+dispatch, or lower bound initialized this run. This historical defect is
+preserved rather than relabeled as successful start reuse.
 
 The frozen controller reserved 900 seconds for raw loading and cumulative cuOpt
 rounds after retaining 120 seconds for verification and 15 seconds for

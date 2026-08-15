@@ -34,3 +34,9 @@ read-only inside the container.
 cuOpt's mixed-integer solver uses both GPU and CPU components. Consequently,
 the comparison is a laptop-CPU system versus a DGX-Spark cuOpt/CuPy system,
 not a claim of pure GPU kernel speedup.
+
+For the pinned cuOpt 26.6.0 expression API, a later-round original-space MIP
+start is run with native presolve disabled. The adapter verifies the submitted
+vector through the generated data model and audits a temporary native log after
+every solve. Any native start rejection or other `Error` line fails the run;
+known barrier-fallback and free-angle warnings are counted in result evidence.

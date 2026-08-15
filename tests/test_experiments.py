@@ -148,6 +148,25 @@ def test_activsg2000_gpu_v7_registers_1800_second_solve_budget() -> None:
     }
 
 
+def test_activsg2000_gpu_v8_registers_fixed_start_and_same_budget() -> None:
+    config = load_config(ROOT / "configs" / "activsg2000-gpu-gap-1e-3-v8.json")
+
+    assert _experiment_identity(config) == (
+        "activsg2000-gpu-gap-sensitivity-v8",
+        "1e-3",
+    )
+    runtime = config.runtime
+    available = (
+        runtime["deadline_seconds"]
+        - runtime["verification_reserve_seconds"]
+        - runtime["serialization_reserve_seconds"]
+    )
+    assert available == 1800.0
+    assert config.raw["benchmark"]["bugfix_change"]["mip_start_policy"] == (
+        "presolve_off_original_space_readback_v1"
+    )
+
+
 def test_next_gap_requires_prior_success_and_pricing() -> None:
     successful = {
         "runs": {

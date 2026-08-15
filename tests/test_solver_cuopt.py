@@ -10,6 +10,8 @@ from activsg_scopf.solvers.cuopt import (
     INTEGER_ONLY_MIP_START,
     NO_NATIVE_SCALING,
     POWER_SYSTEM_PER_UNIT_SCALING,
+    audit_cuopt_native_log,
+    audit_mip_start_readback,
     evaluate_mip_gap_certificate,
     native_scaling_audit,
     native_scaling_vectors,
@@ -173,6 +175,57 @@ def test_full_mip_start_can_project_numerical_excess_to_exact_bounds() -> None:
 
     np.testing.assert_array_equal(columns, np.asarray([0, 1, 2]))
     np.testing.assert_array_equal(values, np.asarray([1.0, 10.0, -2.0]))
+
+
+def test_cuopt_mip_start_requires_original_space_readback_and_presolve_off() -> None:
+    audit = audit_mip_start_readback(
+        columns=np.asarray([0, 2]),
+        expected_native_values=np.asarray([1.0, 0.0]),
+        native_initial_primal=np.asarray([1.0, np.nan, 0.0]),
+        total_columns=3,
+        presolve_readback=0,
+    )
+
+    assert audit["contract_passed"] is True
+    assert audit["original_space_vector_readback"] is True
+    assert audit["presolve_parameter_readback"] == 0
+
+
+def test_cuopt_mip_start_rejects_presolve_or_changed_values() -> None:
+    arguments = {
+        "columns": np.asarray([0, 2]),
+        "expected_native_values": np.asarray([1.0, 0.0]),
+        "native_initial_primal": np.asarray([1.0, np.nan, 0.0]),
+        "total_columns": 3,
+    }
+    with pytest.raises(ScopfError, match="presolve=0"):
+        audit_mip_start_readback(**arguments, presolve_readback=1)
+    with pytest.raises(ScopfError, match="value readback"):
+        audit_mip_start_readback(
+            **{
+                **arguments,
+                "native_initial_primal": np.asarray([0.0, np.nan, 0.0]),
+            },
+            presolve_readback=0,
+        )
+
+
+def test_cuopt_native_log_rejects_failed_start_and_records_fallback_warning() -> None:
+    with pytest.raises(ScopfError, match="rejected the submitted MIP start"):
+        audit_cuopt_native_log(
+            "cuOpt version: 26.6.0\n"
+            "Error cannot add the provided initial solution! Assignment size 4\n"
+        )
+
+    audit = audit_cuopt_native_log(
+        "cuOpt version: 26.6.0\n"
+        "Free variable found! Make sure the correct bounds are given.\n"
+        "Barrier Solve status A numerical error was encountered.\n"
+        "Solution objective: 1.0\n"
+    )
+    assert audit["mip_start_rejection_count"] == 0
+    assert audit["free_variable_warning_count"] == 1
+    assert audit["barrier_numerical_warning_count"] == 1
 
 
 def _scaling_model() -> CanonicalMILP:

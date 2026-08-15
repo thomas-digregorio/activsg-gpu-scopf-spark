@@ -245,8 +245,11 @@ performed.
 The separately authorized v7 experiment preserved the complete v6 model,
 PDLP profile, initialization, screening loop, tolerances, and raw inputs while
 doubling the cumulative cuOpt allowance from 900 to 1,800 seconds. It added 173
-then 14 contingency pairs. Round 3 reused the prior GPU integer commitment,
-stopped on cuOpt's time limit, and found no new violations in an exhaustive
+then 14 contingency pairs. The adapter submitted the prior GPU integer
+commitment before rounds 2 and 3, but retrospective native-log inspection found
+that cuOpt rejected both starts after internal model expansion (`10911` versus
+`9220` columns). Round 3 stopped on cuOpt's time limit and found no new
+violations in an exhaustive
 17,563,400-side screen. The post-run independent checker passed every side,
 with maximum security violation `5.982e-12` p.u. The final objective was
 `1,133,078.528383`, the lower bound was `1,130,841.046502`, and the gap was
@@ -257,6 +260,17 @@ Recorded restricted-master time was `1,802.319` seconds, including a
 the separate 1,935-second guard at `1,805.749` seconds. See the
 [v7 report](reports/activsg2000-gpu-1e-3-v7/README.md). No v7 retry was
 performed.
+
+The separately authorized v8 replacement fixes that start defect without using
+a CPU initialization. Whenever a later round has a prior GPU commitment, the
+adapter now disables cuOpt presolve as required by the pinned 26.6.0 start
+contract, reads the exact original-space start vector back before solving,
+captures the native log, and fails closed on any rejection. It also fixes the
+constraint-generation controller so newly violated pairs are added and solved
+again while budget remains even if the current restricted-master gap is not yet
+certified. V8 keeps the v7 raw inputs, exact-PMIN model, PDLP profile,
+tolerances, dynamic screening, 1,800-second solver allowance, and 1,935-second
+outer guard. Exactly one v8 optimization run is authorized.
 
 That ACTIVSg2000 campaign is now closed. The `1e-3` run completed
 `optimal_verified` with accepted fixed-commitment pricing; the `1e-4` run hit
@@ -311,6 +325,9 @@ bash scripts/spark-gap-2000-gpu-1e-3-v6.sh
 # One authorized 30-minute PDLP run; otherwise identical to v6
 bash scripts/spark-build-2000-gpu-1e-3-v7.sh
 bash scripts/spark-gap-2000-gpu-1e-3-v7.sh
+# One authorized corrected-start 30-minute run
+bash scripts/spark-build-2000-gpu-1e-3-v8.sh
+bash scripts/spark-gap-2000-gpu-1e-3-v8.sh
 ```
 
 Continue with `1e-4` through `1e-7` only after the prior level finishes

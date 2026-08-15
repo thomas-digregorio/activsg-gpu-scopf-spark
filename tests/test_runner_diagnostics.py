@@ -144,7 +144,7 @@ def test_tiny_unbounded_gap_run_reaches_fixed_commitment_prices(tmp_path: Path) 
     assert result["constraint_generation_rounds"][0]["solver_budget_seconds"] is None
 
 
-def test_each_security_row_resolve_is_followed_by_another_exhaustive_screen(
+def test_uncertified_master_with_new_pairs_is_added_resolved_and_rescreened(
     tmp_path: Path, monkeypatch
 ) -> None:
     case_path, contingency_path = write_triangle_matpower(tmp_path)
@@ -213,9 +213,9 @@ def test_each_security_row_resolve_is_followed_by_another_exhaustive_screen(
             return SolveResult(
                 solver="highs",
                 solver_version="test",
-                status="Optimal",
-                optimal=True,
-                requested_gap_certified=True,
+                status=("FeasibleFound" if self.solve_count == 1 else "Optimal"),
+                optimal=self.solve_count > 1,
+                requested_gap_certified=self.solve_count > 1,
                 has_incumbent=True,
                 objective=float(self.solve_count),
                 bound=float(self.solve_count),

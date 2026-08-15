@@ -254,6 +254,38 @@ EXPERIMENT_SUITES: dict[str, dict[str, Any]] = {
         "verification_reserve_seconds": 120.0,
         "serialization_reserve_seconds": 15.0,
     },
+    "activsg2000-gpu-gap-sensitivity-v8": {
+        "case_name": "ACTIVSg2000",
+        "benchmark_prefix": "activsg2000-gpu-gap-v8",
+        "required_git_tag": "experiment-2000-gpu-gap-v8",
+        "allowed_gap_labels": ("1e-3",),
+        "platform": "dgx_spark",
+        "required_profile": {
+            "solver": "cuopt",
+            "screening": "cupy",
+            "solver_session": "rebuild_each_round_with_partial_mip_start",
+            "pricing_solver": "highs",
+            "highspy_version": "1.15.1",
+            "mip_acceptance_policy": (
+                "finite_incumbent_bound_gap_and_native_residuals_v1"
+            ),
+            "mip_certificate_residual_tolerance": 1e-6,
+            "native_scaling_mode": "power_system_per_unit_v1",
+            "cuopt_pdlp_profile": {
+                "method": "pdlp",
+                "solver_mode": "stable3",
+                "precision": "fp64",
+                "batch_strong_branching": True,
+                "batch_reliability_branching": True,
+                "reliability_branching_factor": 1,
+            },
+        },
+        # Preserve v7's 1,800-second solver allowance. V8 changes only the
+        # MIP-start/native-log contract and constraint-generation controller.
+        "deadline_seconds": 1935.0,
+        "verification_reserve_seconds": 120.0,
+        "serialization_reserve_seconds": 15.0,
+    },
 }
 
 

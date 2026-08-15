@@ -87,6 +87,7 @@
   },
   "mip_gap": 0.0021295552806028916,
   "objective": 1132939.7883696237,
+  "observed_mip_start_status": "submitted_by_adapter_but_rejected_by_cuopt_in_rounds_2_and_3",
   "peak_memory": {
     "cuda_device_memory_delta_bytes": 14435536896,
     "cupy_pool_used_bytes": 70301696,

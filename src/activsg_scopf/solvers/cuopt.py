@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
 from math import isfinite
+from pathlib import Path
+from tempfile import NamedTemporaryFile
 
 import numpy as np
 
@@ -26,6 +29,11 @@ NO_NATIVE_SCALING = "none"
 POWER_SYSTEM_PER_UNIT_SCALING = "power_system_per_unit_v1"
 SUPPORTED_NATIVE_SCALING_MODES = frozenset(
     {NO_NATIVE_SCALING, POWER_SYSTEM_PER_UNIT_SCALING}
+)
+MIP_START_NATIVE_POLICY = "presolve_off_original_space_readback_v1"
+MIP_START_REJECTION_TEXT = "Error cannot add the provided initial solution!"
+BARRIER_NUMERICAL_WARNING = (
+    "Barrier Solve status A numerical error was encountered."
 )
 CUOPT_PDLP_PROFILE_KEYS = frozenset(
     {
@@ -222,6 +230,84 @@ def prepare_mip_start(
     if not np.all(np.isfinite(values)):
         raise ScopfError("cuOpt MIP start contains a nonfinite selected value")
     return columns, values
+
+
+def audit_cuopt_native_log(native_log: str) -> dict[str, object]:
+    """Fail closed on native cuOpt errors and retain known warning counts."""
+
+    if not native_log.strip():
+        raise ScopfError("cuOpt native log capture was empty")
+    lines = [line.strip() for line in native_log.splitlines() if line.strip()]
+    rejection_lines = [
+        line for line in lines if MIP_START_REJECTION_TEXT in line
+    ]
+    if rejection_lines:
+        raise ScopfError(
+            "cuOpt rejected the submitted MIP start: " + rejection_lines[0]
+        )
+    error_lines = [line for line in lines if line.startswith("Error ")]
+    if error_lines:
+        raise ScopfError("cuOpt native log reported an error: " + error_lines[0])
+    return {
+        "sha256": hashlib.sha256(native_log.encode("utf-8")).hexdigest(),
+        "bytes": len(native_log.encode("utf-8")),
+        "mip_start_rejection_count": 0,
+        "barrier_numerical_warning_count": native_log.count(
+            BARRIER_NUMERICAL_WARNING
+        ),
+        "free_variable_warning_count": native_log.count("Free variable found!"),
+        "presolve_disabled_message_count": native_log.count(
+            "Presolve is disabled, skipping"
+        ),
+    }
+
+
+def audit_mip_start_readback(
+    *,
+    columns: np.ndarray,
+    expected_native_values: np.ndarray,
+    native_initial_primal: np.ndarray,
+    total_columns: int,
+    presolve_readback: int | None,
+) -> dict[str, object]:
+    """Verify the exact original-space start accepted by the pinned API contract."""
+
+    selected = np.asarray(columns, dtype=np.int64)
+    expected = np.asarray(expected_native_values, dtype=np.float64)
+    observed = np.asarray(native_initial_primal, dtype=np.float64)
+    if not selected.size:
+        return {
+            "policy": MIP_START_NATIVE_POLICY,
+            "submitted": False,
+            "contract_passed": None,
+            "presolve_parameter_readback": presolve_readback,
+            "original_space_vector_readback": False,
+        }
+    if observed.shape != (total_columns,):
+        raise ScopfError(
+            "cuOpt MIP-start original-space readback has the wrong shape: "
+            f"expected {(total_columns,)}, observed {observed.shape}"
+        )
+    if expected.shape != selected.shape:
+        raise ScopfError("cuOpt MIP-start expected-value shape changed")
+    if presolve_readback != 0:
+        raise ScopfError(
+            "cuOpt MIP starts require presolve=0 in the pinned 26.6.0 API"
+        )
+    if not np.array_equal(observed[selected], expected):
+        raise ScopfError("cuOpt MIP-start original-space value readback failed")
+    unselected = np.ones(total_columns, dtype=bool)
+    unselected[selected] = False
+    if not np.all(np.isnan(observed[unselected])):
+        raise ScopfError("cuOpt MIP-start readback populated unselected columns")
+    return {
+        "policy": MIP_START_NATIVE_POLICY,
+        "submitted": True,
+        "contract_passed": True,
+        "presolve_parameter_readback": 0,
+        "original_space_vector_readback": True,
+        "submitted_columns": int(selected.size),
+    }
 
 
 def native_scaling_vectors(
@@ -505,6 +591,12 @@ def solve_cuopt(
     settings.set_parameter("mip_relative_gap", float(mip_relative_gap))
     settings.set_parameter("random_seed", 0)
     settings.set_parameter("log_to_console", bool(log_to_console))
+    mip_start_presolve_readback: int | None = None
+    if mip_start_columns.size:
+        settings.set_parameter("presolve", 0)
+        mip_start_presolve_readback = int(
+            _native(settings.get_parameter("presolve"))
+        )
     if threads > 0:
         settings.set_parameter("num_cpu_threads", int(threads))
     for name, value in pdlp_settings.items():
@@ -518,7 +610,37 @@ def solve_cuopt(
             "cuOpt PDLP parameter readback did not match the requested profile: "
             f"requested={pdlp_settings}, observed={pdlp_settings_readback}"
         )
-    problem.solve(settings)
+    if mip_start_columns.size:
+        problem._to_data_model()
+        native_initial_primal = np.asarray(
+            problem.model.get_initial_primal_solution(), dtype=np.float64
+        )
+    else:
+        native_initial_primal = np.empty(0, dtype=np.float64)
+    mip_start_contract = audit_mip_start_readback(
+        columns=mip_start_columns,
+        expected_native_values=(
+            mip_start_selected_values / column_scale[mip_start_columns]
+        ),
+        native_initial_primal=native_initial_primal,
+        total_columns=model.num_columns,
+        presolve_readback=mip_start_presolve_readback,
+    )
+    with NamedTemporaryFile(
+        mode="w", prefix="activsg-cuopt-native-", suffix=".log", delete=False
+    ) as native_log_stream:
+        native_log_path = Path(native_log_stream.name)
+    settings.set_parameter("log_file", str(native_log_path))
+    native_log = ""
+    try:
+        problem.solve(settings)
+        native_log = native_log_path.read_text(encoding="utf-8", errors="replace")
+    finally:
+        native_log_path.unlink(missing_ok=True)
+    native_log_audit = audit_cuopt_native_log(native_log)
+    if mip_start_columns.size:
+        mip_start_contract["native_rejection_detected"] = False
+        mip_start_contract["native_log_contract_passed"] = True
     status = problem.Status.name
     stats = problem.SolutionStats
     has_incumbent = (
@@ -623,6 +745,8 @@ def solve_cuopt(
             "partial_integer_mip_start_columns": int(
                 np.count_nonzero(integrality[mip_start_columns])
             ),
+            "mip_start_native_contract": mip_start_contract,
+            "native_log_audit": native_log_audit,
             "canonical_columns_translated": model.num_columns,
             "canonical_rows_translated": model.num_rows,
             "canonical_nonzeros_translated": int(model.matrix_csr().nnz),
