@@ -98,6 +98,7 @@ def load_config(path: str | Path) -> RunConfig:
                     "gap_sensitivity_experiment",
                     "seeded_round2_diagnostic",
                     "gpu_lp_relaxation_certificate",
+                    "gpu_lagrangian_disjunctive_experiment",
                 }
                 else 300.0
             ),
