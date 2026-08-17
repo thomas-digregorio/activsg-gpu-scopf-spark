@@ -15,6 +15,21 @@ from .errors import ScopfError
 FloatArray = npt.NDArray[np.float64]
 
 
+def phase_one_semantic_row_key(row_name: str) -> str:
+    """Remove the diagnostic insertion index from a Phase-I row identity."""
+
+    parts = row_name.split("__", 3)
+    if (
+        len(parts) != 4
+        or parts[0] != "phase1"
+        or not parts[1].isdigit()
+        or parts[2] not in {"lower", "upper"}
+        or not parts[3]
+    ):
+        raise ScopfError(f"Malformed Phase-I row name: {row_name!r}")
+    return f"phase1__{parts[2]}__{parts[3]}"
+
+
 def sufficient_phase_one_violation_bound(
     source: CanonicalMILP, *, base_mva: float
 ) -> float:
@@ -184,6 +199,21 @@ def phase_one_certificate(
     )
     projected = np.asarray(evaluated.pop("projected_row_dual"), dtype=np.float64)
     evaluated.pop("implied_reduced_cost")
+    records = [
+        {
+            "row_name": name,
+            "semantic_row_key": phase_one_semantic_row_key(name),
+            "canonical_row_dual": float(value),
+        }
+        for name, value in zip(model.row_names, projected, strict=True)
+    ]
+    semantic_records = sorted(records, key=lambda record: record["semantic_row_key"])
+    semantic_bytes = b"".join(
+        str(record["semantic_row_key"]).encode("utf-8")
+        + b"\0"
+        + np.asarray([record["canonical_row_dual"]], dtype=np.float64).tobytes()
+        for record in semantic_records
+    )
     return {
         "certificate_kind": "box_dual_phase_one_infeasibility_v1",
         "formal_exact_rational_certificate": False,
@@ -193,11 +223,10 @@ def phase_one_certificate(
             float(evaluated["conservative_lower_bound_pu"])
             > float(infeasibility_threshold_pu)
         ),
-        "canonical_row_duals": [
-            {"row_name": name, "canonical_row_dual": float(value)}
-            for name, value in zip(model.row_names, projected, strict=True)
-        ],
+        "row_identity_policy": "semantic_source_row_and_side_order_independent_v1",
+        "canonical_row_duals": records,
         "canonical_row_dual_sha256": hashlib.sha256(projected.tobytes()).hexdigest(),
+        "semantic_row_dual_sha256": hashlib.sha256(semantic_bytes).hexdigest(),
     }
 
 
@@ -207,16 +236,47 @@ def replay_phase_one_certificate(
     """Replay a serialized Phase-I box-dual certificate independently."""
 
     records = certificate["canonical_row_duals"]
-    by_name = {
-        str(record["row_name"]): float(record["canonical_row_dual"])
+    serialized_dual = np.asarray(
+        [float(record["canonical_row_dual"]) for record in records],
+        dtype=np.float64,
+    )
+    observed_ordered_hash = hashlib.sha256(serialized_dual.tobytes()).hexdigest()
+    if observed_ordered_hash != certificate["canonical_row_dual_sha256"]:
+        raise ScopfError("Phase-I certificate ordered row-dual hash mismatch")
+    by_semantic_key = {
+        str(
+            record.get(
+                "semantic_row_key",
+                phase_one_semantic_row_key(str(record["row_name"])),
+            )
+        ): float(record["canonical_row_dual"])
         for record in records
     }
-    if len(by_name) != len(records) or set(by_name) != set(model.row_names):
+    model_semantic_keys = [
+        phase_one_semantic_row_key(name) for name in model.row_names
+    ]
+    if (
+        len(by_semantic_key) != len(records)
+        or len(set(model_semantic_keys)) != len(model_semantic_keys)
+        or set(by_semantic_key) != set(model_semantic_keys)
+    ):
         raise ScopfError("Phase-I certificate row identity mismatch")
-    dual = np.asarray([by_name[name] for name in model.row_names], dtype=np.float64)
-    observed_hash = hashlib.sha256(dual.tobytes()).hexdigest()
-    if observed_hash != certificate["canonical_row_dual_sha256"]:
-        raise ScopfError("Phase-I certificate row-dual hash mismatch")
+    dual = np.asarray(
+        [by_semantic_key[key] for key in model_semantic_keys], dtype=np.float64
+    )
+    semantic_records = sorted(by_semantic_key.items())
+    semantic_bytes = b"".join(
+        key.encode("utf-8")
+        + b"\0"
+        + np.asarray([value], dtype=np.float64).tobytes()
+        for key, value in semantic_records
+    )
+    expected_semantic_hash = certificate.get("semantic_row_dual_sha256")
+    if (
+        expected_semantic_hash is not None
+        and hashlib.sha256(semantic_bytes).hexdigest() != expected_semantic_hash
+    ):
+        raise ScopfError("Phase-I certificate semantic row-dual hash mismatch")
     replayed = evaluate_phase_one_dual(
         model,
         dual,

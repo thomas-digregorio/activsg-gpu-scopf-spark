@@ -62,3 +62,46 @@ def test_phase_one_registered_cap_fails_closed_if_box_bound_exceeds_it() -> None
         build_phase_one_model(
             source, base_mva=1.0, maximum_violation_pu=10.0
         )
+
+
+def test_phase_one_certificate_replays_when_source_rows_are_reordered() -> None:
+    first = CanonicalMILP()
+    x_first = first.add_variable("x", lower=0.0, upper=1.0)
+    first.add_row("force_high", {x_first: 1.0}, lower=2.0)
+    first.add_row("named_upper", {x_first: 1.0}, upper=3.0)
+    first_phase = build_phase_one_model(
+        first, base_mva=100.0, maximum_violation_pu=1e6
+    )
+    certificate = phase_one_certificate(
+        first_phase,
+        np.asarray([-0.01, 0.0]),
+        safety_margin_pu=1e-8,
+        infeasibility_threshold_pu=1e-6,
+    )
+
+    reordered = CanonicalMILP()
+    x_reordered = reordered.add_variable("x", lower=0.0, upper=1.0)
+    reordered.add_row("named_upper", {x_reordered: 1.0}, upper=3.0)
+    reordered.add_row("force_high", {x_reordered: 1.0}, lower=2.0)
+    reordered_phase = build_phase_one_model(
+        reordered, base_mva=100.0, maximum_violation_pu=1e6
+    )
+    replayed = replay_phase_one_certificate(reordered_phase, certificate)
+    assert replayed["conservative_lower_bound_pu"] == pytest.approx(
+        certificate["conservative_lower_bound_pu"]
+    )
+
+    legacy = dict(certificate)
+    legacy.pop("semantic_row_dual_sha256")
+    legacy.pop("row_identity_policy")
+    legacy["canonical_row_duals"] = [
+        {
+            "row_name": record["row_name"],
+            "canonical_row_dual": record["canonical_row_dual"],
+        }
+        for record in certificate["canonical_row_duals"]
+    ]
+    legacy_replayed = replay_phase_one_certificate(reordered_phase, legacy)
+    assert legacy_replayed["conservative_lower_bound_pu"] == pytest.approx(
+        certificate["conservative_lower_bound_pu"]
+    )

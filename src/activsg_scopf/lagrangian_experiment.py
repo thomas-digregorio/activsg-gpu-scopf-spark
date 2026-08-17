@@ -806,6 +806,110 @@ def _security_row_equivalence_record(master: ReducedMaster) -> dict[str, Any]:
     }
 
 
+def _relative_gap(*, objective: float, lower_bound: float) -> float:
+    """Return the registered incumbent-relative minimization gap."""
+
+    gap = (float(objective) - float(lower_bound)) / max(1.0, abs(float(objective)))
+    if gap < -1e-9:
+        raise ScopfError("Lagrangian lower bound exceeds the secure incumbent")
+    return gap
+
+
+def _replay_cleanup_audit_comparison(
+    recorded: dict[str, Any],
+    rebuilt: dict[str, Any],
+) -> dict[str, Any]:
+    """Validate cleanup invariants while allowing architecture-dependent dust counts."""
+
+    maximum_difference = 0.0
+    maximum_integer_difference = 0
+    differing_integer_fields: list[dict[str, Any]] = []
+    exact_paths = {
+        "coefficient_cleanup_audit.policy",
+        "coefficient_cleanup_audit.zero_tolerance",
+        "coefficient_cleanup_audit.potential_flow_operator_dust.zero_tolerance",
+        "coefficient_cleanup_audit.physical_injection_operator_changed",
+        "coefficient_cleanup_audit.solver_rows_are_relaxations_of_original_rows",
+        "coefficient_cleanup_audit.exact_duplicate_security_row_count",
+    }
+
+    def compare(left: Any, right: Any, path: str) -> None:
+        nonlocal maximum_difference, maximum_integer_difference
+        if isinstance(left, dict) and isinstance(right, dict):
+            if set(left) != set(right):
+                raise ScopfError(f"Cleanup-audit key mismatch at {path}")
+            for key in sorted(left):
+                compare(left[key], right[key], f"{path}.{key}")
+            return
+        if isinstance(left, bool) or isinstance(right, bool):
+            if type(left) is not type(right) or left != right:
+                raise ScopfError(f"Cleanup-audit boolean mismatch at {path}")
+            return
+        if isinstance(left, int) or isinstance(right, int):
+            if type(left) is not type(right):
+                raise ScopfError(f"Cleanup-audit numeric type mismatch at {path}")
+            difference = abs(int(left) - int(right))
+            if path in exact_paths and difference:
+                raise ScopfError(f"Cleanup-audit exact integer mismatch at {path}")
+            maximum_integer_difference = max(maximum_integer_difference, difference)
+            if difference:
+                differing_integer_fields.append(
+                    {
+                        "path": path,
+                        "recorded": int(left),
+                        "rebuilt": int(right),
+                        "absolute_difference": difference,
+                    }
+                )
+            return
+        if isinstance(left, (float, np.floating)) and isinstance(
+            right, (float, np.floating)
+        ):
+            difference = abs(float(left) - float(right))
+            if not np.isfinite(difference):
+                raise ScopfError(f"Cleanup-audit nonfinite FP64 value at {path}")
+            if path in exact_paths and difference:
+                raise ScopfError(f"Cleanup-audit exact FP64 mismatch at {path}")
+            maximum_difference = max(maximum_difference, difference)
+            return
+        if left != right:
+            raise ScopfError(f"Cleanup-audit identity mismatch at {path}")
+
+    compare(recorded, rebuilt, "coefficient_cleanup_audit")
+    for label, audit in (("recorded", recorded), ("rebuilt", rebuilt)):
+        zero_tolerance = float(audit["zero_tolerance"])
+        for key in (
+            "maximum_absolute_dropped_generator_coefficient",
+            "maximum_row_rhs_outward_relaxation",
+            "total_rhs_outward_relaxation",
+        ):
+            value = float(audit.get(key, 0.0))
+            if not np.isfinite(value) or value < 0.0:
+                raise ScopfError(f"Cleanup-audit {label} {key} is invalid")
+        potential = audit["potential_flow_operator_dust"]
+        maximum_dropped = float(potential["maximum_absolute_dropped_coefficient"])
+        if maximum_dropped > zero_tolerance * (1.0 + 1e-12):
+            raise ScopfError(
+                f"Cleanup-audit {label} flow dust exceeds its zero tolerance"
+            )
+        generator_maximum = float(
+            audit.get("maximum_absolute_dropped_generator_coefficient", 0.0)
+        )
+        if generator_maximum > zero_tolerance * (1.0 + 1e-12):
+            raise ScopfError(
+                f"Cleanup-audit {label} generator dust exceeds its zero tolerance"
+            )
+        if audit.get("physical_injection_operator_changed") is not False:
+            raise ScopfError(f"Cleanup-audit {label} changed the physical operator")
+        if audit.get("solver_rows_are_relaxations_of_original_rows") is not True:
+            raise ScopfError(f"Cleanup-audit {label} lost outward-relaxation proof")
+    return {
+        "maximum_fp64_difference": maximum_difference,
+        "maximum_integer_difference": maximum_integer_difference,
+        "differing_integer_fields": differing_integer_fields,
+    }
+
+
 def _run_phase_one_attempt(
     *,
     region_id: str,
@@ -944,6 +1048,9 @@ def verify_lagrangian_certificate_payload(
     replayed_bounds: dict[str, float] = {}
     maximum_difference = 0.0
     maximum_lodf_replay_difference = 0.0
+    maximum_cleanup_audit_difference = 0.0
+    maximum_cleanup_audit_integer_difference = 0
+    cleanup_audit_integer_differences: list[dict[str, Any]] = []
     lodf_tolerance = float(config.model.get("serialized_lodf_replay_tolerance", 0.0))
 
     def update_lodf_replay_difference(
@@ -997,8 +1104,22 @@ def verify_lagrangian_certificate_payload(
                 config.model.get("security_equivalence_replay_tolerance", 0.0)
             ),
         )
-        if record.get("coefficient_cleanup_audit") != master.coefficient_cleanup_audit:
-            raise ScopfError(f"Independent region {region_id} coefficient-cleanup audit mismatch")
+        cleanup_comparison = _replay_cleanup_audit_comparison(
+            record["coefficient_cleanup_audit"],
+            master.coefficient_cleanup_audit,
+        )
+        maximum_cleanup_audit_difference = max(
+            maximum_cleanup_audit_difference,
+            float(cleanup_comparison["maximum_fp64_difference"]),
+        )
+        maximum_cleanup_audit_integer_difference = max(
+            maximum_cleanup_audit_integer_difference,
+            int(cleanup_comparison["maximum_integer_difference"]),
+        )
+        cleanup_audit_integer_differences.extend(
+            {"region_id": region_id, **difference}
+            for difference in cleanup_comparison["differing_integer_fields"]
+        )
         if record.get("security_row_equivalence") != _security_row_equivalence_record(master):
             raise ScopfError(f"Independent region {region_id} security-row audit mismatch")
         replayed = replay_lagrangian_certificate(master, record["lagrangian_certificate"], masks)
@@ -1046,8 +1167,22 @@ def verify_lagrangian_certificate_payload(
             ),
         )
         fix_commitments(master, masks.fixed_off, masks.fixed_on)
-        if record.get("coefficient_cleanup_audit") != master.coefficient_cleanup_audit:
-            raise ScopfError(f"Independent pruned region {region_id} cleanup audit mismatch")
+        cleanup_comparison = _replay_cleanup_audit_comparison(
+            record["coefficient_cleanup_audit"],
+            master.coefficient_cleanup_audit,
+        )
+        maximum_cleanup_audit_difference = max(
+            maximum_cleanup_audit_difference,
+            float(cleanup_comparison["maximum_fp64_difference"]),
+        )
+        maximum_cleanup_audit_integer_difference = max(
+            maximum_cleanup_audit_integer_difference,
+            int(cleanup_comparison["maximum_integer_difference"]),
+        )
+        cleanup_audit_integer_differences.extend(
+            {"region_id": region_id, **difference}
+            for difference in cleanup_comparison["differing_integer_fields"]
+        )
         if record.get("security_row_equivalence") != _security_row_equivalence_record(master):
             raise ScopfError(f"Independent pruned region {region_id} row audit mismatch")
         phase_model = build_phase_one_model(
@@ -1116,6 +1251,13 @@ def verify_lagrangian_certificate_payload(
         "maximum_phase_one_replay_difference_pu": maximum_phase_one_difference,
         "maximum_lodf_replay_difference": maximum_lodf_replay_difference,
         "registered_lodf_replay_tolerance": lodf_tolerance,
+        "maximum_cleanup_audit_replay_difference": (
+            maximum_cleanup_audit_difference
+        ),
+        "maximum_cleanup_audit_integer_difference": (
+            maximum_cleanup_audit_integer_difference
+        ),
+        "cleanup_audit_integer_differences": cleanup_audit_integer_differences,
         "elapsed_seconds": time.perf_counter() - started,
     }
 
@@ -1292,6 +1434,11 @@ def run_gpu_lagrangian_experiment(
                     region.lagrangian.conservative_lower_bound for region in frontier.values()
                 )
                 payload["bound_status"] = "gpu_generated_pending_independent_replay"
+                if payload.get("objective") is not None:
+                    payload["relative_gap"] = _relative_gap(
+                        objective=float(payload["objective"]),
+                        lower_bound=float(payload["bound"]),
+                    )
             save()
 
         def replay_and_checkpoint_frontier(stage: str) -> None:
@@ -1301,6 +1448,11 @@ def run_gpu_lagrangian_experiment(
                 raise ScopfError(f"Independent Lagrangian replay failed during {stage}")
             payload["bound"] = replay["replayed_global_lower_bound"]
             payload["bound_status"] = "independently_replayed_current_frontier"
+            if payload.get("objective") is not None:
+                payload["relative_gap"] = _relative_gap(
+                    objective=float(payload["objective"]),
+                    lower_bound=float(payload["bound"]),
+                )
             payload.setdefault("lagrangian_replay_history", []).append(
                 {
                     "stage": stage,
@@ -1615,12 +1767,10 @@ def run_gpu_lagrangian_experiment(
                     region.lagrangian.conservative_lower_bound for region in frontier.values()
                 )
                 upper_bound = float(best_primal["objective"])
-                gap = (upper_bound - lower_bound) / max(1.0, abs(upper_bound))
+                gap = _relative_gap(objective=upper_bound, lower_bound=lower_bound)
                 payload["objective"] = upper_bound
                 payload["bound"] = lower_bound
                 payload["relative_gap"] = gap
-                if gap < -1e-9:
-                    raise ScopfError("Lagrangian lower bound exceeds the secure incumbent")
                 if gap <= target_gap:
                     break
             if len(frontier) >= maximum_regions:
@@ -1805,8 +1955,9 @@ def run_gpu_lagrangian_experiment(
         payload["bound"] = min(
             region.lagrangian.conservative_lower_bound for region in frontier.values()
         )
-        payload["relative_gap"] = (float(payload["objective"]) - float(payload["bound"])) / max(
-            1.0, abs(float(payload["objective"]))
+        payload["relative_gap"] = _relative_gap(
+            objective=float(payload["objective"]),
+            lower_bound=float(payload["bound"]),
         )
         save()
 

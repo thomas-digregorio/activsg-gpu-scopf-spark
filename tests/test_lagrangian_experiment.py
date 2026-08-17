@@ -14,6 +14,8 @@ from activsg_scopf.lagrangian_experiment import (
     PrimalCandidatePolicy,
     RegionAttemptRejected,
     _load_cpu_comparison,
+    _relative_gap,
+    _replay_cleanup_audit_comparison,
     _solve_region,
     validate_lagrangian_experiment_config,
 )
@@ -534,3 +536,49 @@ def test_v4_region_uses_warm_attempt_then_exactly_one_cold_restart(
     assert solve_calls[1]["initial_native_row_dual"] is not None
     assert solve_calls[2]["initial_native_primal"] is None
     assert solve_calls[2]["initial_native_row_dual"] is None
+
+
+def test_cleanup_replay_preserves_proof_but_allows_architecture_dust_counts() -> None:
+    recorded = {
+        "policy": "cleanup-v1",
+        "zero_tolerance": 1e-14,
+        "physical_injection_operator_changed": False,
+        "solver_rows_are_relaxations_of_original_rows": True,
+        "potential_flow_operator_dust": {
+            "zero_tolerance": 1e-14,
+            "dropped_coefficient_count": 100,
+            "maximum_absolute_dropped_coefficient": 8e-15,
+        },
+        "dropped_generator_coefficient_count": 50,
+        "maximum_absolute_dropped_generator_coefficient": 7e-15,
+        "total_rhs_outward_relaxation": 2e-10,
+        "maximum_row_rhs_outward_relaxation": 3e-12,
+        "exact_duplicate_security_row_count": 1,
+    }
+    rebuilt = {
+        **recorded,
+        "potential_flow_operator_dust": {
+            **recorded["potential_flow_operator_dust"],
+            "dropped_coefficient_count": 120,
+            "maximum_absolute_dropped_coefficient": 9e-15,
+        },
+        "dropped_generator_coefficient_count": 60,
+        "total_rhs_outward_relaxation": 2.1e-10,
+    }
+
+    comparison = _replay_cleanup_audit_comparison(recorded, rebuilt)
+    assert comparison["maximum_integer_difference"] == 20
+    assert comparison["maximum_fp64_difference"] == pytest.approx(1e-11)
+
+    invalid = {**rebuilt, "solver_rows_are_relaxations_of_original_rows": False}
+    with pytest.raises(ScopfError, match="boolean mismatch"):
+        _replay_cleanup_audit_comparison(recorded, invalid)
+
+
+def test_relative_gap_tracks_current_frontier_bound() -> None:
+    assert _relative_gap(objective=79_410.65143217964, lower_bound=77_996.45965698606) == (
+        pytest.approx(0.01780859053147761)
+    )
+
+    with pytest.raises(ScopfError, match="lower bound exceeds"):
+        _relative_gap(objective=100.0, lower_bound=101.0)
