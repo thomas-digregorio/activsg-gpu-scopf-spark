@@ -38,7 +38,6 @@ from .matpower import (
     PMIN,
     read_contingency_table,
     read_matpower_case,
-    sha256_file,
 )
 from .network import (
     ContingencyCatalog,
@@ -474,9 +473,13 @@ def verify_lagrangian_certificate_payload(
 def _load_cpu_comparison(config: RunConfig, registration: dict[str, Any]) -> dict[str, Any]:
     reference = registration["cpu_comparison"]
     path = (config.root / str(reference["result_file"])).resolve()
-    if sha256_file(path) != str(reference["result_sha256"]):
-        raise ScopfError("Registered laptop comparison result hash mismatch")
     result = _read_json(path)
+    canonical_bytes = json.dumps(
+        result, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
+    canonical_sha256 = hashlib.sha256(canonical_bytes).hexdigest()
+    if canonical_sha256 != str(reference["canonical_json_sha256"]):
+        raise ScopfError("Registered laptop comparison canonical JSON hash mismatch")
     if result.get("experiment_suite_id") != "activsg500-gap-sensitivity-v1":
         raise ScopfError("Registered laptop comparison suite identity changed")
     if result.get("tag") != reference.get("source_tag"):
@@ -505,7 +508,7 @@ def _load_cpu_comparison(config: RunConfig, registration: dict[str, Any]) -> dic
         raise ScopfError("Registered laptop comparison did not pass its original gates")
     return {
         "source": str(path.relative_to(config.root)),
-        "sha256": str(reference["result_sha256"]),
+        "canonical_json_sha256": canonical_sha256,
         "raw_result_sha256": summary["raw_result_sha256"],
         "frozen_identity": {
             "commit": result.get("commit"),

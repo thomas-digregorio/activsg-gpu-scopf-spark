@@ -60,7 +60,7 @@
     "gpu_cpu_replay_tolerance_dollars": 0.000001,
     "cpu_comparison": {
       "result_file": "reports/activsg500-gap-sensitivity-v1/comparison.json",
-      "result_sha256": "43a60d2befb7ef696624caf158bf15673c13fdf148cffe90377944cf44155bee",
+      "canonical_json_sha256": "6932e15a876c936c6263e81edcc38d09f7bb95b69725c844df8bc0446a4119a5",
       "raw_result_sha256": "d1eb3e0dc5815d55fb261b73ec42d6831e9022002c8d709e97c3f8a63091e9c0",
       "source_tag": "experiment-500-gap-v1",
       "source_commit": "6fcc0de1eb3194d7b8d1c821c03a2a0f99362e9f"

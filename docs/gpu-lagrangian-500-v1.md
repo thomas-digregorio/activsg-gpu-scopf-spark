@@ -59,7 +59,7 @@ Success requires all of the following in the single registered DGX run:
 - `(upper_bound - lower_bound) / abs(upper_bound) <= 1e-3`;
 - completion within the frozen 600-second end-to-end boundary.
 
-The comparison uses the already-recorded and hashed laptop HiGHS result from
+The comparison uses the already-recorded, canonical-JSON-hashed laptop HiGHS result from
 the same case/model contract. It is a system-to-system comparison, not a pure
 GPU kernel speedup. No new laptop full-model run is authorized by this
 experiment.
