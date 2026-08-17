@@ -41,6 +41,8 @@ class InjectionOperator:
     angle_constant_rad: FloatArray
     angle_by_generator: FloatArray
     angle_by_bus_injection: FloatArray
+    coefficient_zero_tolerance: float
+    coefficient_cleanup_audit: dict[str, float | int]
 
     @property
     def total_demand_mw(self) -> float:
@@ -73,6 +75,10 @@ class CouplingRow:
     generator_coefficients: FloatArray
     bus_coefficients: FloatArray
     kind: str
+    original_rhs: float | None = None
+    coefficient_cleanup_dropped_count: int = 0
+    coefficient_cleanup_maximum_absolute: float = 0.0
+    coefficient_cleanup_rhs_relaxation: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -91,9 +97,73 @@ class ReducedMaster:
     operator: InjectionOperator
     coupling_rows: list[CouplingRow] = field(default_factory=list)
     security_pair_ids: set[str] = field(default_factory=set)
+    coefficient_cleanup_audit: dict[str, float | int | str | bool] = field(
+        default_factory=dict
+    )
 
 
-def build_injection_operator(case: MatpowerCase, network: NetworkData) -> InjectionOperator:
+def clean_sensitivity_coefficients(
+    values: npt.ArrayLike, *, zero_tolerance: float
+) -> tuple[FloatArray, dict[str, float | int]]:
+    """Identify and zero numerical sensitivity dust with an explicit audit."""
+
+    array = np.asarray(values, dtype=np.float64)
+    if not np.isfinite(zero_tolerance) or zero_tolerance < 0.0:
+        raise ScopfError("Reduced coefficient zero tolerance must be nonnegative")
+    mask = (array != 0.0) & (np.abs(array) <= zero_tolerance)
+    cleaned = array.copy()
+    cleaned[mask] = 0.0
+    return cleaned, {
+        "zero_tolerance": float(zero_tolerance),
+        "dropped_coefficient_count": int(np.count_nonzero(mask)),
+        "maximum_absolute_dropped_coefficient": (
+            float(np.max(np.abs(array[mask]))) if np.any(mask) else 0.0
+        ),
+    }
+
+
+def clean_upper_row_with_box_relaxation(
+    coefficients: npt.ArrayLike,
+    lower: npt.ArrayLike,
+    upper: npt.ArrayLike,
+    rhs: float,
+    *,
+    zero_tolerance: float,
+) -> tuple[FloatArray, float, dict[str, float | int]]:
+    """Clean an upper row while retaining a provable relaxation of that row."""
+
+    original = np.asarray(coefficients, dtype=np.float64)
+    lower_values = np.asarray(lower, dtype=np.float64)
+    upper_values = np.asarray(upper, dtype=np.float64)
+    if not (
+        original.shape == lower_values.shape == upper_values.shape
+        and np.all(np.isfinite(original))
+        and np.all(np.isfinite(lower_values))
+        and np.all(np.isfinite(upper_values))
+        and np.all(lower_values <= upper_values)
+        and np.isfinite(rhs)
+    ):
+        raise ScopfError("Upper-row cleanup requires finite, conformable box data")
+    cleaned, audit = clean_sensitivity_coefficients(
+        original, zero_tolerance=zero_tolerance
+    )
+    dropped = original - cleaned
+    # Original row: a*p <= b.  With a' = a - dropped, every point in the
+    # original feasible set satisfies
+    #   a'*p = a*p - dropped*p <= b + max_p(-dropped*p).
+    rhs_relaxation = float(
+        np.sum(np.maximum(-dropped * lower_values, -dropped * upper_values))
+    )
+    audit["rhs_outward_relaxation"] = rhs_relaxation
+    return cleaned, float(rhs) + rhs_relaxation, audit
+
+
+def build_injection_operator(
+    case: MatpowerCase,
+    network: NetworkData,
+    *,
+    coefficient_zero_tolerance: float = 1e-14,
+) -> InjectionOperator:
     """Eliminate angles using the same reference-bus equations as ``solve_dc``."""
 
     online = np.flatnonzero(case.gen[:, GEN_STATUS] > 0).astype(np.int64)
@@ -127,9 +197,16 @@ def build_injection_operator(case: MatpowerCase, network: NetworkData) -> Inject
         * (branch_angle_constant - network.phase_shift_rad)
     )
     branch_angle_by_bus = np.asarray(network.incidence @ theta_by_bus)
-    flow_by_bus = (
+    raw_flow_by_bus = (
         network.base_mva * network.susceptance_pu[:, None] * branch_angle_by_bus
     )
+    _, cleanup = clean_sensitivity_coefficients(
+        raw_flow_by_bus, zero_tolerance=coefficient_zero_tolerance
+    )
+    # Keep the physical operator exact.  Coefficients are cleaned only while
+    # constructing a solver row, where its RHS can be relaxed outward by a
+    # rigorously computed box-domain error bound.
+    flow_by_bus = np.asarray(raw_flow_by_bus, dtype=np.float64)
     flow_by_generator = flow_by_bus[:, generator_buses]
 
     return InjectionOperator(
@@ -142,6 +219,8 @@ def build_injection_operator(case: MatpowerCase, network: NetworkData) -> Inject
         angle_constant_rad=theta_constant,
         angle_by_generator=np.asarray(theta_by_generator, dtype=np.float64),
         angle_by_bus_injection=np.asarray(theta_by_bus, dtype=np.float64),
+        coefficient_zero_tolerance=float(coefficient_zero_tolerance),
+        coefficient_cleanup_audit=cleanup,
     )
 
 
@@ -162,23 +241,68 @@ def _add_upper_coupling_row(
     *,
     kind: str,
 ) -> None:
+    cleaned_bus, _ = clean_sensitivity_coefficients(
+        bus_coefficients,
+        zero_tolerance=master.operator.coefficient_zero_tolerance,
+    )
     dispatch_columns = [
         master.index.dispatch_by_generator[int(generator)]
         for generator in master.index.generator_source_rows
     ]
+    dispatch_lower = np.asarray(
+        [master.canonical.column_lower[column] for column in dispatch_columns],
+        dtype=np.float64,
+    )
+    dispatch_upper = np.asarray(
+        [master.canonical.column_upper[column] for column in dispatch_columns],
+        dtype=np.float64,
+    )
+    cleaned_generator, relaxed_rhs, generator_audit = (
+        clean_upper_row_with_box_relaxation(
+            generator_coefficients,
+            dispatch_lower,
+            dispatch_upper,
+            rhs,
+            zero_tolerance=master.operator.coefficient_zero_tolerance,
+        )
+    )
+    rhs_relaxation = float(generator_audit["rhs_outward_relaxation"])
     row = master.canonical.add_row(
         name,
-        _coefficient_map(dispatch_columns, generator_coefficients),
-        upper=float(rhs),
+        _coefficient_map(dispatch_columns, cleaned_generator),
+        upper=relaxed_rhs,
+    )
+    dropped_count = int(generator_audit["dropped_coefficient_count"])
+    dropped_maximum = float(
+        generator_audit["maximum_absolute_dropped_coefficient"]
+    )
+    audit = master.coefficient_cleanup_audit
+    audit["dropped_generator_coefficient_count"] = int(
+        audit.get("dropped_generator_coefficient_count", 0)
+    ) + dropped_count
+    audit["total_rhs_outward_relaxation"] = float(
+        audit.get("total_rhs_outward_relaxation", 0.0)
+    ) + rhs_relaxation
+    audit["maximum_row_rhs_outward_relaxation"] = max(
+        float(audit.get("maximum_row_rhs_outward_relaxation", 0.0)),
+        rhs_relaxation,
+    )
+    audit["maximum_absolute_dropped_generator_coefficient"] = max(
+        float(audit.get("maximum_absolute_dropped_generator_coefficient", 0.0)),
+        dropped_maximum,
     )
     master.coupling_rows.append(
         CouplingRow(
             row_index=row,
             row_name=name,
-            rhs=float(rhs),
-            generator_coefficients=np.asarray(generator_coefficients, dtype=np.float64),
-            bus_coefficients=np.asarray(bus_coefficients, dtype=np.float64),
+            rhs=relaxed_rhs,
+            generator_coefficients=cleaned_generator,
+            bus_coefficients=cleaned_bus,
             kind=kind,
+            original_rhs=float(rhs),
+            coefficient_cleanup_dropped_count=dropped_count,
+            coefficient_cleanup_maximum_absolute=dropped_maximum,
+            coefficient_cleanup_rhs_relaxation=rhs_relaxation,
         )
     )
 
@@ -188,10 +312,15 @@ def build_reduced_master(
     network: NetworkData,
     *,
     segments: int = 10,
+    coefficient_zero_tolerance: float = 1e-14,
 ) -> ReducedMaster:
     """Build the convex-hull-ready generator model with base DC constraints."""
 
-    operator = build_injection_operator(case, network)
+    operator = build_injection_operator(
+        case,
+        network,
+        coefficient_zero_tolerance=coefficient_zero_tolerance,
+    )
     model = CanonicalMILP()
     curves = build_pwl_costs(case, segments=segments)
     commitment: dict[int, int] = {}
@@ -248,7 +377,23 @@ def build_reduced_master(
         dispatch_by_generator=dispatch,
         segments_by_generator=segment_columns,
     )
-    master = ReducedMaster(model, index, curves, operator)
+    master = ReducedMaster(
+        model,
+        index,
+        curves,
+        operator,
+        coefficient_cleanup_audit={
+            "policy": "drop_small_dispatch_coefficients_with_box_rhs_relaxation_v1",
+            "zero_tolerance": float(coefficient_zero_tolerance),
+            "physical_injection_operator_changed": False,
+            "solver_rows_are_relaxations_of_original_rows": True,
+            "potential_flow_operator_dust": dict(operator.coefficient_cleanup_audit),
+            "dropped_generator_coefficient_count": 0,
+            "maximum_absolute_dropped_generator_coefficient": 0.0,
+            "total_rhs_outward_relaxation": 0.0,
+            "maximum_row_rhs_outward_relaxation": 0.0,
+        },
+    )
     dispatch_columns = [dispatch[int(generator)] for generator in operator.generator_source_rows]
     balance_coefficients = np.ones(len(dispatch_columns), dtype=np.float64)
     balance_bus_coefficients = np.ones(len(network.bus_ids), dtype=np.float64)

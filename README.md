@@ -83,7 +83,7 @@ activsg-scopf ingest --config configs\activsg10k.json --output work\activsg10k-i
 activsg-scopf benchmark --config configs\activsg10k.json --platform laptop_cpu --output results\activsg10k-laptop-cpu-official.json
 activsg-scopf benchmark --config configs\activsg10k-v2.json --platform laptop_cpu --output results\activsg10k-v2-laptop-cpu-official.json
 activsg-scopf benchmark --config configs\activsg10k-v3.json --platform laptop_cpu --output results\activsg10k-v3-laptop-cpu-official.json
-activsg-scopf gpu-lagrangian-experiment --config configs\activsg500-gpu-lagrangian-v1.json --output results\experiments\activsg500-gpu-lagrangian-v1-dgx-spark.json
+activsg-scopf gpu-lagrangian-experiment --config configs\activsg500-gpu-lagrangian-v2.json --output results\experiments\activsg500-gpu-lagrangian-v2-dgx-spark.json
 ```
 
 `solve` is a bounded nonofficial end-to-end run. `benchmark` is the registered
@@ -93,7 +93,7 @@ replacement even after failure.
 
 ## ACTIVSg500 GPU Lagrangian/disjunctive experiment
 
-The frozen `activsg500-gpu-lagrangian-v1` experiment uses no integer solver and
+The registered `activsg500-gpu-lagrangian-v2` experiment uses no integer solver and
 no CPU branch-and-bound. cuOpt PDLP generates continuous relaxation and
 fixed-commitment dispatch solutions; CuPy performs exhaustive contingency
 screening and a persistent FP64 projected-supergradient Lagrangian loop over
@@ -102,11 +102,14 @@ but cannot invalidate, its lower bound. If the root certificate is short of
 `1e-3`, disjoint on/off regions refine it and the minimum leaf bound certifies
 their exhaustive union.
 
-The only authorized full-model execution is the one registered DGX Spark run
+The only authorized v2 full-model execution is the one registered DGX Spark run
 with a 600-second end-to-end deadline. Development uses tiny fixtures only. Its
 laptop comparison is the already-published, hashed HiGHS `1e-3` result; no new
 laptop full-model solve is part of this experiment. See the complete
-[algorithm and acceptance contract](docs/gpu-lagrangian-500-v1.md).
+[v2 algorithm and acceptance contract](docs/gpu-lagrangian-500-v2.md). The
+[v1 failure report](reports/activsg500-gpu-lagrangian-v1/README.md) preserves
+the first attempt without calling its primal-infeasible PDLP iterate a model
+infeasibility.
 
 ## MIP-gap sensitivity experiments
 

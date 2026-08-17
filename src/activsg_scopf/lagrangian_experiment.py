@@ -67,7 +67,26 @@ from .verify import verify_serialized_solution
 
 EXPERIMENT_ID = "activsg500-gpu-lagrangian-v1"
 EXPERIMENT_TAG = "experiment-500-gpu-lagrangian-v1"
-EXPERIMENT_POLICY = "gpu_pdlp_primal_plus_replayable_lagrangian_cover_v1"
+REGISTERED_EXPERIMENTS = {
+    EXPERIMENT_ID: {
+        "tag": EXPERIMENT_TAG,
+        "policy": "gpu_pdlp_primal_plus_replayable_lagrangian_cover_v1",
+    },
+    "activsg500-gpu-lagrangian-v2": {
+        "tag": "experiment-500-gpu-lagrangian-v2",
+        "policy": "gpu_pdlp_primal_plus_replayable_lagrangian_cover_v2",
+    },
+}
+V2_BUGFIX_CHANGE = {
+    "comparison_baseline": "activsg500-gpu-lagrangian-v1",
+    "coefficient_cleanup": (
+        "drop_affine_dispatch_coefficients_abs_le_1e-14_with_box_rhs_relaxation"
+    ),
+    "pdlp_primal_gate": "never_screen_or_add_rows_from_primal_infeasible_vector",
+    "continuation": (
+        "warm_start_same_master_after_time_limit_until_feasible_or_global_deadline"
+    ),
+}
 
 
 @dataclass
@@ -104,12 +123,22 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
     if config.case_name != "ACTIVSg500":
         raise ScopfError("The first GPU Lagrangian experiment is ACTIVSg500-only")
     benchmark = config.raw["benchmark"]
-    if config.benchmark_id != EXPERIMENT_ID:
+    experiment = REGISTERED_EXPERIMENTS.get(config.benchmark_id)
+    if experiment is None:
         raise ScopfError(f"Unregistered GPU Lagrangian experiment: {config.benchmark_id!r}")
     if benchmark.get("kind") != "gpu_lagrangian_disjunctive_experiment":
         raise ScopfError("GPU Lagrangian experiment kind changed")
-    if benchmark.get("required_git_tag") != EXPERIMENT_TAG:
+    if benchmark.get("required_git_tag") != experiment["tag"]:
         raise ScopfError("GPU Lagrangian frozen tag changed")
+    if config.benchmark_id.endswith("-v2"):
+        observed_change = benchmark.get("bugfix_change")
+        if observed_change != V2_BUGFIX_CHANGE:
+            raise ScopfError(
+                "GPU Lagrangian v2 bugfix identity changed: "
+                f"expected={V2_BUGFIX_CHANGE}, observed={observed_change}"
+            )
+        if float(config.model.get("reduced_coefficient_zero_tolerance", -1.0)) != 1e-14:
+            raise ScopfError("GPU Lagrangian v2 coefficient threshold changed")
     profile = config.raw["platforms"].get("dgx_spark", {})
     required_profile = {
         "solver": "cuopt",
@@ -141,6 +170,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
         "benchmark": benchmark,
         "profile": profile,
         "cpu_comparison": benchmark["cpu_comparison"],
+        "experiment_policy": experiment["policy"],
     }
 
 
@@ -175,10 +205,16 @@ def _solve_region(
     initial_pairs: tuple[SecurityPair, ...],
     screener: ContingencyScreener,
     checkpoint: Callable[[], None],
+    progress: Callable[[dict[str, Any]], None] | None = None,
 ) -> SolvedRegion:
     profile = config.raw["platforms"]["dgx_spark"]
     master = build_reduced_master(
-        case, network, segments=int(config.model["pwl_segments"])
+        case,
+        network,
+        segments=int(config.model["pwl_segments"]),
+        coefficient_zero_tolerance=float(
+            config.model.get("reduced_coefficient_zero_tolerance", 1e-14)
+        ),
     )
     add_reduced_security_pairs(master, network, initial_pairs)
     fix_commitments(master, masks.fixed_off, masks.fixed_on)
@@ -188,6 +224,22 @@ def _solve_region(
     rounds: list[dict[str, Any]] = []
     final_screen: dict[str, Any] | None = None
     last_solve: ContinuousSolveResult | None = None
+    usable_primal_seen = False
+
+    def emit_progress() -> None:
+        if progress is not None:
+            progress(
+                {
+                    "region_id": region_id,
+                    "rows": master.canonical.num_rows,
+                    "security_pair_count": len(pairs_by_id),
+                    "constraint_generation_rounds": rounds,
+                    "usable_primal_seen": usable_primal_seen,
+                }
+            )
+        else:
+            checkpoint()
+
     maximum_rounds = int(config.runtime["maximum_constraint_generation_rounds"])
     for round_number in range(1, maximum_rounds + 1):
         deadline.require(f"PDLP region {region_id} round {round_number}")
@@ -225,6 +277,7 @@ def _solve_region(
             "solve": _solve_summary(last_solve),
         }
         rounds.append(round_record)
+        emit_progress()
         error_status = str(last_solve.statistics.get("error_status", ""))
         if (
             error_status != "Success"
@@ -237,6 +290,32 @@ def _solve_region(
             )
         native_primal = last_solve.native_primal
         native_dual = last_solve.native_row_dual
+        dual_certificate = last_solve.statistics.get("dual_certificate", {})
+        certificate_primal_feasible = bool(dual_certificate.get("primal_feasible", False))
+        canonical_residual_pu = (
+            master.canonical.max_row_violation(last_solve.values) / case.base_mva
+        )
+        canonical_primal_feasible = canonical_residual_pu <= float(
+            config.model["model_residual_tolerance_pu"]
+        )
+        round_record["primal_acceptance"] = {
+            "numeric_certificate_primal_feasible": certificate_primal_feasible,
+            "canonical_model_residual_pu": canonical_residual_pu,
+            "canonical_model_residual_passed": canonical_primal_feasible,
+        }
+        if not certificate_primal_feasible or not canonical_primal_feasible:
+            round_record["screen"] = {
+                "skipped": True,
+                "reason": "pdlp_primal_infeasible",
+            }
+            if last_solve.status == "TimeLimit" and native_primal is not None:
+                emit_progress()
+                continue
+            raise ScopfError(
+                f"Region {region_id} PDLP primal is unusable: "
+                f"status={last_solve.status}, residual_pu={canonical_residual_pu:.6e}"
+            )
+        usable_primal_seen = True
         dispatch = reduced_dispatch(master, last_solve.values)
         flow = master.operator.flows(dispatch)
         screen_started = time.perf_counter()
@@ -253,6 +332,7 @@ def _solve_region(
             "maximum_pair_id": screened.maximum_pair_id,
         }
         round_record["screen"] = final_screen
+        emit_progress()
         if not screened.violations:
             if screened.maximum_violation_pu > float(
                 config.model["security_violation_tolerance_pu"]
@@ -262,8 +342,16 @@ def _solve_region(
         add_reduced_security_pairs(master, network, screened.violations)
         pairs_by_id.update((pair.pair_id, pair) for pair in screened.violations)
         round_record["added_pair_ids"] = [pair.pair_id for pair in screened.violations]
+        emit_progress()
     else:
-        raise ScopfError(f"Region {region_id} reached its constraint-generation limit")
+        reason = (
+            "without a primal-feasible PDLP vector"
+            if not usable_primal_seen
+            else "before a zero-violation exhaustive screen"
+        )
+        raise ScopfError(
+            f"Region {region_id} reached its constraint-generation limit {reason}"
+        )
 
     assert last_solve is not None and final_screen is not None
     if last_solve.native_row_dual is None or last_solve.values is None:
@@ -366,6 +454,7 @@ def _region_record(region: SolvedRegion) -> dict[str, Any]:
         ),
         "constraint_generation_rounds": region.rounds,
         "final_screen": region.final_screen,
+        "coefficient_cleanup_audit": dict(region.master.coefficient_cleanup_audit),
         "security_pairs": [security_pair_record(pair) for pair in region.security_pairs],
         "gpu_lagrangian_evaluation": {
             key: value.tolist() if isinstance(value, np.ndarray) else value
@@ -426,12 +515,23 @@ def verify_lagrangian_certificate_payload(
         if region_id in leaves:
             raise ScopfError("Duplicate frontier region id")
         masks = _masks_from_record(record, source_rows)
-        master = build_reduced_master(case, network, segments=10)
+        master = build_reduced_master(
+            case,
+            network,
+            segments=10,
+            coefficient_zero_tolerance=float(
+                config.model.get("reduced_coefficient_zero_tolerance", 1e-14)
+            ),
+        )
         pairs = tuple(
             security_pair_from_record(pair_record, catalog)
             for pair_record in record["security_pairs"]
         )
         add_reduced_security_pairs(master, network, pairs)
+        if record.get("coefficient_cleanup_audit") != master.coefficient_cleanup_audit:
+            raise ScopfError(
+                f"Independent region {region_id} coefficient-cleanup audit mismatch"
+            )
         replayed = replay_lagrangian_certificate(
             master, record["lagrangian_certificate"], masks
         )
@@ -538,7 +638,7 @@ def run_gpu_lagrangian_experiment(
         "schema_version": "1.0.0",
         "case_name": config.case_name,
         "benchmark_id": config.benchmark_id,
-        "experiment_policy": EXPERIMENT_POLICY,
+        "experiment_policy": registration["experiment_policy"],
         "platform": "dgx_spark",
         "status": "running",
         "deadline_seconds": float(config.runtime["deadline_seconds"]),
@@ -562,6 +662,10 @@ def run_gpu_lagrangian_experiment(
         }
         if checkpoint is not None:
             checkpoint(payload)
+
+    def save_region_progress(record: dict[str, Any]) -> None:
+        payload["active_region_progress"] = record
+        save()
 
     with memory:
         guard_runtime_environment(config.root)
@@ -592,7 +696,14 @@ def run_gpu_lagrangian_experiment(
             validation_tolerance_pu=float(config.model["lodf_validation_tolerance_pu"]),
             chunk_columns=int(config.model["lodf_build_chunk_columns"]),
         )
-        base_master = build_reduced_master(case, network, segments=10)
+        base_master = build_reduced_master(
+            case,
+            network,
+            segments=10,
+            coefficient_zero_tolerance=float(
+                config.model.get("reduced_coefficient_zero_tolerance", 1e-14)
+            ),
+        )
         payload["timings_seconds"]["network_and_reduced_model_build"] = (
             time.perf_counter() - started
         )
@@ -605,6 +716,7 @@ def run_gpu_lagrangian_experiment(
             "network_elimination": "FP64 reference-bus affine angle/flow map",
             "exact_pmin_changed": False,
             "integer_generator_subproblem": "off_or_exact_pmin_plus_ten_segments",
+            "coefficient_cleanup": dict(base_master.coefficient_cleanup_audit),
         }
         screener = ContingencyScreener(
             network,
@@ -630,7 +742,9 @@ def run_gpu_lagrangian_experiment(
             initial_pairs=(),
             screener=screener,
             checkpoint=save,
+            progress=save_region_progress,
         )
+        payload.pop("active_region_progress", None)
         frontier[root.region_id] = root
         global_pairs.update((pair.pair_id, pair) for pair in root.security_pairs)
         all_region_records.append(_region_record(root))
@@ -670,8 +784,10 @@ def run_gpu_lagrangian_experiment(
                     initial_pairs=tuple(sorted(global_pairs.values())),
                     screener=screener,
                     checkpoint=save,
+                    progress=save_region_progress,
                 )
             except ScopfError as exc:
+                failed_progress = payload.pop("active_region_progress", None)
                 payload["primal_repairs"].append(
                     {
                         "origin": origin,
@@ -679,10 +795,12 @@ def run_gpu_lagrangian_experiment(
                         "status": "rejected",
                         "error": str(exc),
                         "wall_time_seconds": time.perf_counter() - repair_started,
+                        "solver_progress": failed_progress,
                     }
                 )
                 save()
                 return
+            payload.pop("active_region_progress", None)
             global_pairs.update((pair.pair_id, pair) for pair in solved.security_pairs)
             if solved.solve.values is None:
                 raise ScopfError("Fixed-commitment PDLP lost its primal vector")
@@ -789,7 +907,9 @@ def run_gpu_lagrangian_experiment(
                     initial_pairs=tuple(sorted(global_pairs.values())),
                     screener=screener,
                     checkpoint=save,
+                    progress=save_region_progress,
                 )
+                payload.pop("active_region_progress", None)
                 frontier[child_id] = child
                 global_pairs.update((pair.pair_id, pair) for pair in child.security_pairs)
                 all_region_records.append(_region_record(child))
@@ -934,14 +1054,15 @@ def run_one_shot_gpu_lagrangian_experiment(
     if output.exists():
         raise ScopfError(f"GPU Lagrangian output already exists: {output}")
     identity = frozen_identity(config)
-    registry_path = guard_output_path(
-        experiment_root / f"{EXPERIMENT_ID}-run-registry.json"
-    )
+    suite_id = str(registration["benchmark"]["experiment_suite_id"])
+    if suite_id != config.benchmark_id:
+        raise ScopfError("GPU Lagrangian suite id must match its benchmark id")
+    registry_path = guard_output_path(experiment_root / f"{suite_id}-run-registry.json")
     checkpoint_path = guard_output_path(
-        config.root / "results" / "checkpoints" / f"{EXPERIMENT_ID}-dgx_spark.json"
+        config.root / "results" / "checkpoints" / f"{suite_id}-dgx_spark.json"
     )
     console_path = guard_output_path(
-        config.root / "results" / "diagnostics" / f"{EXPERIMENT_ID}-worker-console.log"
+        config.root / "results" / "diagnostics" / f"{suite_id}-worker-console.log"
     )
     for path in (registry_path, checkpoint_path, console_path):
         if path.exists():
@@ -1045,6 +1166,7 @@ def run_gpu_lagrangian_worker_serialized(
     def checkpoint(payload: dict[str, Any]) -> None:
         write_json_atomic(payload, checkpoint_file)
 
+    worker_started = time.perf_counter()
     try:
         result = run_gpu_lagrangian_experiment(config, checkpoint=checkpoint)
     except DeadlineExceeded as exc:
@@ -1065,6 +1187,10 @@ def run_gpu_lagrangian_worker_serialized(
                 "error": str(exc),
             }
         )
+    result["elapsed_seconds"] = max(
+        float(result.get("elapsed_seconds", 0.0)),
+        time.perf_counter() - worker_started,
+    )
     serialization_started = time.perf_counter()
     write_json_atomic(result, output)
     result.setdefault("timings_seconds", {})["result_serialization"] = (

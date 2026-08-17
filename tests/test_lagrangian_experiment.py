@@ -41,6 +41,19 @@ def test_registered_activsg500_lagrangian_config_is_fail_closed() -> None:
     assert comparison["total_wall_time_seconds"] == pytest.approx(2.702380099988659)
 
 
+def test_registered_v2_bugfix_config_is_fail_closed() -> None:
+    config = load_config(ROOT / "configs" / "activsg500-gpu-lagrangian-v2.json")
+    registration = validate_lagrangian_experiment_config(config)
+    assert config.benchmark_id == "activsg500-gpu-lagrangian-v2"
+    assert registration["benchmark"]["required_git_tag"] == (
+        "experiment-500-gpu-lagrangian-v2"
+    )
+    assert config.model["reduced_coefficient_zero_tolerance"] == 1e-14
+    assert registration["benchmark"]["bugfix_change"]["pdlp_primal_gate"] == (
+        "never_screen_or_add_rows_from_primal_infeasible_vector"
+    )
+
+
 def test_lagrangian_config_rejects_non_500_identity() -> None:
     config = load_config(ROOT / "configs" / "activsg500-gpu-lagrangian-v1.json")
     config.raw["benchmark"]["id"] = "activsg2000-gpu-lagrangian-v1"
@@ -121,3 +134,100 @@ def test_tiny_region_flow_reaches_exhaustive_screen_without_integer_solver(
     assert solved.solve.statistics["native_integer_columns"] == 0
     assert solved.final_screen["new_violated_pairs"] == 0
     assert solved.lagrangian.conservative_lower_bound == -0.01
+
+
+def test_region_continues_without_screening_a_primal_infeasible_pdlp_iterate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = load_config(ROOT / "configs" / "activsg500-gpu-lagrangian-v2.json")
+    case, table = triangle_case()
+    network = build_network(case)
+    catalog = build_contingency_catalog(case, network, table)
+    template = build_reduced_master(case, network)
+    solve_calls: list[dict[str, object]] = []
+
+    def feasible_values(model) -> np.ndarray:
+        values = np.zeros(model.num_columns)
+        values[template.index.commitment_by_generator[0]] = 1.0
+        values[template.index.dispatch_by_generator[0]] = 62.0
+        remaining = 37.0
+        for column, width in zip(
+            template.index.segments_by_generator[0],
+            template.costs[0].segment_widths_mw,
+            strict=True,
+        ):
+            if column is not None:
+                values[column] = min(remaining, width)
+                remaining -= values[column]
+        return values
+
+    def fake_solve(model, **kwargs):
+        solve_calls.append(kwargs)
+        first = len(solve_calls) == 1
+        values = np.zeros(model.num_columns) if first else feasible_values(model)
+        return ContinuousSolveResult(
+            status="TimeLimit" if first else "Optimal",
+            optimal=not first,
+            primal_objective=float(np.asarray(model.objective) @ values),
+            dual_objective=0.0,
+            values=values,
+            native_primal=values.copy(),
+            native_row_dual=np.zeros(model.num_rows),
+            solve_time_seconds=0.001,
+            statistics={
+                "error_status": "Success",
+                "solved_by": "PDLP",
+                "solved_by_pdlp": True,
+                "native_integer_columns": 0,
+                "dual_certificate": {
+                    "passed": not first,
+                    "primal_feasible": not first,
+                },
+            },
+        )
+
+    class CountingScreener:
+        def __init__(self) -> None:
+            self.calls = 0
+            self.delegate = ContingencyScreener(network, catalog, backend="numpy")
+
+        def screen(self, *args, **kwargs):
+            self.calls += 1
+            return self.delegate.screen(*args, **kwargs)
+
+    screener = CountingScreener()
+    monkeypatch.setattr(experiment_module, "solve_cuopt_continuous_pdlp", fake_solve)
+    monkeypatch.setattr(
+        experiment_module,
+        "canonical_row_duals",
+        lambda master, native_row_dual, **_kwargs: np.asarray(native_row_dual),
+    )
+    monkeypatch.setattr(
+        experiment_module,
+        "optimize_lagrangian_bound_cupy",
+        lambda master, row_dual, region, **_kwargs: (
+            np.asarray(row_dual),
+            {
+                "backend": "fixture",
+                "best_raw_lower_bound": 0.0,
+                "best_minimizing_commitment": np.asarray([0], dtype=np.int8),
+            },
+        ),
+    )
+    solved = _solve_region(
+        region_id="r",
+        masks=RegionMasks.root(1),
+        case=case,
+        network=network,
+        catalog=catalog,
+        config=config,
+        deadline=Deadline(10.0, 0.0, 0.0),
+        initial_pairs=(),
+        screener=screener,  # type: ignore[arg-type]
+        checkpoint=lambda: None,
+    )
+    assert len(solve_calls) == 2
+    assert screener.calls == 1
+    assert solved.rounds[0]["screen"]["reason"] == "pdlp_primal_infeasible"
+    assert solve_calls[1]["initial_native_primal"] is not None
+    assert solve_calls[1]["initial_native_row_dual"] is not None

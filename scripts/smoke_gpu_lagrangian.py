@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
+
+import numpy as np
 
 from activsg_scopf.config import load_config
 from activsg_scopf.lagrangian import (
@@ -15,16 +18,57 @@ from activsg_scopf.lagrangian_experiment import (
     _load_cpu_comparison,
     validate_lagrangian_experiment_config,
 )
+from activsg_scopf.matpower import read_matpower_case
 from activsg_scopf.network import build_network
 from activsg_scopf.reduced import build_reduced_master
+from activsg_scopf.solvers.cuopt import native_scaling_vectors
 from activsg_scopf.solvers.cuopt_lp import solve_cuopt_continuous_pdlp
 from tests.helpers import triangle_case
 
 
 def main() -> None:
-    config = load_config(Path("/workspace/configs/activsg500-gpu-lagrangian-v1.json"))
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--config",
+        type=Path,
+        default=Path("/workspace/configs/activsg500-gpu-lagrangian-v2.json"),
+    )
+    args = parser.parse_args()
+    config = load_config(args.config)
     registration = validate_lagrangian_experiment_config(config)
     comparison = _load_cpu_comparison(config, registration)
+    real_case = read_matpower_case(
+        config.case_path,
+        expected_sha256=config.raw["raw_inputs"]["case_sha256"],
+    )
+    real_master = build_reduced_master(
+        real_case,
+        build_network(real_case),
+        coefficient_zero_tolerance=float(
+            config.model["reduced_coefficient_zero_tolerance"]
+        ),
+    )
+    column_scale, row_scale = native_scaling_vectors(
+        real_master.canonical,
+        mode=str(config.raw["platforms"]["dgx_spark"]["native_scaling_mode"]),
+        base_mva=real_case.base_mva,
+    )
+    real_native_matrix = (
+        real_master.canonical.matrix_csr()
+        .multiply(column_scale)
+        .multiply(row_scale[:, None])
+        .tocsr()
+    )
+    real_nonzero = np.abs(real_native_matrix.data[real_native_matrix.data != 0.0])
+    real_minimum_nonzero = float(np.min(real_nonzero))
+    cleanup = real_master.coefficient_cleanup_audit
+    if real_minimum_nonzero < 1e-8:
+        raise RuntimeError(
+            f"ACTIVSg500 cleaned native coefficient is still too small: "
+            f"{real_minimum_nonzero}"
+        )
+    if not cleanup["solver_rows_are_relaxations_of_original_rows"]:
+        raise RuntimeError("ACTIVSg500 coefficient cleanup lost its relaxation proof")
     case, _ = triangle_case()
     network = build_network(case)
     master = build_reduced_master(case, network)
@@ -108,6 +152,8 @@ def main() -> None:
             "device_state_persistent": gpu["device_state_persistent_across_iterations"],
             "cpu_comparison_objective": comparison["objective"],
             "cpu_comparison_canonical_hash": comparison["canonical_json_sha256"],
+            "activsg500_native_minimum_nonzero": real_minimum_nonzero,
+            "activsg500_cleanup": cleanup,
         }
     )
 

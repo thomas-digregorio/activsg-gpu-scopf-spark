@@ -13,6 +13,8 @@ from activsg_scopf.network import build_contingency_catalog, build_network, solv
 from activsg_scopf.reduced import (
     add_reduced_security_pairs,
     build_reduced_master,
+    clean_sensitivity_coefficients,
+    clean_upper_row_with_box_relaxation,
     commitment_vector,
     reduced_dispatch,
 )
@@ -32,6 +34,40 @@ def test_injection_elimination_matches_explicit_dc_solve() -> None:
     np.testing.assert_allclose(master.operator.angles(dispatch), expected_theta, atol=1e-13)
     np.testing.assert_allclose(master.operator.flows(dispatch), expected_flow, atol=1e-12)
     assert master.operator.total_demand_mw == 62.0
+
+
+def test_small_coefficient_cleanup_is_audited_and_upper_row_is_relaxed() -> None:
+    coefficients = np.asarray([1e-18, -1e-14, 2e-14, 0.2])
+    lower = np.asarray([0.0, -3.0, 0.0, 1.0])
+    upper = np.asarray([9.0, 4.0, 8.0, 2.0])
+    cleaned, audit = clean_sensitivity_coefficients(
+        coefficients, zero_tolerance=1e-14
+    )
+    np.testing.assert_array_equal(cleaned, [0.0, 0.0, 2e-14, 0.2])
+    assert audit["dropped_coefficient_count"] == 2
+    assert audit["maximum_absolute_dropped_coefficient"] == pytest.approx(1e-14)
+
+    cleaned, relaxed_rhs, row_audit = clean_upper_row_with_box_relaxation(
+        coefficients,
+        lower,
+        upper,
+        5.0,
+        zero_tolerance=1e-14,
+    )
+    vertices = np.asarray(
+        [
+            [lower[index] if bit & (1 << index) else upper[index] for index in range(4)]
+            for bit in range(16)
+        ]
+    )
+    original_activity = vertices @ coefficients
+    cleaned_activity = vertices @ cleaned
+    implied_slack = cleaned_activity - original_activity
+    assert np.max(implied_slack) == pytest.approx(
+        row_audit["rhs_outward_relaxation"]
+    )
+    assert np.all(cleaned_activity <= original_activity + row_audit["rhs_outward_relaxation"])
+    assert relaxed_rhs == pytest.approx(5.0 + row_audit["rhs_outward_relaxation"])
 
 
 def test_reduced_security_rows_reproduce_screened_post_flow() -> None:
