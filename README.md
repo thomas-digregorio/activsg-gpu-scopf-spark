@@ -381,17 +381,15 @@ no final verification, and accepted no exhaustive LP bound. The tracked
 [v14 report](reports/activsg2000-gpu-lp-certificate-v14/README.md) preserves
 the timing, conservative dual reconstruction, and raw-artifact hashes.
 
-The separately approved v15 replacement has a 900-second end-to-end boundary.
-It disables cuOpt LP presolve so the returned PDLP row-dual vector remains in
-the original model coordinates, requires the independently reconstructed and
-cuOpt-reported dual objectives to agree, and retrieves usable primal/dual
-vectors even when a solve returns `TimeLimit`. Later solves receive the prior
-PDLP primal and row dual, with zeros appended for newly generated contingency
-rows. Its dynamic allocation caps a solve at 480 seconds while preserving a
-90-second follow-up attempt when the remaining global budget permits. Every
-usable re-solve is exhaustively screened; success still requires both the
-`1e-3` lower-bound threshold and a final zero-violation screen followed by
-independent verification.
+The single v15 replacement completed in `129.385` seconds and resolved the
+deadline, warm-start, time-limit-vector, and dual-coordinate defects. Its third
+round solved the exhaustive LP to optimality and the final screen found zero
+violations, but the verified lower bound of `$1,128,529.120570` implies a
+`0.003988135` gap to the known secure integer incumbent. That is above the
+requested `1e-3`, so plain continuous PDLP cannot provide the requested proof
+for this formulation. The tracked
+[v15 report](reports/activsg2000-gpu-lp-certificate-v15/README.md) contains the
+full round trace, independent post-run verification, and artifact hashes.
 
 That ACTIVSg2000 campaign is now closed. The `1e-3` run completed
 `optimal_verified` with accepted fixed-commitment pricing; the `1e-4` run hit

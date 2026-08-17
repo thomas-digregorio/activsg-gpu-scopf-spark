@@ -571,7 +571,7 @@ def run_lp_relaxation_certificate(
         gap_bound_ready = bool(
             best_verified_bound is not None and best_verified_bound >= required_bound
         )
-        if final_screen_passed and gap_bound_ready and last_solve is not None:
+        if final_screen_passed and last_solve is not None:
             deadline.require(
                 "independent fractional-solution verification",
                 reserve_seconds=float(config.runtime["serialization_reserve_seconds"]),
@@ -582,14 +582,21 @@ def run_lp_relaxation_certificate(
             verification = verify_serialized_solution(config, payload, require_integrality=False)
             payload["timings_seconds"]["independent_verification"] = time.perf_counter() - started
             payload["independent_verification"] = verification.as_dict()
-            if payload["bound"] is None:
-                raise ScopfError("Passing LP dual certificate has no conservative bound")
-            dual_bound = float(payload["bound"])
-            relative_gap = (incumbent - dual_bound) / abs(incumbent)
-            bound_margin = dual_bound - required_bound
+            dual_bound = (
+                float(payload["bound"]) if payload["bound"] is not None else None
+            )
+            relative_gap = (
+                (incumbent - dual_bound) / abs(incumbent)
+                if dual_bound is not None
+                else None
+            )
+            bound_margin = (
+                dual_bound - required_bound if dual_bound is not None else None
+            )
             gap_certified = bool(
                 verification.passed
                 and gap_bound_ready
+                and relative_gap is not None
                 and relative_gap <= requested_gap * (1.0 + 1e-9) + 1e-12
             )
             payload["reference_incumbent_gap_test"] = {
@@ -611,8 +618,9 @@ def run_lp_relaxation_certificate(
                 "branch_and_bound_markers_absent": last_solve.statistics[
                     "native_log_branch_and_bound_markers_absent"
                 ],
-                "numerical_dual_certificate_passed": gap_bound_ready,
+                "numerical_dual_certificate_passed": best_verified_bound is not None,
                 "verified_bound_source_round": best_verified_bound_round,
+                "reference_gap_bound_threshold_met": gap_bound_ready,
                 "final_fractional_exhaustive_screen_passed": final_screen_passed,
                 "independent_fractional_verification_passed": verification.passed,
                 "reference_incumbent_gap_certified": gap_certified,
@@ -621,6 +629,8 @@ def run_lp_relaxation_certificate(
                 payload["status"] = "lp_relaxation_gap_certified"
             elif not verification.passed:
                 payload["status"] = "failed_independent_fractional_verification"
+            elif dual_bound is None:
+                payload["status"] = "failed_continuous_dual_certificate"
             else:
                 payload["status"] = "lp_relaxation_exhaustive_bound_insufficient"
         save_checkpoint()
