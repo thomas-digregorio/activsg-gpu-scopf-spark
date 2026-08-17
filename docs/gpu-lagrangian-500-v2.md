@@ -22,12 +22,21 @@ the row is a relaxation and any lower bound from it remains valid for the
 original SCOPF. The count and largest dropped coefficient, and every outward
 RHS adjustment, are recorded. The frozen threshold is `1e-14`.
 
-On the real ACTIVSg500 base reduced model, the static preflight changed the
-smallest nonzero canonical matrix coefficient from approximately `4e-18` to
+On the laptop, the real ACTIVSg500 static preflight changed the smallest
+nonzero native matrix coefficient from approximately `4e-18` to
 `1.4316216157616265e-6`. It dropped 7,904 generator-row coefficient instances;
 the largest was `3.4528731607818616e-15`. The maximum RHS adjustment on one row
 was `6.197676560931975e-12`. Exact physical-flow reconstruction against an
 explicit DC solve still differed by at most `1.1439738045737613e-11` MW.
+
+The DGX smoke independently rebuilt the real base matrix and observed minimum
+nonzero native coefficient `1.4316216159517395e-6`, 7,496 dropped
+generator-row instances, largest dropped magnitude
+`3.560598267604284e-15`, and maximum row adjustment
+`6.235497716142001e-12`. The count differs because the ARM64 and laptop sparse
+factorizations produce slightly different FP64 numerical dust. This is
+expected: the fixed magnitude policy and per-row outward proof, rather than a
+platform-specific entry count, define the model contract.
 
 ## Primal-feasibility gate and continuation
 
@@ -46,3 +55,10 @@ exhaustive disjunctive cover, relative gap at most `1e-3`, and completion within
 600 seconds. No CPU branch-and-bound or integer solver is used. The comparison
 continues to use the previously hashed 2.702380100-second laptop HiGHS result;
 no new laptop run is part of v2.
+
+The pre-freeze DGX tiny-fixture smoke solved the initial PDLP in 1,100
+iterations (0.167 native seconds), then solved an appended-row model from the
+submitted primal/dual start in 10 iterations (0.008 native seconds). The added
+dual coordinate was zero-extended exactly once, no integer columns reached the
+native model, and the FP64 GPU Lagrangian value matched independent CPU replay
+with zero observed difference.
