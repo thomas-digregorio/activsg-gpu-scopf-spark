@@ -432,6 +432,8 @@ def choose_split_generator(
     commitments: npt.ArrayLike,
     on_values: npt.ArrayLike,
     region: RegionMasks,
+    *,
+    excluded_positions: set[int] | None = None,
 ) -> int:
     """Choose a free unit, preferring the most fractional LP commitment."""
 
@@ -441,6 +443,10 @@ def choose_split_generator(
     if margins.shape != values.shape:
         raise ScopfError("Split scores have inconsistent shapes")
     free = ~(region.fixed_off | region.fixed_on)
+    for position in excluded_positions or set():
+        if position < 0 or position >= values.size:
+            raise ScopfError("Excluded split-generator position is out of range")
+        free[position] = False
     if not np.any(free):
         raise ScopfError("Cannot split a fully fixed commitment region")
     fractionality = np.minimum(values, 1.0 - values)

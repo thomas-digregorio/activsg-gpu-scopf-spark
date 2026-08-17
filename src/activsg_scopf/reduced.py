@@ -97,6 +97,11 @@ class ReducedMaster:
     operator: InjectionOperator
     coupling_rows: list[CouplingRow] = field(default_factory=list)
     security_pair_ids: set[str] = field(default_factory=set)
+    security_pair_representative_by_id: dict[str, str] = field(default_factory=dict)
+    security_pair_equivalence_classes: dict[str, list[str]] = field(default_factory=dict)
+    _security_row_signature_to_representative: dict[bytes, str] = field(
+        default_factory=dict, repr=False
+    )
     coefficient_cleanup_audit: dict[str, float | int | str | bool] = field(
         default_factory=dict
     )
@@ -240,7 +245,10 @@ def _add_upper_coupling_row(
     rhs: float,
     *,
     kind: str,
-) -> None:
+    deduplicate_security_row: bool = False,
+    expected_security_representative: str | None = None,
+    security_equivalence_tolerance: float = 0.0,
+) -> str:
     cleaned_bus, _ = clean_sensitivity_coefficients(
         bus_coefficients,
         zero_tolerance=master.operator.coefficient_zero_tolerance,
@@ -267,6 +275,69 @@ def _add_upper_coupling_row(
         )
     )
     rhs_relaxation = float(generator_audit["rhs_outward_relaxation"])
+    if expected_security_representative is not None:
+        if not deduplicate_security_row:
+            raise ScopfError("Expected security representative requires security deduplication")
+        if (
+            not np.isfinite(security_equivalence_tolerance)
+            or security_equivalence_tolerance < 0.0
+        ):
+            raise ScopfError("Security equivalence replay tolerance must be nonnegative")
+        if expected_security_representative != name:
+            representative_rows = [
+                row
+                for row in master.coupling_rows
+                if row.row_name == expected_security_representative
+            ]
+            if len(representative_rows) != 1:
+                raise ScopfError(
+                    "Expected security representative must precede every alias"
+                )
+            representative_row = representative_rows[0]
+            coefficient_difference = float(
+                np.max(
+                    np.abs(
+                        cleaned_generator
+                        - representative_row.generator_coefficients
+                    )
+                )
+            )
+            rhs_difference = abs(float(relaxed_rhs) - representative_row.rhs)
+            if max(coefficient_difference, rhs_difference) > security_equivalence_tolerance:
+                raise ScopfError(
+                    "Serialized security-row equivalence does not replay within tolerance"
+                )
+            master.security_pair_representative_by_id[name] = (
+                expected_security_representative
+            )
+            master.security_pair_equivalence_classes[
+                expected_security_representative
+            ].append(name)
+            audit = master.coefficient_cleanup_audit
+            audit["exact_duplicate_security_row_count"] = int(
+                audit.get("exact_duplicate_security_row_count", 0)
+            ) + 1
+            return expected_security_representative
+    if deduplicate_security_row:
+        normalized = np.ascontiguousarray(cleaned_generator, dtype=np.float64).copy()
+        normalized[normalized == 0.0] = 0.0
+        normalized_rhs = np.asarray(
+            [0.0 if relaxed_rhs == 0.0 else relaxed_rhs], dtype=np.float64
+        )
+        signature = normalized.tobytes() + normalized_rhs.tobytes()
+        representative = (
+            master._security_row_signature_to_representative.get(signature)
+            if expected_security_representative is None
+            else None
+        )
+        if representative is not None:
+            master.security_pair_representative_by_id[name] = representative
+            master.security_pair_equivalence_classes[representative].append(name)
+            audit = master.coefficient_cleanup_audit
+            audit["exact_duplicate_security_row_count"] = int(
+                audit.get("exact_duplicate_security_row_count", 0)
+            ) + 1
+            return representative
     row = master.canonical.add_row(
         name,
         _coefficient_map(dispatch_columns, cleaned_generator),
@@ -305,6 +376,11 @@ def _add_upper_coupling_row(
             coefficient_cleanup_rhs_relaxation=rhs_relaxation,
         )
     )
+    if deduplicate_security_row:
+        master._security_row_signature_to_representative[signature] = name
+        master.security_pair_representative_by_id[name] = name
+        master.security_pair_equivalence_classes[name] = [name]
+    return name
 
 
 def build_reduced_master(
@@ -480,6 +556,9 @@ def add_reduced_security_pairs(
     master: ReducedMaster,
     network: NetworkData,
     pairs: tuple[SecurityPair, ...],
+    *,
+    expected_representative_by_pair_id: dict[str, str] | None = None,
+    equivalence_replay_tolerance: float = 0.0,
 ) -> None:
     """Append deterministic post-contingency flow rows in dispatch space."""
 
@@ -510,6 +589,16 @@ def add_reduced_security_pairs(
             coefficients = -generator_sensitivity
             bus_coefficients = -bus_sensitivity
             rhs = rate + constant
+        expected_representative = (
+            None
+            if expected_representative_by_pair_id is None
+            else expected_representative_by_pair_id.get(pair.pair_id)
+        )
+        if (
+            expected_representative_by_pair_id is not None
+            and expected_representative is None
+        ):
+            raise ScopfError("Serialized security-row map omits a logical pair")
         _add_upper_coupling_row(
             master,
             pair.pair_id,
@@ -517,6 +606,9 @@ def add_reduced_security_pairs(
             bus_coefficients,
             rhs,
             kind=f"contingency_{pair.side}",
+            deduplicate_security_row=True,
+            expected_security_representative=expected_representative,
+            security_equivalence_tolerance=equivalence_replay_tolerance,
         )
         master.security_pair_ids.add(pair.pair_id)
 
@@ -630,7 +722,10 @@ def security_pair_record(pair: SecurityPair) -> dict[str, object]:
 
 
 def security_pair_from_record(
-    record: dict[str, object], catalog: ContingencyCatalog
+    record: dict[str, object],
+    catalog: ContingencyCatalog,
+    *,
+    lodf_absolute_tolerance: float = 0.0,
 ) -> SecurityPair:
     pair = SecurityPair(
         contingency_label=int(record["contingency_label"]),
@@ -658,6 +753,10 @@ def security_pair_from_record(
             np.asarray([pair.outage_active_index], dtype=np.int64)
         )[pair.monitored_active_index, 0]
     )
-    if float(observed_lodf) != pair.lodf_value:
+    if not np.isfinite(lodf_absolute_tolerance) or lodf_absolute_tolerance < 0.0:
+        raise ScopfError("Serialized security-pair LODF tolerance must be nonnegative")
+    if not np.isfinite(observed_lodf) or not np.isfinite(pair.lodf_value):
+        raise ScopfError("Serialized security pair LODF is nonfinite")
+    if abs(float(observed_lodf) - pair.lodf_value) > lodf_absolute_tolerance:
         raise ScopfError("Serialized security pair LODF differs from the raw-case operator")
     return pair

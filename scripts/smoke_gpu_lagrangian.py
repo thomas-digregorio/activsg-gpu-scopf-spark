@@ -20,7 +20,17 @@ from activsg_scopf.lagrangian_experiment import (
 )
 from activsg_scopf.matpower import read_matpower_case
 from activsg_scopf.network import build_network
-from activsg_scopf.reduced import build_reduced_master
+from activsg_scopf.phase_one import (
+    build_phase_one_model,
+    phase_one_certificate,
+    replay_phase_one_certificate,
+)
+from activsg_scopf.reduced import (
+    add_reduced_security_pairs,
+    build_reduced_master,
+    fix_commitments,
+)
+from activsg_scopf.screening import SecurityPair
 from activsg_scopf.solvers.cuopt import native_scaling_vectors
 from activsg_scopf.solvers.cuopt_lp import solve_cuopt_continuous_pdlp
 from tests.helpers import triangle_case
@@ -136,6 +146,60 @@ def main() -> None:
     difference = abs(float(gpu["best_raw_lower_bound"]) - replay.raw_lower_bound)
     if difference > 1e-6:
         raise RuntimeError(f"GPU/CPU tiny-certificate replay difference is {difference}")
+
+    duplicate_master = build_reduced_master(case, network)
+    first_pair = SecurityPair(11, 1, "upper", 0, 0, 1, 0.25)
+    alias_pair = SecurityPair(12, 2, "upper", 1, 0, 1, 0.25)
+    rows_before = duplicate_master.canonical.num_rows
+    add_reduced_security_pairs(
+        duplicate_master, network, (first_pair, alias_pair)
+    )
+    if duplicate_master.canonical.num_rows != rows_before + 1:
+        raise RuntimeError("Exact duplicate security rows were not coalesced")
+    if duplicate_master.security_pair_ids != {first_pair.pair_id, alias_pair.pair_id}:
+        raise RuntimeError("Security-row coalescing lost a source pair identity")
+
+    infeasible_master = build_reduced_master(case, network)
+    fix_commitments(
+        infeasible_master,
+        np.asarray([True]),
+        np.asarray([False]),
+    )
+    phase_model = build_phase_one_model(
+        infeasible_master.canonical,
+        base_mva=case.base_mva,
+        maximum_violation_pu=1e6,
+    )
+    phase_solve = solve_cuopt_continuous_pdlp(
+        phase_model,
+        time_limit_seconds=10.0,
+        optimality_tolerance=1e-8,
+        primal_feasibility_tolerance=1e-6,
+        certificate_residual_tolerance=1e-7,
+        native_scaling_mode="power_system_per_unit_v1",
+        native_base_mva=case.base_mva,
+        log_to_console=True,
+        per_constraint_residual=True,
+        presolve=0,
+    )
+    if phase_solve.native_row_dual is None:
+        raise RuntimeError("Tiny Phase-I solve did not return a row dual")
+    _, phase_row_scale = native_scaling_vectors(
+        phase_model,
+        mode="power_system_per_unit_v1",
+        base_mva=case.base_mva,
+    )
+    phase_certificate = phase_one_certificate(
+        phase_model,
+        phase_solve.native_row_dual * phase_row_scale,
+        safety_margin_pu=1e-8,
+        infeasibility_threshold_pu=1e-6,
+    )
+    phase_replay = replay_phase_one_certificate(
+        phase_model, phase_certificate
+    )
+    if not phase_replay["prune_certified"]:
+        raise RuntimeError(f"Tiny Phase-I prune was not certified: {phase_replay}")
     print(
         {
             "status": resolved.status,
@@ -154,6 +218,11 @@ def main() -> None:
             "cpu_comparison_canonical_hash": comparison["canonical_json_sha256"],
             "activsg500_native_minimum_nonzero": real_minimum_nonzero,
             "activsg500_cleanup": cleanup,
+            "exact_duplicate_security_rows_removed": 1,
+            "phase_one_conservative_lower_bound_pu": phase_replay[
+                "conservative_lower_bound_pu"
+            ],
+            "phase_one_prune_certified": phase_replay["prune_certified"],
         }
     )
 

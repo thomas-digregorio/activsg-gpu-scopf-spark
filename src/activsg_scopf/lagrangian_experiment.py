@@ -53,6 +53,11 @@ from .network import (
 )
 from .official import frozen_identity
 from .paths import guard_output_path, guard_runtime_environment
+from .phase_one import (
+    build_phase_one_model,
+    phase_one_certificate,
+    replay_phase_one_certificate,
+)
 from .provenance import build_source_manifest, write_json_atomic
 from .reduced import (
     ReducedMaster,
@@ -67,6 +72,7 @@ from .reduced import (
 )
 from .screening import ContingencyScreener, SecurityPair
 from .solution import serialize_solution
+from .solvers.cuopt import native_scaling_vectors
 from .solvers.cuopt_lp import ContinuousSolveResult, solve_cuopt_continuous_pdlp
 from .verify import verify_serialized_solution
 
@@ -84,6 +90,10 @@ REGISTERED_EXPERIMENTS = {
     "activsg500-gpu-lagrangian-v3": {
         "tag": "experiment-500-gpu-lagrangian-v3",
         "policy": "gpu_pdlp_bounded_candidate_queue_plus_lagrangian_cover_v3",
+    },
+    "activsg500-gpu-lagrangian-v4": {
+        "tag": "experiment-500-gpu-lagrangian-v4",
+        "policy": "gpu_pdlp_phase_one_pruning_plus_lagrangian_cover_v4",
     },
 }
 V2_BUGFIX_CHANGE = {
@@ -103,6 +113,17 @@ V3_CONTROLLER_CHANGE = {
         "root_pdlp_rounding_then_gpu_lagrangian_then_low_threshold_then_all_online"
     ),
     "global_deadline": "never_convert_deadline_exceeded_into_candidate_rejection",
+}
+V4_CONTROLLER_CHANGE = {
+    "comparison_baseline": "activsg500-gpu-lagrangian-v3",
+    "security_row_deduplication": (
+        "exact_post_cleanup_fp64_solver_rows_with_all_source_pair_ids_retained"
+    ),
+    "region_attempts": "bounded_warm_attempt_then_one_cold_restart",
+    "failed_split_policy": "rollback_transaction_and_try_next_deterministic_generator",
+    "infeasible_leaf_gate": "replayable_gpu_phase_one_box_dual_certificate",
+    "secure_incumbent": "serialize_and_independently_verify_before_bound_refinement",
+    "portable_lodf_replay": "absolute_tolerance_1e-12",
 }
 
 
@@ -129,19 +150,26 @@ class PrimalCandidatePolicy:
     stagnation_window_rounds: int
     minimum_relative_residual_improvement: float
     dual_divergence_multiple: float
+    cold_restart_attempts: int
 
     @classmethod
-    def from_config(cls, config: RunConfig) -> PrimalCandidatePolicy:
+    def from_config(
+        cls, config: RunConfig, *, scope: str = "primal_candidate"
+    ) -> PrimalCandidatePolicy:
         runtime = config.runtime
+        if scope not in {"primal_candidate", "disjunctive_region"}:
+            raise ScopfError(f"Unknown bounded PDLP policy scope: {scope}")
+        prefix = "primal_candidate" if scope == "primal_candidate" else "region_attempt"
         return cls(
-            total_seconds=float(runtime["maximum_primal_candidate_seconds"]),
-            maximum_round_seconds=float(runtime["maximum_primal_candidate_round_seconds"]),
-            minimum_round_seconds=float(runtime["minimum_primal_candidate_round_seconds"]),
-            stagnation_window_rounds=int(runtime["primal_candidate_stagnation_window_rounds"]),
+            total_seconds=float(runtime[f"maximum_{prefix}_seconds"]),
+            maximum_round_seconds=float(runtime[f"maximum_{prefix}_round_seconds"]),
+            minimum_round_seconds=float(runtime[f"minimum_{prefix}_round_seconds"]),
+            stagnation_window_rounds=int(runtime[f"{prefix}_stagnation_window_rounds"]),
             minimum_relative_residual_improvement=float(
-                runtime["primal_candidate_minimum_relative_residual_improvement"]
+                runtime[f"{prefix}_minimum_relative_residual_improvement"]
             ),
-            dual_divergence_multiple=float(runtime["primal_candidate_dual_divergence_multiple"]),
+            dual_divergence_multiple=float(runtime[f"{prefix}_dual_divergence_multiple"]),
+            cold_restart_attempts=int(runtime.get(f"{prefix}_cold_restart_attempts", 0)),
         )
 
     def as_dict(self) -> dict[str, float | int]:
@@ -152,7 +180,27 @@ class PrimalCandidatePolicy:
             "stagnation_window_rounds": self.stagnation_window_rounds,
             "minimum_relative_residual_improvement": (self.minimum_relative_residual_improvement),
             "dual_divergence_multiple": self.dual_divergence_multiple,
+            "cold_restart_attempts": self.cold_restart_attempts,
         }
+
+
+class RegionAttemptRejected(PrimalCandidateRejected):
+    """Bounded PDLP attempt rejected with its exact append-only model retained."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        reason: str,
+        master: ReducedMaster,
+        security_pairs: tuple[SecurityPair, ...],
+        rounds: list[dict[str, Any]],
+    ) -> None:
+        super().__init__(message)
+        self.reason = reason
+        self.master = master
+        self.security_pairs = security_pairs
+        self.rounds = rounds
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -182,7 +230,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
     if benchmark.get("required_git_tag") != experiment["tag"]:
         raise ScopfError("GPU Lagrangian frozen tag changed")
     if (
-        config.benchmark_id.endswith(("-v2", "-v3"))
+        config.benchmark_id.endswith(("-v2", "-v3", "-v4"))
         and float(config.model.get("reduced_coefficient_zero_tolerance", -1.0)) != 1e-14
     ):
         raise ScopfError("GPU Lagrangian coefficient threshold changed")
@@ -199,6 +247,13 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
             raise ScopfError(
                 "GPU Lagrangian v3 controller identity changed: "
                 f"expected={V3_CONTROLLER_CHANGE}, observed={observed_change}"
+            )
+    if config.benchmark_id.endswith("-v4"):
+        observed_change = benchmark.get("controller_change")
+        if observed_change != V4_CONTROLLER_CHANGE:
+            raise ScopfError(
+                "GPU Lagrangian v4 controller identity changed: "
+                f"expected={V4_CONTROLLER_CHANGE}, observed={observed_change}"
             )
     profile = config.raw["platforms"].get("dgx_spark", {})
     required_profile = {
@@ -242,6 +297,43 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
                 "GPU Lagrangian v3 candidate policy changed: "
                 f"expected={required_runtime}, observed={observed_runtime}"
             )
+    if config.benchmark_id.endswith("-v4"):
+        required_runtime = {
+            "maximum_primal_candidate_seconds": 15.0,
+            "maximum_primal_candidate_round_seconds": 5.0,
+            "minimum_primal_candidate_round_seconds": 0.25,
+            "primal_candidate_stagnation_window_rounds": 2,
+            "primal_candidate_minimum_relative_residual_improvement": 0.01,
+            "primal_candidate_dual_divergence_multiple": 1e6,
+            "primal_candidate_cold_restart_attempts": 1,
+            "maximum_region_attempt_seconds": 15.0,
+            "maximum_region_attempt_round_seconds": 5.0,
+            "minimum_region_attempt_round_seconds": 0.25,
+            "region_attempt_stagnation_window_rounds": 2,
+            "region_attempt_minimum_relative_residual_improvement": 0.01,
+            "region_attempt_dual_divergence_multiple": 1e6,
+            "region_attempt_cold_restart_attempts": 1,
+            "maximum_failed_split_attempts": 8,
+            "phase_one_time_limit_seconds": 15.0,
+            "phase_one_maximum_violation_pu": 1e6,
+            "phase_one_safety_margin_pu": 1e-8,
+            "phase_one_infeasibility_threshold_pu": 1e-6,
+        }
+        observed_runtime = {key: runtime.get(key) for key in required_runtime}
+        if observed_runtime != required_runtime:
+            raise ScopfError(
+                "GPU Lagrangian v4 bounded-region policy changed: "
+                f"expected={required_runtime}, observed={observed_runtime}"
+            )
+        if float(config.model.get("serialized_lodf_replay_tolerance", -1.0)) != 1e-12:
+            raise ScopfError("GPU Lagrangian v4 LODF replay tolerance changed")
+        if (
+            float(config.model.get("security_equivalence_replay_tolerance", -1.0))
+            != 1e-12
+        ):
+            raise ScopfError("GPU Lagrangian v4 security-row replay tolerance changed")
+        if float(config.model.get("phase_one_replay_tolerance_pu", -1.0)) != 1e-10:
+            raise ScopfError("GPU Lagrangian v4 Phase-I replay tolerance changed")
     return {
         "benchmark": benchmark,
         "profile": profile,
@@ -306,6 +398,19 @@ def _solve_region(
     last_solve: ContinuousSolveResult | None = None
     usable_primal_seen = False
     infeasible_residuals: list[float] = []
+    cold_restarts_remaining = (
+        candidate_policy.cold_restart_attempts if candidate_policy is not None else 0
+    )
+    cold_restart_active = False
+
+    def reject_attempt(reason: str, detail: str) -> None:
+        raise RegionAttemptRejected(
+            detail,
+            reason=reason,
+            master=master,
+            security_pairs=tuple(sorted(pairs_by_id.values())),
+            rounds=rounds,
+        )
 
     def emit_progress() -> None:
         region_elapsed = time.perf_counter() - region_started
@@ -337,9 +442,10 @@ def _solve_region(
                 time.perf_counter() - region_started
             )
             if candidate_remaining < candidate_policy.minimum_round_seconds:
-                raise PrimalCandidateRejected(
+                reject_attempt(
+                    "attempt_budget_exhausted",
                     f"Region {region_id} exhausted its {candidate_policy.total_seconds:g}s "
-                    "primal-candidate budget"
+                    "bounded PDLP-attempt budget",
                 )
             solver_budget = min(
                 solver_budget,
@@ -370,6 +476,7 @@ def _solve_region(
             "solver_budget_seconds": solver_budget,
             "adapter_wall_time_seconds": adapter_wall,
             "solve": _solve_summary(last_solve),
+            "cold_restart": cold_restart_active,
         }
         rounds.append(round_record)
         emit_progress()
@@ -384,16 +491,34 @@ def _solve_region(
                 and error_status == "Success"
                 and last_solve.status in {"Infeasible", "TimeLimit"}
             ):
+                if cold_restarts_remaining > 0 and not cold_restart_active:
+                    cold_restarts_remaining -= 1
+                    native_primal = None
+                    native_dual = None
+                    infeasible_residuals.clear()
+                    cold_restart_active = True
+                    round_record["candidate_gate"] = {
+                        "rejected": False,
+                        "reason": "cold_restart_scheduled_after_missing_vectors",
+                        "remaining_cold_restarts": cold_restarts_remaining,
+                    }
+                    emit_progress()
+                    continue
                 round_record["candidate_gate"] = {
                     "rejected": True,
-                    "reason": "solver_returned_no_usable_primal_vectors",
+                    "reason": (
+                        "cold_restart_returned_no_usable_primal_vectors"
+                        if cold_restart_active
+                        else "solver_returned_no_usable_primal_vectors"
+                    ),
                     "solve_status": last_solve.status,
                 }
                 emit_progress()
-                raise PrimalCandidateRejected(
+                reject_attempt(
+                    str(round_record["candidate_gate"]["reason"]),
                     f"Region {region_id} rejected candidate after round "
                     f"{round_number}: solver returned no usable primal vectors "
-                    f"with status={last_solve.status}"
+                    f"with status={last_solve.status}",
                 )
             raise ScopfError(
                 f"Region {region_id} PDLP did not return usable vectors: "
@@ -452,16 +577,43 @@ def _solve_region(
                     if improvement < candidate_policy.minimum_relative_residual_improvement:
                         rejection_reason = "primal_residual_stagnation"
                 if rejection_reason is not None:
+                    if cold_restarts_remaining > 0 and not cold_restart_active:
+                        cold_restarts_remaining -= 1
+                        native_primal = None
+                        native_dual = None
+                        infeasible_residuals.clear()
+                        cold_restart_active = True
+                        gate["cold_restart_scheduled"] = True
+                        gate["trigger_reason"] = rejection_reason
+                        gate["reason"] = "cold_restart_scheduled"
+                        round_record["candidate_gate"] = gate
+                        emit_progress()
+                        continue
+                    if cold_restart_active:
+                        rejection_reason = f"cold_restart_failed_{rejection_reason}"
                     gate["rejected"] = True
                     gate["reason"] = rejection_reason
                     round_record["candidate_gate"] = gate
                     emit_progress()
-                    raise PrimalCandidateRejected(
+                    reject_attempt(
+                        rejection_reason,
                         f"Region {region_id} rejected candidate after round "
-                        f"{round_number}: {rejection_reason}"
+                        f"{round_number}: {rejection_reason}",
                     )
                 round_record["candidate_gate"] = gate
             if last_solve.status == "TimeLimit" and native_primal is not None:
+                if cold_restart_active:
+                    round_record["candidate_gate"] = {
+                        "rejected": True,
+                        "reason": "cold_restart_primal_infeasible",
+                        "canonical_model_residual_pu": canonical_residual_pu,
+                    }
+                    emit_progress()
+                    reject_attempt(
+                        "cold_restart_primal_infeasible",
+                        f"Region {region_id} cold restart remained primal infeasible "
+                        f"after round {round_number}",
+                    )
                 emit_progress()
                 continue
             if candidate_policy is not None:
@@ -472,16 +624,18 @@ def _solve_region(
                     "canonical_model_residual_pu": canonical_residual_pu,
                 }
                 emit_progress()
-                raise PrimalCandidateRejected(
+                reject_attempt(
+                    "solver_terminated_with_primal_infeasibility",
                     f"Region {region_id} rejected candidate after round "
                     f"{round_number}: status={last_solve.status}, "
-                    f"residual_pu={canonical_residual_pu:.6e}"
+                    f"residual_pu={canonical_residual_pu:.6e}",
                 )
             raise ScopfError(
                 f"Region {region_id} PDLP primal is unusable: "
                 f"status={last_solve.status}, residual_pu={canonical_residual_pu:.6e}"
             )
         usable_primal_seen = True
+        cold_restart_active = False
         dispatch = reduced_dispatch(master, last_solve.values)
         flow = master.operator.flows(dispatch)
         screen_started = time.perf_counter()
@@ -515,6 +669,11 @@ def _solve_region(
             if not usable_primal_seen
             else "before a zero-violation exhaustive screen"
         )
+        if candidate_policy is not None:
+            reject_attempt(
+                "constraint_generation_round_limit",
+                f"Region {region_id} reached its constraint-generation limit {reason}",
+            )
         raise ScopfError(f"Region {region_id} reached its constraint-generation limit {reason}")
 
     assert last_solve is not None and final_screen is not None
@@ -615,6 +774,7 @@ def _region_record(region: SolvedRegion) -> dict[str, Any]:
         "constraint_generation_rounds": region.rounds,
         "final_screen": region.final_screen,
         "coefficient_cleanup_audit": dict(region.master.coefficient_cleanup_audit),
+        "security_row_equivalence": _security_row_equivalence_record(region.master),
         "security_pairs": [security_pair_record(pair) for pair in region.security_pairs],
         "gpu_lagrangian_evaluation": {
             key: value.tolist() if isinstance(value, np.ndarray) else value
@@ -624,6 +784,114 @@ def _region_record(region: SolvedRegion) -> dict[str, Any]:
             region.master.index.generator_source_rows + 1
         ),
     }
+    return record
+
+
+def _security_row_equivalence_record(master: ReducedMaster) -> dict[str, Any]:
+    classes = {
+        representative: list(members)
+        for representative, members in sorted(
+            master.security_pair_equivalence_classes.items()
+        )
+    }
+    return {
+        "policy": "exact_post_cleanup_fp64_coefficient_and_rhs_identity",
+        "logical_security_pair_count": len(master.security_pair_ids),
+        "distinct_solver_security_row_count": len(classes),
+        "duplicate_solver_row_count": len(master.security_pair_ids) - len(classes),
+        "representative_by_pair_id": dict(
+            sorted(master.security_pair_representative_by_id.items())
+        ),
+        "equivalence_classes": classes,
+    }
+
+
+def _run_phase_one_attempt(
+    *,
+    region_id: str,
+    masks: RegionMasks,
+    rejected: RegionAttemptRejected,
+    case: Any,
+    config: RunConfig,
+    deadline: Deadline,
+) -> dict[str, Any]:
+    """Run one cold GPU Phase-I solve and serialize its projected box dual."""
+
+    runtime = config.runtime
+    profile = config.raw["platforms"]["dgx_spark"]
+    deadline.require(f"Phase-I certificate for {region_id}")
+    phase_model = build_phase_one_model(
+        rejected.master.canonical,
+        base_mva=float(case.base_mva),
+        maximum_violation_pu=float(runtime["phase_one_maximum_violation_pu"]),
+    )
+    budget = min(
+        deadline.solver_budget(),
+        float(runtime["phase_one_time_limit_seconds"]),
+    )
+    started = time.perf_counter()
+    solve = solve_cuopt_continuous_pdlp(
+        phase_model,
+        time_limit_seconds=budget,
+        optimality_tolerance=float(profile["pdlp_optimality_tolerance"]),
+        primal_feasibility_tolerance=float(config.model["model_residual_tolerance_pu"]),
+        certificate_residual_tolerance=float(profile["dual_certificate_residual_tolerance"]),
+        native_scaling_mode=str(profile["native_scaling_mode"]),
+        native_base_mva=float(case.base_mva),
+        log_to_console=True,
+        per_constraint_residual=bool(profile["per_constraint_residual"]),
+        presolve=int(profile["presolve"]),
+    )
+    record: dict[str, Any] = {
+        "region_id": region_id,
+        **masks.as_dict(rejected.master.index.generator_source_rows + 1),
+        "source_attempt_rejection_reason": rejected.reason,
+        "source_constraint_generation_rounds": rejected.rounds,
+        "security_pairs": [
+            security_pair_record(pair) for pair in rejected.security_pairs
+        ],
+        "coefficient_cleanup_audit": dict(rejected.master.coefficient_cleanup_audit),
+        "security_row_equivalence": _security_row_equivalence_record(rejected.master),
+        "phase_one_model": {
+            "columns": phase_model.num_columns,
+            "rows": phase_model.num_rows,
+            "maximum_violation_pu": float(runtime["phase_one_maximum_violation_pu"]),
+        },
+        "solver_budget_seconds": budget,
+        "adapter_wall_time_seconds": time.perf_counter() - started,
+        "solve": _solve_summary(solve),
+        "prune_certified": False,
+    }
+    if (
+        str(solve.statistics.get("error_status")) != "Success"
+        or solve.native_row_dual is None
+    ):
+        record["certificate_status"] = "unavailable_solver_dual"
+        return record
+    _, row_scale = native_scaling_vectors(
+        phase_model,
+        mode=str(profile["native_scaling_mode"]),
+        base_mva=float(case.base_mva),
+    )
+    if solve.native_row_dual.shape != (phase_model.num_rows,):
+        record["certificate_status"] = "invalid_native_dual_shape"
+        return record
+    canonical_dual = np.asarray(solve.native_row_dual, dtype=np.float64) * row_scale
+    certificate = phase_one_certificate(
+        phase_model,
+        canonical_dual,
+        safety_margin_pu=float(runtime["phase_one_safety_margin_pu"]),
+        infeasibility_threshold_pu=float(
+            runtime["phase_one_infeasibility_threshold_pu"]
+        ),
+    )
+    record["phase_one_certificate"] = certificate
+    record["certificate_status"] = (
+        "independently_replayable_prune"
+        if certificate["prune_certified"]
+        else "dual_bound_not_strong_enough"
+    )
+    record["prune_certified"] = bool(certificate["prune_certified"])
     return record
 
 
@@ -670,6 +938,26 @@ def verify_lagrangian_certificate_payload(
     leaves: dict[str, RegionMasks] = {}
     replayed_bounds: dict[str, float] = {}
     maximum_difference = 0.0
+    maximum_lodf_replay_difference = 0.0
+    lodf_tolerance = float(config.model.get("serialized_lodf_replay_tolerance", 0.0))
+
+    def update_lodf_replay_difference(
+        records: list[dict[str, Any]], pairs: tuple[SecurityPair, ...]
+    ) -> None:
+        nonlocal maximum_lodf_replay_difference
+        for pair_record, pair in zip(records, pairs, strict=True):
+            observed = (
+                catalog.lodf[pair.monitored_active_index, pair.outage_column]
+                if catalog.lodf is not None
+                else catalog.lodf_operator.lodf_columns(
+                    np.asarray([pair.outage_active_index], dtype=np.int64)
+                )[pair.monitored_active_index, 0]
+            )
+            maximum_lodf_replay_difference = max(
+                maximum_lodf_replay_difference,
+                abs(float(observed) - float(pair_record["lodf_value"])),
+            )
+
     for record in payload["frontier_regions"]:
         region_id = str(record["region_id"])
         if region_id in leaves:
@@ -684,12 +972,30 @@ def verify_lagrangian_certificate_payload(
             ),
         )
         pairs = tuple(
-            security_pair_from_record(pair_record, catalog)
+            security_pair_from_record(
+                pair_record,
+                catalog,
+                lodf_absolute_tolerance=lodf_tolerance,
+            )
             for pair_record in record["security_pairs"]
         )
-        add_reduced_security_pairs(master, network, pairs)
+        update_lodf_replay_difference(record["security_pairs"], pairs)
+        equivalence = record.get("security_row_equivalence", {})
+        add_reduced_security_pairs(
+            master,
+            network,
+            pairs,
+            expected_representative_by_pair_id=equivalence.get(
+                "representative_by_pair_id"
+            ),
+            equivalence_replay_tolerance=float(
+                config.model.get("security_equivalence_replay_tolerance", 0.0)
+            ),
+        )
         if record.get("coefficient_cleanup_audit") != master.coefficient_cleanup_audit:
             raise ScopfError(f"Independent region {region_id} coefficient-cleanup audit mismatch")
+        if record.get("security_row_equivalence") != _security_row_equivalence_record(master):
+            raise ScopfError(f"Independent region {region_id} security-row audit mismatch")
         replayed = replay_lagrangian_certificate(master, record["lagrangian_certificate"], masks)
         recorded = float(record["lagrangian_certificate"]["conservative_lower_bound"])
         difference = abs(replayed.conservative_lower_bound - recorded)
@@ -698,7 +1004,77 @@ def verify_lagrangian_certificate_payload(
             raise ScopfError(f"Independent region {region_id} replay mismatch")
         leaves[region_id] = masks
         replayed_bounds[region_id] = replayed.conservative_lower_bound
+    maximum_phase_one_difference = 0.0
+    pruned_records = payload.get("pruned_regions", [])
+    for record in pruned_records:
+        region_id = str(record["region_id"])
+        if region_id in leaves:
+            raise ScopfError("Duplicate active/pruned region id")
+        masks = _masks_from_record(record, source_rows)
+        master = build_reduced_master(
+            case,
+            network,
+            segments=10,
+            coefficient_zero_tolerance=float(
+                config.model.get("reduced_coefficient_zero_tolerance", 1e-14)
+            ),
+        )
+        pairs = tuple(
+            security_pair_from_record(
+                pair_record,
+                catalog,
+                lodf_absolute_tolerance=lodf_tolerance,
+            )
+            for pair_record in record["security_pairs"]
+        )
+        update_lodf_replay_difference(record["security_pairs"], pairs)
+        equivalence = record.get("security_row_equivalence", {})
+        add_reduced_security_pairs(
+            master,
+            network,
+            pairs,
+            expected_representative_by_pair_id=equivalence.get(
+                "representative_by_pair_id"
+            ),
+            equivalence_replay_tolerance=float(
+                config.model.get("security_equivalence_replay_tolerance", 0.0)
+            ),
+        )
+        fix_commitments(master, masks.fixed_off, masks.fixed_on)
+        if record.get("coefficient_cleanup_audit") != master.coefficient_cleanup_audit:
+            raise ScopfError(f"Independent pruned region {region_id} cleanup audit mismatch")
+        if record.get("security_row_equivalence") != _security_row_equivalence_record(master):
+            raise ScopfError(f"Independent pruned region {region_id} row audit mismatch")
+        phase_model = build_phase_one_model(
+            master.canonical,
+            base_mva=float(case.base_mva),
+            maximum_violation_pu=float(
+                config.runtime["phase_one_maximum_violation_pu"]
+            ),
+        )
+        replayed_phase = replay_phase_one_certificate(
+            phase_model, record["phase_one_certificate"]
+        )
+        recorded_phase_bound = float(
+            record["phase_one_certificate"]["conservative_lower_bound_pu"]
+        )
+        phase_difference = abs(
+            float(replayed_phase["conservative_lower_bound_pu"])
+            - recorded_phase_bound
+        )
+        maximum_phase_one_difference = max(
+            maximum_phase_one_difference, phase_difference
+        )
+        if (
+            not replayed_phase["prune_certified"]
+            or phase_difference
+            > float(config.model["phase_one_replay_tolerance_pu"])
+        ):
+            raise ScopfError(f"Independent Phase-I replay failed for region {region_id}")
+        leaves[region_id] = masks
     cover_passed = verify_disjunctive_cover(source_rows.size, payload["disjunctive_splits"], leaves)
+    if not replayed_bounds:
+        raise ScopfError("Lagrangian cover has no active feasible frontier region")
     global_bound = min(replayed_bounds.values())
     recorded_global = float(payload["bound"])
     global_difference = abs(global_bound - recorded_global)
@@ -710,11 +1086,16 @@ def verify_lagrangian_certificate_payload(
         "passed": passed,
         "certificate_kind": "independent_raw_input_lagrangian_cover_replay_v1",
         "frontier_region_count": len(leaves),
+        "active_frontier_region_count": len(replayed_bounds),
+        "phase_one_pruned_region_count": len(pruned_records),
         "disjunctive_cover_passed": cover_passed,
         "replayed_global_lower_bound": global_bound,
         "recorded_global_lower_bound": recorded_global,
         "global_bound_difference_dollars": global_difference,
         "maximum_region_replay_difference_dollars": maximum_difference,
+        "maximum_phase_one_replay_difference_pu": maximum_phase_one_difference,
+        "maximum_lodf_replay_difference": maximum_lodf_replay_difference,
+        "registered_lodf_replay_tolerance": lodf_tolerance,
         "elapsed_seconds": time.perf_counter() - started,
     }
 
@@ -793,8 +1174,11 @@ def run_gpu_lagrangian_experiment(
         "branch_and_bound_performed": False,
         "custom_cuda_kernel_used": False,
         "disjunctive_splits": [],
+        "failed_disjunctive_split_attempts": [],
+        "pruned_regions": [],
         "frontier_regions": [],
         "primal_repairs": [],
+        "secure_incumbent_checkpoint_history": [],
         "timings_seconds": {},
     }
     memory = PeakMemorySampler(sample_gpu=True)
@@ -933,13 +1317,23 @@ def run_gpu_lagrangian_experiment(
         last_tried_commitment: np.ndarray | None = None
         candidate_policy = (
             PrimalCandidatePolicy.from_config(config)
-            if config.benchmark_id.endswith("-v3")
+            if config.benchmark_id.endswith(("-v3", "-v4"))
+            else None
+        )
+        region_attempt_policy = (
+            PrimalCandidatePolicy.from_config(config, scope="disjunctive_region")
+            if config.benchmark_id.endswith("-v4")
             else None
         )
         payload["primal_candidate_policy"] = (
             candidate_policy.as_dict() if candidate_policy is not None else None
         )
         payload["primal_candidate_queue"] = []
+        payload["disjunctive_region_attempt_policy"] = (
+            region_attempt_policy.as_dict()
+            if region_attempt_policy is not None
+            else None
+        )
 
         def try_primal(parent: SolvedRegion, proposed: np.ndarray, origin: str) -> bool:
             nonlocal best_primal, last_tried_commitment
@@ -1103,12 +1497,63 @@ def run_gpu_lagrangian_experiment(
                 return False
             if best_primal is None or objective < float(best_primal["objective"]):
                 prices = bus_prices_from_coupling_duals(solved.master, solved.canonical_row_dual)
+                pricing = {
+                    "status": "gpu_pdlp_fixed_commitment_dual",
+                    "definition": (
+                        "Demand-derivative dual prices from the final secure "
+                        "fixed-commitment cuOpt PDLP; not MILP duals"
+                    ),
+                    "bus_prices": [
+                        {
+                            "bus": int(bus),
+                            "price_per_mwh": float(price),
+                            "price_per_pu_hour": float(price * case.base_mva),
+                        }
+                        for bus, price in zip(
+                            network.bus_ids, prices, strict=True
+                        )
+                    ],
+                }
                 best_primal = {
                     **candidate_payload,
                     "commitment": candidate,
                     "fixed_region": solved,
                     "bus_prices": prices,
+                    "pricing": pricing,
                 }
+                payload["solution"] = candidate_payload["solution"]
+                payload["objective"] = objective
+                payload["commitment_count"] = int(np.count_nonzero(candidate))
+                payload["pricing"] = pricing
+                payload["secure_incumbent_checkpoint"] = {
+                    "origin": origin,
+                    "commitment_sha256": digest,
+                    "objective": objective,
+                    "commitment_count": int(np.count_nonzero(candidate)),
+                    "solution": candidate_payload["solution"],
+                    "pricing": pricing,
+                    "status": "serialized_pending_independent_verification",
+                }
+                save()
+                incumbent_verification = verify_serialized_solution(config, payload)
+                verification_record = incumbent_verification.as_dict()
+                payload["secure_incumbent_checkpoint"]["verification"] = (
+                    verification_record
+                )
+                payload["secure_incumbent_checkpoint"]["status"] = (
+                    "independently_verified"
+                    if incumbent_verification.passed
+                    else "failed_independent_verification"
+                )
+                payload["secure_incumbent_checkpoint_history"].append(
+                    payload["secure_incumbent_checkpoint"]
+                )
+                attempt["immediate_independent_verification"] = verification_record
+                save()
+                if not incumbent_verification.passed:
+                    raise ScopfError(
+                        "Secure incumbent failed immediate independent verification"
+                    )
             save()
             return True
 
@@ -1140,6 +1585,8 @@ def run_gpu_lagrangian_experiment(
 
         target_gap = float(config.model["mip_relative_gap_tolerance"])
         maximum_regions = int(config.runtime["maximum_frontier_regions"])
+        failed_split_positions: dict[str, set[int]] = {}
+        split_attempt_number = 0
         while True:
             if best_primal is None:
                 gap = None
@@ -1160,24 +1607,47 @@ def run_gpu_lagrangian_experiment(
                 payload["status"] = "incomplete_frontier_region_limit"
                 break
             deadline.require("disjunctive refinement")
-            parent = min(
+            parent = None
+            split_position = None
+            for candidate_parent in sorted(
                 frontier.values(),
-                key=lambda region: region.lagrangian.conservative_lower_bound,
-            )
-            split_position = choose_split_generator(
-                parent.commitment,
-                parent.lagrangian.on_subproblem_values,
-                parent.masks,
-            )
+                key=lambda region: (
+                    region.lagrangian.conservative_lower_bound,
+                    region.region_id,
+                ),
+            ):
+                try:
+                    candidate_position = choose_split_generator(
+                        candidate_parent.commitment,
+                        candidate_parent.lagrangian.on_subproblem_values,
+                        candidate_parent.masks,
+                        excluded_positions=failed_split_positions.get(
+                            candidate_parent.region_id, set()
+                        ),
+                    )
+                except ScopfError:
+                    continue
+                parent = candidate_parent
+                split_position = candidate_position
+                break
+            if parent is None or split_position is None:
+                payload["status"] = "incomplete_no_remaining_split_generator"
+                break
+            split_attempt_number += 1
             off_masks, on_masks = parent.masks.split(split_position)
-            off_id = f"{parent.region_id}0"
-            on_id = f"{parent.region_id}1"
+            if region_attempt_policy is None:
+                off_id = f"{parent.region_id}0"
+                on_id = f"{parent.region_id}1"
+            else:
+                off_id = f"{parent.region_id}_s{split_attempt_number:03d}_0"
+                on_id = f"{parent.region_id}_s{split_attempt_number:03d}_1"
             split_record = {
                 "parent_region_id": parent.region_id,
                 "off_child_region_id": off_id,
                 "on_child_region_id": on_id,
                 "generator_position": split_position,
                 "generator_source_row": int(source_rows[split_position]) + 1,
+                "transaction_attempt": split_attempt_number,
             }
             payload["pending_disjunctive_split"] = {
                 **split_record,
@@ -1186,31 +1656,105 @@ def run_gpu_lagrangian_experiment(
             }
             save()
             solved_children: dict[str, SolvedRegion] = {}
+            pruned_children: dict[str, dict[str, Any]] = {}
+            tentative_outcomes: list[dict[str, Any]] = []
+            split_failed = False
             for child_id, child_masks in ((off_id, off_masks), (on_id, on_masks)):
                 payload["active_stage"] = f"disjunctive_region_{child_id}"
-                child = _solve_region(
-                    region_id=child_id,
-                    masks=child_masks,
-                    case=case,
-                    network=network,
-                    catalog=catalog,
-                    config=config,
-                    deadline=deadline,
-                    initial_pairs=tuple(sorted(global_pairs.values())),
-                    screener=screener,
-                    checkpoint=save,
-                    progress=save_region_progress,
-                )
+                try:
+                    child = _solve_region(
+                        region_id=child_id,
+                        masks=child_masks,
+                        case=case,
+                        network=network,
+                        catalog=catalog,
+                        config=config,
+                        deadline=deadline,
+                        initial_pairs=tuple(sorted(global_pairs.values())),
+                        screener=screener,
+                        checkpoint=save,
+                        progress=save_region_progress,
+                        candidate_policy=region_attempt_policy,
+                    )
+                except RegionAttemptRejected as rejected:
+                    payload.pop("active_region_progress", None)
+                    global_pairs.update(
+                        (pair.pair_id, pair) for pair in rejected.security_pairs
+                    )
+                    if region_attempt_policy is None:
+                        raise
+                    payload["active_stage"] = f"phase_one_{child_id}"
+                    phase_record = _run_phase_one_attempt(
+                        region_id=child_id,
+                        masks=child_masks,
+                        rejected=rejected,
+                        case=case,
+                        config=config,
+                        deadline=deadline,
+                    )
+                    tentative_outcomes.append(
+                        {
+                            "region_id": child_id,
+                            "status": (
+                                "phase_one_pruned"
+                                if phase_record["prune_certified"]
+                                else "phase_one_not_certified"
+                            ),
+                            "phase_one": phase_record,
+                        }
+                    )
+                    if phase_record["prune_certified"]:
+                        pruned_children[child_id] = phase_record
+                        payload["pending_disjunctive_split"][
+                            "completed_child_region_ids"
+                        ].append(child_id)
+                        save()
+                        continue
+                    split_failed = True
+                    break
                 payload.pop("active_region_progress", None)
                 solved_children[child_id] = child
                 global_pairs.update((pair.pair_id, pair) for pair in child.security_pairs)
+                tentative_outcomes.append(
+                    {
+                        "region_id": child_id,
+                        "status": "solved",
+                        "region": _region_record(child),
+                    }
+                )
                 payload["pending_disjunctive_split"]["completed_child_region_ids"].append(child_id)
                 save()
+            if split_failed:
+                failed_split_positions.setdefault(parent.region_id, set()).add(
+                    split_position
+                )
+                payload["failed_disjunctive_split_attempts"].append(
+                    {
+                        **split_record,
+                        "status": "rolled_back_phase_one_not_certified",
+                        "parent_certificate_retained": True,
+                        "outcomes": tentative_outcomes,
+                    }
+                )
+                payload.pop("pending_disjunctive_split", None)
+                persist_region_evidence()
+                if len(payload["failed_disjunctive_split_attempts"]) >= int(
+                    config.runtime["maximum_failed_split_attempts"]
+                ):
+                    payload["status"] = "incomplete_failed_split_attempt_limit"
+                    break
+                continue
             del frontier[parent.region_id]
-            for child_id in (off_id, on_id):
-                child = solved_children[child_id]
+            for child_id, child in solved_children.items():
                 frontier[child_id] = child
                 all_region_records.append(_region_record(child))
+            payload["pruned_regions"].extend(
+                pruned_children[child_id] for child_id in sorted(pruned_children)
+            )
+            if not frontier:
+                raise ScopfError(
+                    "All active regions were Phase-I pruned despite a secure incumbent"
+                )
             payload["disjunctive_splits"].append(split_record)
             payload.pop("pending_disjunctive_split", None)
             persist_region_evidence()
@@ -1218,9 +1762,13 @@ def run_gpu_lagrangian_experiment(
             for child_id in (off_id, on_id):
                 if best_primal is not None:
                     break
-                child = solved_children[child_id]
+                child = solved_children.get(child_id)
+                if child is None:
+                    continue
                 try_primal(child, np.rint(child.commitment), f"region_{child_id}_rounding")
 
+        if str(payload.get("status", "")).startswith("incomplete_"):
+            payload["refinement_stop_status"] = payload["status"]
         payload["all_solved_region_count"] = len(all_region_records)
         payload["solved_region_history"] = all_region_records
         payload["frontier_regions"] = [
@@ -1233,21 +1781,7 @@ def run_gpu_lagrangian_experiment(
         payload["solution"] = best_primal["solution"]
         payload["objective"] = float(best_primal["objective"])
         payload["commitment_count"] = int(np.count_nonzero(best_primal["commitment"]))
-        payload["pricing"] = {
-            "status": "gpu_pdlp_fixed_commitment_dual",
-            "definition": (
-                "Demand-derivative dual prices from the final secure fixed-commitment "
-                "cuOpt PDLP; not MILP duals"
-            ),
-            "bus_prices": [
-                {
-                    "bus": int(bus),
-                    "price_per_mwh": float(price),
-                    "price_per_pu_hour": float(price * case.base_mva),
-                }
-                for bus, price in zip(network.bus_ids, best_primal["bus_prices"], strict=True)
-            ],
-        }
+        payload["pricing"] = best_primal["pricing"]
         payload["bound"] = min(
             region.lagrangian.conservative_lower_bound for region in frontier.values()
         )
@@ -1285,17 +1819,23 @@ def run_gpu_lagrangian_experiment(
                     float(record["adapter_wall_time_seconds"]) for record in relaxation_rounds
                 ),
                 "relaxation_cupy_screening_wall": sum(
-                    float(record["screen"]["wall_time_seconds"]) for record in relaxation_rounds
+                    float(record.get("screen", {}).get("wall_time_seconds", 0.0))
+                    for record in relaxation_rounds
                 ),
                 "fixed_commitment_pdlp_adapter_wall": sum(
                     float(record["adapter_wall_time_seconds"]) for record in primal_rounds
                 ),
                 "fixed_commitment_cupy_screening_wall": sum(
-                    float(record["screen"]["wall_time_seconds"]) for record in primal_rounds
+                    float(record.get("screen", {}).get("wall_time_seconds", 0.0))
+                    for record in primal_rounds
                 ),
                 "cupy_lagrangian_evaluation_wall": sum(
                     float(record["gpu_lagrangian_evaluation"]["wall_time_seconds"])
                     for record in all_region_records
+                ),
+                "phase_one_pdlp_adapter_wall": sum(
+                    float(record.get("adapter_wall_time_seconds", 0.0))
+                    for record in payload.get("pruned_regions", [])
                 ),
             }
         )
@@ -1310,6 +1850,10 @@ def run_gpu_lagrangian_experiment(
             "gap_certified": gap_passed,
             "integer_solver_absent": True,
             "branch_and_bound_absent": True,
+            "all_pruned_regions_have_replayed_phase_one_certificates": bool(
+                lagrangian_verification["phase_one_pruned_region_count"]
+                == len(payload.get("pruned_regions", []))
+            ),
             "final_exhaustive_security_violation_pu": (
                 primal_verification.maximum_security_violation_pu
             ),
@@ -1321,7 +1865,10 @@ def run_gpu_lagrangian_experiment(
         elif not lagrangian_verification["passed"]:
             payload["status"] = "failed_independent_lagrangian_verification"
         else:
-            payload["status"] = "incomplete_requested_gap_not_certified"
+            payload["status"] = payload.get(
+                "refinement_stop_status",
+                "incomplete_requested_gap_not_certified",
+            )
         cpu = payload["cpu_comparison"]
         payload["system_comparison"] = {
             "comparison_kind": "system_to_system_not_pure_gpu_speedup",

@@ -1,6 +1,7 @@
 import numpy as np
 import pytest
 
+from activsg_scopf.errors import ScopfError
 from activsg_scopf.lagrangian import (
     RegionMasks,
     bus_prices_from_coupling_duals,
@@ -17,8 +18,10 @@ from activsg_scopf.reduced import (
     clean_upper_row_with_box_relaxation,
     commitment_vector,
     reduced_dispatch,
+    security_pair_from_record,
+    security_pair_record,
 )
-from activsg_scopf.screening import ContingencyScreener
+from activsg_scopf.screening import ContingencyScreener, SecurityPair
 
 from .helpers import triangle_case
 
@@ -94,6 +97,87 @@ def test_reduced_security_rows_reproduce_screened_post_flow() -> None:
             else -post - network.rate_a_mw[monitored]
         )
         assert activity - coupling.rhs == pytest.approx(expected_excess, abs=1e-12)
+
+
+def test_exact_duplicate_security_rows_keep_pair_provenance_once() -> None:
+    case, _ = triangle_case()
+    network = build_network(case)
+    master = build_reduced_master(case, network)
+    rows_before = master.canonical.num_rows
+    first = SecurityPair(11, 1, "upper", 0, 0, 1, 0.25)
+    alias = SecurityPair(12, 2, "upper", 1, 0, 1, 0.25)
+
+    add_reduced_security_pairs(master, network, (first, alias))
+
+    assert master.canonical.num_rows == rows_before + 1
+    assert master.security_pair_ids == {first.pair_id, alias.pair_id}
+    assert master.security_pair_representative_by_id == {
+        first.pair_id: first.pair_id,
+        alias.pair_id: first.pair_id,
+    }
+    assert master.security_pair_equivalence_classes[first.pair_id] == [
+        first.pair_id,
+        alias.pair_id,
+    ]
+    assert master.coefficient_cleanup_audit["exact_duplicate_security_row_count"] == 1
+
+
+def test_serialized_exact_equivalence_replays_across_tiny_fp64_drift() -> None:
+    case, _ = triangle_case()
+    network = build_network(case)
+    master = build_reduced_master(case, network)
+    rows_before = master.canonical.num_rows
+    first = SecurityPair(11, 1, "upper", 0, 0, 1, 0.25)
+    drifted_alias = SecurityPair(12, 2, "upper", 1, 0, 1, 0.25 + 5e-15)
+    representative_map = {
+        first.pair_id: first.pair_id,
+        drifted_alias.pair_id: first.pair_id,
+    }
+
+    add_reduced_security_pairs(
+        master,
+        network,
+        (first, drifted_alias),
+        expected_representative_by_pair_id=representative_map,
+        equivalence_replay_tolerance=1e-12,
+    )
+
+    assert master.canonical.num_rows == rows_before + 1
+    assert master.security_pair_representative_by_id == representative_map
+
+    rejected = build_reduced_master(case, network)
+    with pytest.raises(ScopfError, match="does not replay within tolerance"):
+        add_reduced_security_pairs(
+            rejected,
+            network,
+            (first, drifted_alias),
+            expected_representative_by_pair_id=representative_map,
+            equivalence_replay_tolerance=1e-16,
+        )
+
+
+def test_security_pair_lodf_replay_allows_only_registered_absolute_tolerance() -> None:
+    case, table = triangle_case()
+    network = build_network(case)
+    catalog = build_contingency_catalog(case, network, table)
+    outage = catalog.valid[0]
+    monitored = 1
+    pair = SecurityPair(
+        outage.contingency_label,
+        int(network.active_branch_source_rows[monitored]) + 1,
+        "upper",
+        0,
+        monitored,
+        outage.active_branch_index,
+        float(catalog.lodf[monitored, 0]),
+    )
+    record = security_pair_record(pair)
+    record["lodf_value"] = float(record["lodf_value"]) + 5e-15
+
+    with pytest.raises(ScopfError, match="LODF differs"):
+        security_pair_from_record(record, catalog)
+    replayed = security_pair_from_record(record, catalog, lodf_absolute_tolerance=1e-12)
+    assert replayed.pair_id == pair.pair_id
 
 
 def test_lagrangian_bound_replays_exact_binary_generator_subproblem() -> None:
