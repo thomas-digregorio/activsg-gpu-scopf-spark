@@ -6,11 +6,12 @@ import pytest
 from activsg_scopf import lagrangian_experiment as experiment_module
 from activsg_scopf.config import load_config
 from activsg_scopf.deadline import Deadline
-from activsg_scopf.errors import ScopfError
+from activsg_scopf.errors import PrimalCandidateRejected, ScopfError
 from activsg_scopf.lagrangian import RegionMasks
 from activsg_scopf.lagrangian_experiment import (
     EXPERIMENT_ID,
     EXPERIMENT_TAG,
+    PrimalCandidatePolicy,
     _load_cpu_comparison,
     _solve_region,
     validate_lagrangian_experiment_config,
@@ -45,13 +46,29 @@ def test_registered_v2_bugfix_config_is_fail_closed() -> None:
     config = load_config(ROOT / "configs" / "activsg500-gpu-lagrangian-v2.json")
     registration = validate_lagrangian_experiment_config(config)
     assert config.benchmark_id == "activsg500-gpu-lagrangian-v2"
-    assert registration["benchmark"]["required_git_tag"] == (
-        "experiment-500-gpu-lagrangian-v2"
-    )
+    assert registration["benchmark"]["required_git_tag"] == ("experiment-500-gpu-lagrangian-v2")
     assert config.model["reduced_coefficient_zero_tolerance"] == 1e-14
     assert registration["benchmark"]["bugfix_change"]["pdlp_primal_gate"] == (
         "never_screen_or_add_rows_from_primal_infeasible_vector"
     )
+
+
+def test_registered_v3_controller_config_is_fail_closed() -> None:
+    config = load_config(ROOT / "configs" / "activsg500-gpu-lagrangian-v3.json")
+    registration = validate_lagrangian_experiment_config(config)
+    assert config.benchmark_id == "activsg500-gpu-lagrangian-v3"
+    assert registration["benchmark"]["required_git_tag"] == ("experiment-500-gpu-lagrangian-v3")
+    assert registration["benchmark"]["controller_change"]["candidate_budget"] == (
+        "15_seconds_total_with_5_second_pdlp_slices"
+    )
+    policy = PrimalCandidatePolicy.from_config(config)
+    assert policy.total_seconds == 15.0
+    assert policy.maximum_round_seconds == 5.0
+    assert policy.stagnation_window_rounds == 2
+    assert policy.dual_divergence_multiple == 1e6
+    config.raw["runtime"]["maximum_primal_candidate_seconds"] = 16.0
+    with pytest.raises(ScopfError, match="candidate policy changed"):
+        validate_lagrangian_experiment_config(config)
 
 
 def test_lagrangian_config_rejects_non_500_identity() -> None:
@@ -231,3 +248,163 @@ def test_region_continues_without_screening_a_primal_infeasible_pdlp_iterate(
     assert solved.rounds[0]["screen"]["reason"] == "pdlp_primal_infeasible"
     assert solve_calls[1]["initial_native_primal"] is not None
     assert solve_calls[1]["initial_native_row_dual"] is not None
+
+
+def test_candidate_rejects_divergent_dual_without_screening(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = load_config(ROOT / "configs" / "activsg500-gpu-lagrangian-v3.json")
+    case, table = triangle_case()
+    network = build_network(case)
+    catalog = build_contingency_catalog(case, network, table)
+    solve_calls = 0
+
+    def fake_solve(model, **_kwargs):
+        nonlocal solve_calls
+        solve_calls += 1
+        values = np.zeros(model.num_columns)
+        return ContinuousSolveResult(
+            status="TimeLimit",
+            optimal=False,
+            primal_objective=1.0,
+            dual_objective=1e9,
+            values=values,
+            native_primal=values.copy(),
+            native_row_dual=np.zeros(model.num_rows),
+            solve_time_seconds=0.001,
+            statistics={
+                "error_status": "Success",
+                "solved_by": "PDLP",
+                "solved_by_pdlp": True,
+                "native_integer_columns": 0,
+                "dual_certificate": {"passed": False, "primal_feasible": False},
+            },
+        )
+
+    class RejectIfScreened:
+        def screen(self, *_args, **_kwargs):
+            raise AssertionError("primal-infeasible candidate must not be screened")
+
+    progress: list[dict[str, object]] = []
+    monkeypatch.setattr(experiment_module, "solve_cuopt_continuous_pdlp", fake_solve)
+    with pytest.raises(PrimalCandidateRejected, match="dual_objective_divergence"):
+        _solve_region(
+            region_id="p1",
+            masks=RegionMasks.root(1),
+            case=case,
+            network=network,
+            catalog=catalog,
+            config=config,
+            deadline=Deadline(30.0, 0.0, 0.0),
+            initial_pairs=(),
+            screener=RejectIfScreened(),  # type: ignore[arg-type]
+            checkpoint=lambda: None,
+            progress=progress.append,
+            candidate_policy=PrimalCandidatePolicy.from_config(config),
+        )
+    assert solve_calls == 1
+    final_round = progress[-1]["constraint_generation_rounds"][-1]  # type: ignore[index]
+    assert final_round["candidate_gate"]["reason"] == "dual_objective_divergence"
+
+
+def test_candidate_rejects_two_round_residual_stagnation_and_uses_warm_start(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = load_config(ROOT / "configs" / "activsg500-gpu-lagrangian-v3.json")
+    case, table = triangle_case()
+    network = build_network(case)
+    catalog = build_contingency_catalog(case, network, table)
+    solve_calls: list[dict[str, object]] = []
+
+    def fake_solve(model, **kwargs):
+        solve_calls.append(kwargs)
+        values = np.zeros(model.num_columns)
+        return ContinuousSolveResult(
+            status="TimeLimit",
+            optimal=False,
+            primal_objective=1.0,
+            dual_objective=0.0,
+            values=values,
+            native_primal=values.copy(),
+            native_row_dual=np.zeros(model.num_rows),
+            solve_time_seconds=0.001,
+            statistics={
+                "error_status": "Success",
+                "solved_by": "PDLP",
+                "solved_by_pdlp": True,
+                "native_integer_columns": 0,
+                "dual_certificate": {"passed": False, "primal_feasible": False},
+            },
+        )
+
+    class RejectIfScreened:
+        def screen(self, *_args, **_kwargs):
+            raise AssertionError("primal-infeasible candidate must not be screened")
+
+    progress: list[dict[str, object]] = []
+    monkeypatch.setattr(experiment_module, "solve_cuopt_continuous_pdlp", fake_solve)
+    with pytest.raises(PrimalCandidateRejected, match="primal_residual_stagnation"):
+        _solve_region(
+            region_id="p1",
+            masks=RegionMasks.root(1),
+            case=case,
+            network=network,
+            catalog=catalog,
+            config=config,
+            deadline=Deadline(30.0, 0.0, 0.0),
+            initial_pairs=(),
+            screener=RejectIfScreened(),  # type: ignore[arg-type]
+            checkpoint=lambda: None,
+            progress=progress.append,
+            candidate_policy=PrimalCandidatePolicy.from_config(config),
+        )
+    assert len(solve_calls) == 2
+    assert solve_calls[1]["initial_native_primal"] is not None
+    assert solve_calls[1]["initial_native_row_dual"] is not None
+    final_round = progress[-1]["constraint_generation_rounds"][-1]  # type: ignore[index]
+    assert final_round["candidate_gate"]["reason"] == "primal_residual_stagnation"
+
+
+def test_candidate_does_not_relabel_adapter_error_as_rejection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = load_config(ROOT / "configs" / "activsg500-gpu-lagrangian-v3.json")
+    case, table = triangle_case()
+    network = build_network(case)
+    catalog = build_contingency_catalog(case, network, table)
+
+    def fake_solve(_model, **_kwargs):
+        return ContinuousSolveResult(
+            status="Error",
+            optimal=False,
+            primal_objective=None,
+            dual_objective=None,
+            values=None,
+            native_primal=None,
+            native_row_dual=None,
+            solve_time_seconds=0.001,
+            statistics={
+                "error_status": "InternalError",
+                "solved_by": "PDLP",
+                "solved_by_pdlp": True,
+                "native_integer_columns": 0,
+                "dual_certificate": {"passed": False, "primal_feasible": False},
+            },
+        )
+
+    monkeypatch.setattr(experiment_module, "solve_cuopt_continuous_pdlp", fake_solve)
+    with pytest.raises(ScopfError, match="did not return usable vectors") as caught:
+        _solve_region(
+            region_id="p1",
+            masks=RegionMasks.root(1),
+            case=case,
+            network=network,
+            catalog=catalog,
+            config=config,
+            deadline=Deadline(30.0, 0.0, 0.0),
+            initial_pairs=(),
+            screener=ContingencyScreener(network, catalog, backend="numpy"),
+            checkpoint=lambda: None,
+            candidate_policy=PrimalCandidatePolicy.from_config(config),
+        )
+    assert type(caught.value) is ScopfError

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "activsg-gpu-scopf-spark"
-version = "0.23.0"
+version = "0.24.0"
 description = "Auditable single-hour preventive DC-SCOPF prototype for approved ACTIVSg cases"
 readme = "README.md"
 requires-python = ">=3.12"
