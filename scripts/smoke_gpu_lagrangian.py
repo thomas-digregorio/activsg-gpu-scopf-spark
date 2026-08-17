@@ -1,0 +1,74 @@
+"""DGX-only tiny-fixture smoke for PDLP and the resident Lagrangian loop."""
+
+from __future__ import annotations
+
+from activsg_scopf.lagrangian import (
+    RegionMasks,
+    canonical_row_duals,
+    evaluate_lagrangian_bound,
+    optimize_lagrangian_bound_cupy,
+)
+from activsg_scopf.network import build_network
+from activsg_scopf.reduced import build_reduced_master
+from activsg_scopf.solvers.cuopt_lp import solve_cuopt_continuous_pdlp
+from tests.helpers import triangle_case
+
+
+def main() -> None:
+    case, _ = triangle_case()
+    network = build_network(case)
+    master = build_reduced_master(case, network)
+    solved = solve_cuopt_continuous_pdlp(
+        master.canonical,
+        time_limit_seconds=10.0,
+        optimality_tolerance=1e-8,
+        primal_feasibility_tolerance=1e-6,
+        certificate_residual_tolerance=1e-7,
+        native_scaling_mode="power_system_per_unit_v1",
+        native_base_mva=case.base_mva,
+        log_to_console=True,
+        per_constraint_residual=True,
+        presolve=0,
+    )
+    if solved.native_row_dual is None or solved.primal_objective is None:
+        raise RuntimeError("Tiny PDLP solve did not return primal/dual vectors")
+    row_dual = canonical_row_duals(
+        master,
+        solved.native_row_dual,
+        native_scaling_mode="power_system_per_unit_v1",
+        base_mva=case.base_mva,
+    )
+    polished, gpu = optimize_lagrangian_bound_cupy(
+        master,
+        row_dual,
+        RegionMasks.root(1),
+        relaxation_primal_objective=solved.primal_objective,
+        iterations=32,
+        polyak_fraction=0.5,
+    )
+    replay = evaluate_lagrangian_bound(
+        master,
+        polished,
+        RegionMasks.root(1),
+        safety_margin_dollars=0.01,
+    )
+    difference = abs(float(gpu["best_raw_lower_bound"]) - replay.raw_lower_bound)
+    if difference > 1e-6:
+        raise RuntimeError(f"GPU/CPU tiny-certificate replay difference is {difference}")
+    print(
+        {
+            "status": solved.status,
+            "objective": solved.primal_objective,
+            "solved_by_pdlp": solved.statistics["solved_by_pdlp"],
+            "native_integer_columns": solved.statistics["native_integer_columns"],
+            "dual_certificate_passed": solved.statistics["dual_certificate"]["passed"],
+            "gpu_raw_lower_bound": gpu["best_raw_lower_bound"],
+            "cpu_raw_lower_bound": replay.raw_lower_bound,
+            "gpu_cpu_difference": difference,
+            "device_state_persistent": gpu["device_state_persistent_across_iterations"],
+        }
+    )
+
+
+if __name__ == "__main__":
+    main()
