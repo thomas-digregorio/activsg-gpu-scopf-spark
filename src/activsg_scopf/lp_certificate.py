@@ -38,7 +38,7 @@ from .solvers.cuopt_lp import (
 from .verify import verify_serialized_solution
 
 LP_CERTIFICATE_KIND = "gpu_lp_relaxation_certificate"
-LP_CERTIFICATE_POLICY = "full_fractional_n_minus_1_pdlp_fp64_v2"
+LP_CERTIFICATE_POLICY = "full_fractional_n_minus_1_pdlp_fp64_v3"
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -63,6 +63,7 @@ def validate_lp_certificate_config(config: RunConfig) -> dict[str, Any]:
         "activsg2000-gpu-lp-certificate-v12": "experiment-2000-gpu-lp-certificate-v12",
         "activsg2000-gpu-lp-certificate-v13": "experiment-2000-gpu-lp-certificate-v13",
         "activsg2000-gpu-lp-certificate-v14": "experiment-2000-gpu-lp-certificate-v14",
+        "activsg2000-gpu-lp-certificate-v15": "experiment-2000-gpu-lp-certificate-v15",
     }
     required_tag = registered_identities.get(config.benchmark_id)
     if required_tag is None:
@@ -82,14 +83,28 @@ def validate_lp_certificate_config(config: RunConfig) -> dict[str, Any]:
         raise ScopfError("This LP-certificate experiment is registered only for ACTIVSg2000")
     if config.benchmark_kind != LP_CERTIFICATE_KIND:
         raise ScopfError("Configuration is not a GPU LP-relaxation certificate")
-    if float(config.runtime.get("deadline_seconds", 0.0)) != 600.0:
-        raise ScopfError("The LP-certificate end-to-end deadline must be exactly 600 seconds")
+    is_v15 = config.benchmark_id == "activsg2000-gpu-lp-certificate-v15"
+    required_deadline = 900.0 if is_v15 else 600.0
+    if float(config.runtime.get("deadline_seconds", 0.0)) != required_deadline:
+        raise ScopfError(
+            "The LP-certificate end-to-end deadline must be exactly "
+            f"{required_deadline:g} seconds"
+        )
     required_runtime = {
         "verification_reserve_seconds": 60.0,
         "serialization_reserve_seconds": 15.0,
         "maximum_constraint_generation_rounds": 100,
-        "lp_round_time_limit_seconds": 120.0,
     }
+    if is_v15:
+        required_runtime.update(
+            {
+                "maximum_lp_round_time_limit_seconds": 480.0,
+                "followup_solve_reserve_seconds": 90.0,
+                "minimum_lp_round_time_limit_seconds": 30.0,
+            }
+        )
+    else:
+        required_runtime["lp_round_time_limit_seconds"] = 120.0
     for key, expected in required_runtime.items():
         if config.runtime.get(key) != expected:
             raise ScopfError(
@@ -125,11 +140,23 @@ def validate_lp_certificate_config(config: RunConfig) -> dict[str, Any]:
         "pdlp_optimality_tolerance": 1e-8,
         "dual_certificate_residual_tolerance": 1e-7,
     }
-    if config.benchmark_id == "activsg2000-gpu-lp-certificate-v14":
+    if config.benchmark_id in {
+        "activsg2000-gpu-lp-certificate-v14",
+        "activsg2000-gpu-lp-certificate-v15",
+    }:
         required_profile.update(
             {
                 "per_constraint_residual": True,
                 "redundant_angle_bounds": "rate_a_dc_shortest_path_v1",
+            }
+        )
+    if is_v15:
+        required_profile.update(
+            {
+                "presolve": 0,
+                "pdlp_warm_start": "previous_primal_dual_zero_extend_rows_v1",
+                "require_reported_reconstructed_dual_agreement": True,
+                "recover_time_limit_vectors": True,
             }
         )
     for key, expected in required_profile.items():
@@ -168,6 +195,34 @@ def _solve_summary(result: ContinuousSolveResult) -> dict[str, Any]:
         "solve_time_seconds": result.solve_time_seconds,
         "statistics": result.statistics,
     }
+
+
+def allocate_lp_round_budget(
+    available_solver_seconds: float,
+    *,
+    maximum_round_seconds: float,
+    followup_reserve_seconds: float,
+    minimum_round_seconds: float,
+) -> float:
+    """Allocate one solve while preserving a useful follow-up attempt when possible."""
+
+    values = (
+        available_solver_seconds,
+        maximum_round_seconds,
+        followup_reserve_seconds,
+        minimum_round_seconds,
+    )
+    if not all(np.isfinite(value) for value in values):
+        raise ScopfError("LP round-budget inputs must be finite")
+    if available_solver_seconds <= 0 or maximum_round_seconds <= 0:
+        raise ScopfError("LP round-budget inputs must be positive")
+    if followup_reserve_seconds < 0 or minimum_round_seconds <= 0:
+        raise ScopfError("LP round-budget reserves are invalid")
+    if available_solver_seconds > followup_reserve_seconds + minimum_round_seconds:
+        available_now = available_solver_seconds - followup_reserve_seconds
+    else:
+        available_now = available_solver_seconds
+    return min(maximum_round_seconds, available_now)
 
 
 def _fractional_commitment_summary(
@@ -211,7 +266,7 @@ def run_lp_relaxation_certificate(
         "experiment_policy": LP_CERTIFICATE_POLICY,
         "platform": "dgx_spark",
         "status": "running",
-        "deadline_seconds": 600.0,
+        "deadline_seconds": float(config.runtime["deadline_seconds"]),
         "model_class": "continuous_relaxation_of_single_hour_preventive_scuc",
         "integer_search_performed": False,
         "branch_and_bound_performed": False,
@@ -305,8 +360,18 @@ def run_lp_relaxation_certificate(
         added_pair_ids: set[str] = set()
         last_solve: ContinuousSolveResult | None = None
         final_screen_passed = False
+        best_verified_bound: float | None = None
+        best_verified_bound_round: int | None = None
+        native_primal_start: np.ndarray | None = None
+        native_row_dual_start: np.ndarray | None = None
         solve_wall_total = 0.0
         screen_wall_total = 0.0
+        incumbent = float(reference["objective"])
+        requested_gap = float(config.model["mip_relative_gap_tolerance"])
+        required_bound = incumbent - requested_gap * abs(incumbent)
+        use_dynamic_budget = (
+            config.benchmark_id == "activsg2000-gpu-lp-certificate-v15"
+        )
         commitment_columns = np.asarray(
             [
                 master.index.commitment_by_generator[int(generator)]
@@ -318,10 +383,26 @@ def run_lp_relaxation_certificate(
             1, int(config.runtime["maximum_constraint_generation_rounds"]) + 1
         ):
             deadline.require("continuous restricted-master solve")
-            solver_budget = min(
-                deadline.solver_budget(),
-                float(config.runtime["lp_round_time_limit_seconds"]),
-            )
+            available_solver_budget = deadline.solver_budget()
+            if use_dynamic_budget:
+                solver_budget = allocate_lp_round_budget(
+                    available_solver_budget,
+                    maximum_round_seconds=float(
+                        config.runtime["maximum_lp_round_time_limit_seconds"]
+                    ),
+                    followup_reserve_seconds=float(
+                        config.runtime["followup_solve_reserve_seconds"]
+                    ),
+                    minimum_round_seconds=float(
+                        config.runtime["minimum_lp_round_time_limit_seconds"]
+                    ),
+                )
+            else:
+                solver_budget = min(
+                    available_solver_budget,
+                    float(config.runtime["lp_round_time_limit_seconds"]),
+                )
+            final_screen_passed = False
             payload["active_stage"] = "continuous_restricted_master_solve"
             payload["active_constraint_generation_round"] = round_number
             payload["active_solver_budget_seconds"] = solver_budget
@@ -340,12 +421,18 @@ def run_lp_relaxation_certificate(
                 log_to_console=True,
                 per_constraint_residual=bool(profile.get("per_constraint_residual", False)),
                 redundant_bounds=redundant_bounds,
+                presolve=int(profile.get("presolve", -1)),
+                initial_native_primal=(native_primal_start if use_dynamic_budget else None),
+                initial_native_row_dual=(
+                    native_row_dual_start if use_dynamic_budget else None
+                ),
             )
             solve_wall = time.perf_counter() - started
             solve_wall_total += solve_wall
             round_payload: dict[str, Any] = {
                 "round": round_number,
                 "rows_before_solve": master.canonical.num_rows,
+                "available_solver_budget_seconds": available_solver_budget,
                 "solver_budget_seconds": solver_budget,
                 "adapter_wall_time_seconds": solve_wall,
                 "solve": _solve_summary(last_solve),
@@ -354,25 +441,48 @@ def run_lp_relaxation_certificate(
             payload["objective"] = last_solve.primal_objective
             dual_certificate = last_solve.statistics.get("dual_certificate", {})
             dual_passed = bool(dual_certificate.get("passed", False))
+            primal_feasible = bool(dual_certificate.get("primal_feasible", False))
             conservative_bound = dual_certificate.get("conservative_numerical_lower_bound")
             payload["dual_objective_candidate"] = last_solve.dual_objective
-            payload["bound"] = (
-                float(conservative_bound)
-                if dual_passed and conservative_bound is not None
-                else None
-            )
-            if (
-                not last_solve.optimal
-                or last_solve.values is None
-                or last_solve.primal_objective is None
-                or last_solve.dual_objective is None
-            ):
-                payload["status"] = "incomplete_continuous_solve_not_optimal"
+            if dual_passed and conservative_bound is not None:
+                candidate_bound = float(conservative_bound)
+                if best_verified_bound is None or candidate_bound > best_verified_bound:
+                    best_verified_bound = candidate_bound
+                    best_verified_bound_round = round_number
+            payload["bound"] = best_verified_bound
+            payload["best_verified_bound_round"] = best_verified_bound_round
+            if use_dynamic_budget:
+                native_primal_start = last_solve.native_primal
+                native_row_dual_start = last_solve.native_row_dual
+            round_payload["acceptance_progress"] = {
+                "primal_feasible": primal_feasible,
+                "dual_certificate_passed": dual_passed,
+                "best_verified_bound": best_verified_bound,
+                "required_reference_bound": required_bound,
+                "reference_gap_bound_ready": bool(
+                    best_verified_bound is not None
+                    and best_verified_bound >= required_bound
+                ),
+            }
+            error_status = str(last_solve.statistics.get("error_status", ""))
+            recoverable_status = last_solve.status in {
+                "Optimal",
+                "FeasibleFound",
+                "TimeLimit",
+            }
+            if error_status != "Success" or not recoverable_status:
+                payload["status"] = "failed_continuous_solver_status"
                 save_checkpoint()
                 break
-            if not dual_passed:
-                payload["status"] = "failed_continuous_dual_certificate"
+            if (
+                last_solve.values is None
+                or last_solve.primal_objective is None
+                or not primal_feasible
+            ):
+                payload["status"] = "incomplete_continuous_primal_not_feasible"
                 save_checkpoint()
+                if use_dynamic_budget and last_solve.status == "TimeLimit":
+                    continue
                 break
             round_payload["fractional_commitment"] = _fractional_commitment_summary(
                 last_solve.values,
@@ -402,13 +512,37 @@ def run_lp_relaxation_certificate(
             tolerance = float(config.model["security_violation_tolerance_pu"])
             if not screened.violations:
                 final_screen_passed = screened.maximum_violation_pu <= tolerance
-                payload["status"] = (
-                    "continuous_full_n_minus_1_lp_solved"
-                    if final_screen_passed
-                    else "failed_enforced_pair_residual"
+                bound_ready = bool(
+                    best_verified_bound is not None
+                    and best_verified_bound >= required_bound
                 )
+                round_payload["acceptance_progress"].update(
+                    {
+                        "final_exhaustive_screen_passed": final_screen_passed,
+                        "both_preverification_gates_ready": bool(
+                            final_screen_passed and bound_ready
+                        ),
+                    }
+                )
+                if final_screen_passed and bound_ready:
+                    payload["status"] = "continuous_preverification_gates_passed"
+                    save_checkpoint()
+                    break
+                if not final_screen_passed:
+                    payload["status"] = "failed_enforced_pair_residual"
+                    save_checkpoint()
+                    break
+                if last_solve.optimal:
+                    payload["status"] = (
+                        "lp_relaxation_exhaustive_bound_insufficient"
+                        if dual_passed
+                        else "failed_continuous_dual_certificate"
+                    )
+                    save_checkpoint()
+                    break
+                payload["status"] = "incomplete_reference_gap_bound_not_ready"
                 save_checkpoint()
-                break
+                continue
             add_security_pairs(
                 master.canonical,
                 master.index,
@@ -427,12 +561,17 @@ def run_lp_relaxation_certificate(
         payload["timings_seconds"]["fractional_screening"] = screen_wall_total
         payload["constraint_generation_round_count"] = len(payload["constraint_generation_rounds"])
         payload["added_security_pair_count"] = len(added_pair_ids)
+        payload["best_verified_bound_round"] = best_verified_bound_round
+        payload["bound"] = best_verified_bound
         payload["final_model_dimensions"] = {
             "columns": master.canonical.num_columns,
             "rows": master.canonical.num_rows,
             "nonzeros": int(master.canonical.matrix_csr().nnz),
         }
-        if final_screen_passed and last_solve is not None:
+        gap_bound_ready = bool(
+            best_verified_bound is not None and best_verified_bound >= required_bound
+        )
+        if final_screen_passed and gap_bound_ready and last_solve is not None:
             deadline.require(
                 "independent fractional-solution verification",
                 reserve_seconds=float(config.runtime["serialization_reserve_seconds"]),
@@ -443,18 +582,14 @@ def run_lp_relaxation_certificate(
             verification = verify_serialized_solution(config, payload, require_integrality=False)
             payload["timings_seconds"]["independent_verification"] = time.perf_counter() - started
             payload["independent_verification"] = verification.as_dict()
-            incumbent = float(reference["objective"])
-            requested_gap = float(config.model["mip_relative_gap_tolerance"])
-            required_bound = incumbent - requested_gap * abs(incumbent)
             if payload["bound"] is None:
                 raise ScopfError("Passing LP dual certificate has no conservative bound")
             dual_bound = float(payload["bound"])
             relative_gap = (incumbent - dual_bound) / abs(incumbent)
             bound_margin = dual_bound - required_bound
-            dual_passed = bool(last_solve.statistics["dual_certificate"]["passed"])
             gap_certified = bool(
                 verification.passed
-                and dual_passed
+                and gap_bound_ready
                 and relative_gap <= requested_gap * (1.0 + 1e-9) + 1e-12
             )
             payload["reference_incumbent_gap_test"] = {
@@ -476,16 +611,18 @@ def run_lp_relaxation_certificate(
                 "branch_and_bound_markers_absent": last_solve.statistics[
                     "native_log_branch_and_bound_markers_absent"
                 ],
-                "numerical_dual_certificate_passed": dual_passed,
+                "numerical_dual_certificate_passed": gap_bound_ready,
+                "verified_bound_source_round": best_verified_bound_round,
                 "final_fractional_exhaustive_screen_passed": final_screen_passed,
                 "independent_fractional_verification_passed": verification.passed,
                 "reference_incumbent_gap_certified": gap_certified,
             }
-            payload["status"] = (
-                "lp_relaxation_gap_certified"
-                if gap_certified
-                else "lp_relaxation_exhaustive_bound_insufficient"
-            )
+            if gap_certified:
+                payload["status"] = "lp_relaxation_gap_certified"
+            elif not verification.passed:
+                payload["status"] = "failed_independent_fractional_verification"
+            else:
+                payload["status"] = "lp_relaxation_exhaustive_bound_insufficient"
         save_checkpoint()
 
     payload["active_stage"] = "complete"
@@ -597,7 +734,7 @@ def run_one_shot_lp_certificate(
             "benchmark_boundary": (
                 "worker launch through raw loading, continuous PDLP solve/screen rounds, "
                 "independent fractional verification, and first result serialization; "
-                "hard 600-second wall-clock deadline"
+                f"hard {deadline_seconds:g}-second wall-clock deadline"
             ),
         }
     )

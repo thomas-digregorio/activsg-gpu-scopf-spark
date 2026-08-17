@@ -29,6 +29,8 @@ class ContinuousSolveResult:
     primal_objective: float | None
     dual_objective: float | None
     values: np.ndarray | None
+    native_primal: np.ndarray | None
+    native_row_dual: np.ndarray | None
     solve_time_seconds: float
     statistics: dict[str, Any]
 
@@ -168,6 +170,52 @@ def _row_types(values: np.ndarray) -> np.ndarray:
     return np.asarray(normalized, dtype="U1")
 
 
+def prepare_pdlp_warm_start(
+    *,
+    initial_native_primal: np.ndarray | None,
+    initial_native_row_dual: np.ndarray | None,
+    num_columns: int,
+    num_constraints: int,
+    presolve: int,
+) -> tuple[np.ndarray | None, np.ndarray | None, dict[str, Any]]:
+    """Validate PDLP starts and extend prior row duals for newly added rows."""
+
+    audit: dict[str, Any] = {
+        "presolve_disabled": int(presolve) == 0,
+        "initial_primal_submitted": initial_native_primal is not None,
+        "initial_dual_submitted": initial_native_row_dual is not None,
+    }
+    warm_start_requested = (
+        initial_native_primal is not None or initial_native_row_dual is not None
+    )
+    if warm_start_requested and int(presolve) != 0:
+        raise ScopfError("cuOpt PDLP warm starts require presolve=0")
+    warm_primal = None
+    if initial_native_primal is not None:
+        warm_primal = np.asarray(initial_native_primal, dtype=np.float64)
+        if warm_primal.shape != (num_columns,) or not np.all(np.isfinite(warm_primal)):
+            raise ScopfError("cuOpt PDLP initial primal has invalid shape or values")
+        warm_primal = warm_primal.copy()
+        audit["initial_primal_count"] = int(warm_primal.size)
+        audit["initial_primal_sha256"] = hashlib.sha256(warm_primal.tobytes()).hexdigest()
+    warm_dual = None
+    if initial_native_row_dual is not None:
+        supplied_dual = np.asarray(initial_native_row_dual, dtype=np.float64)
+        if supplied_dual.ndim != 1 or supplied_dual.size > num_constraints:
+            raise ScopfError("cuOpt PDLP initial dual has invalid shape")
+        if not np.all(np.isfinite(supplied_dual)):
+            raise ScopfError("cuOpt PDLP initial dual contains a nonfinite value")
+        warm_dual = np.zeros(num_constraints, dtype=np.float64)
+        warm_dual[: supplied_dual.size] = supplied_dual
+        audit["initial_dual_supplied_count"] = int(supplied_dual.size)
+        audit["initial_dual_native_count"] = int(warm_dual.size)
+        audit["initial_dual_zero_extended_count"] = int(
+            warm_dual.size - supplied_dual.size
+        )
+        audit["initial_dual_sha256"] = hashlib.sha256(warm_dual.tobytes()).hexdigest()
+    return warm_primal, warm_dual, audit
+
+
 def validate_numeric_lp_certificate(
     *,
     matrix: sparse.csr_matrix,
@@ -302,9 +350,7 @@ def validate_numeric_lp_certificate(
         float(reported_dual_objective) <= float(reported_primal_objective) + objective_tolerance
     )
     conservative_numerical_lower_bound = (
-        None
-        if reconstructed_dual is None
-        else min(float(reported_dual_objective), reconstructed_dual) - objective_tolerance
+        None if reconstructed_dual is None else reconstructed_dual - objective_tolerance
     )
     reconstructed_bound_not_above_primal = bool(
         conservative_numerical_lower_bound is not None
@@ -318,16 +364,27 @@ def validate_numeric_lp_certificate(
             native_gap,
         )
     )
-    passed = bool(
-        native_metrics_finite
-        and maximum_primal_row_violation <= primal_feasibility_tolerance
+    primal_feasible = bool(
+        maximum_primal_row_violation <= primal_feasibility_tolerance
         and maximum_primal_bound_violation <= primal_feasibility_tolerance
-        and maximum_row_dual_sign_violation <= residual_tolerance
+        and primal_objective_error <= objective_tolerance
+    )
+    reported_dual_objective_consistent = bool(
+        dual_objective_error is not None and dual_objective_error <= objective_tolerance
+    )
+    dual_feasible = bool(
+        maximum_row_dual_sign_violation <= residual_tolerance
         and maximum_stationarity_residual <= residual_tolerance
         and incompatible_bound_columns.size == 0
-        and primal_objective_error <= objective_tolerance
         and reconstructed_dual is not None
         and reconstructed_bound_not_above_primal
+    )
+    passed = bool(
+        native_metrics_finite
+        and primal_feasible
+        and dual_feasible
+        and dual_not_above_primal
+        and reported_dual_objective_consistent
     )
     return {
         "passed": passed,
@@ -340,6 +397,8 @@ def validate_numeric_lp_certificate(
         "reconstructed_dual_objective": reconstructed_dual,
         "reported_primal_objective": float(reported_primal_objective),
         "reported_dual_objective": float(reported_dual_objective),
+        "primal_feasible": primal_feasible,
+        "dual_feasible": dual_feasible,
         "conservative_numerical_lower_bound": conservative_numerical_lower_bound,
         "primal_objective_error": primal_objective_error,
         "dual_objective_error": dual_objective_error,
@@ -363,9 +422,7 @@ def validate_numeric_lp_certificate(
         "optimality_tolerance": float(optimality_tolerance),
         "reported_gap_threshold": reported_gap_threshold,
         "dual_not_above_primal": dual_not_above_primal,
-        "reported_dual_objective_consistent": bool(
-            dual_objective_error is not None and dual_objective_error <= objective_tolerance
-        ),
+        "reported_dual_objective_consistent": reported_dual_objective_consistent,
         "reconstructed_bound_not_above_primal": reconstructed_bound_not_above_primal,
     }
 
@@ -382,6 +439,9 @@ def solve_cuopt_continuous_pdlp(
     log_to_console: bool,
     per_constraint_residual: bool = False,
     redundant_bounds: RedundantColumnBounds | None = None,
+    presolve: int = -1,
+    initial_native_primal: np.ndarray | None = None,
+    initial_native_row_dual: np.ndarray | None = None,
 ) -> ContinuousSolveResult:
     """Relax every integer column and solve the resulting LP using PDLP only."""
 
@@ -477,6 +537,7 @@ def solve_cuopt_continuous_pdlp(
     settings.set_parameter("pdlp_solver_mode", 4)
     settings.set_parameter("pdlp_precision", 1)
     settings.set_parameter("per_constraint_residual", bool(per_constraint_residual))
+    settings.set_parameter("presolve", int(presolve))
     settings.set_parameter("log_to_console", bool(log_to_console))
     settings.set_optimality_tolerance(float(optimality_tolerance))
     requested_parameters = {
@@ -484,6 +545,7 @@ def solve_cuopt_continuous_pdlp(
         "pdlp_solver_mode": 4,
         "pdlp_precision": 1,
         "per_constraint_residual": bool(per_constraint_residual),
+        "presolve": int(presolve),
     }
     readback = {
         name: (
@@ -508,6 +570,27 @@ def solve_cuopt_continuous_pdlp(
     try:
         problem._to_data_model()
         data_model = problem.model
+        warm_primal, warm_dual, warm_start_audit = prepare_pdlp_warm_start(
+            initial_native_primal=initial_native_primal,
+            initial_native_row_dual=initial_native_row_dual,
+            num_columns=model.num_columns,
+            num_constraints=native_constraint_count,
+            presolve=int(presolve),
+        )
+        if warm_primal is not None:
+            data_model.set_initial_primal_solution(warm_primal)
+            observed_primal = np.asarray(
+                data_model.get_initial_primal_solution(), dtype=np.float64
+            )
+            if not np.array_equal(observed_primal, warm_primal):
+                raise ScopfError("cuOpt PDLP initial primal readback mismatch")
+        if warm_dual is not None:
+            data_model.set_initial_dual_solution(warm_dual)
+            observed_dual = np.asarray(
+                data_model.get_initial_dual_solution(), dtype=np.float64
+            )
+            if not np.array_equal(observed_dual, warm_dual):
+                raise ScopfError("cuOpt PDLP initial dual readback mismatch")
         solution = linear_programming.Solve(data_model, settings)
         native_log = native_log_path.read_text(encoding="utf-8", errors="replace")
     finally:
@@ -521,6 +604,11 @@ def solve_cuopt_continuous_pdlp(
     solved_by_value = solution.get_solved_by()
     solved_by = str(getattr(solved_by_value, "name", solved_by_value))
     optimal = status == "Optimal" and error_status == "Success"
+    solution_vectors_available = error_status == "Success" and status in {
+        "Optimal",
+        "FeasibleFound",
+        "TimeLimit",
+    }
     primal = None
     canonical_values = None
     primal_objective = None
@@ -530,12 +618,41 @@ def solve_cuopt_continuous_pdlp(
         "reason": "LP solve did not return Optimal/Success",
     }
     lp_stats = {key: float(value) for key, value in solution.get_lp_stats().items()}
-    if optimal:
-        primal = np.asarray(solution.get_primal_solution(), dtype=np.float64)
-        row_dual = np.asarray(solution.get_dual_solution(), dtype=np.float64)
-        reduced_cost = np.asarray(solution.get_reduced_cost(), dtype=np.float64)
-        primal_objective = float(solution.get_primal_objective())
-        dual_objective = float(solution.get_dual_objective())
+    row_dual = None
+    if solution_vectors_available:
+        candidate_primal = np.asarray(solution.get_primal_solution(), dtype=np.float64)
+        candidate_row_dual = np.asarray(solution.get_dual_solution(), dtype=np.float64)
+        candidate_reduced_cost = np.asarray(solution.get_reduced_cost(), dtype=np.float64)
+        candidate_primal_objective = float(solution.get_primal_objective())
+        candidate_dual_objective = float(solution.get_dual_objective())
+        vector_shapes_valid = bool(
+            candidate_primal.shape == (model.num_columns,)
+            and candidate_row_dual.shape == (native_constraint_count,)
+            and candidate_reduced_cost.shape == (model.num_columns,)
+        )
+        vectors_finite = bool(
+            vector_shapes_valid
+            and np.all(np.isfinite(candidate_primal))
+            and np.all(np.isfinite(candidate_row_dual))
+            and np.all(np.isfinite(candidate_reduced_cost))
+            and isfinite(candidate_primal_objective)
+            and isfinite(candidate_dual_objective)
+        )
+        if vectors_finite:
+            primal = candidate_primal
+            row_dual = candidate_row_dual
+            reduced_cost = candidate_reduced_cost
+            primal_objective = candidate_primal_objective
+            dual_objective = candidate_dual_objective
+        else:
+            solution_vectors_available = False
+            dual_certificate = {
+                "passed": False,
+                "primal_feasible": False,
+                "dual_feasible": False,
+                "reason": "cuOpt returned missing, malformed, or nonfinite LP vectors",
+            }
+    if solution_vectors_available and primal is not None and row_dual is not None:
         canonical_values = primal * column_scale
         offsets = np.asarray(data_model.get_constraint_matrix_offsets(), dtype=np.int64)
         indices = np.asarray(data_model.get_constraint_matrix_indices(), dtype=np.int32)
@@ -587,6 +704,8 @@ def solve_cuopt_continuous_pdlp(
         primal_objective=primal_objective,
         dual_objective=dual_objective,
         values=canonical_values,
+        native_primal=primal,
+        native_row_dual=row_dual,
         solve_time_seconds=float(solution.get_solve_time()),
         statistics={
             "cuopt_version": str(getattr(cuopt, "__version__", "unknown")),
@@ -615,5 +734,10 @@ def solve_cuopt_continuous_pdlp(
             "native_log_branch_and_bound_markers_absent": no_branch_and_bound,
             "native_log_sha256": hashlib.sha256(native_log.encode("utf-8")).hexdigest(),
             "native_log_bytes": len(native_log.encode("utf-8")),
+            "solution_vectors_available": solution_vectors_available,
+            "solution_vectors_retrieved_on_nonoptimal_status": bool(
+                solution_vectors_available and not optimal
+            ),
+            "warm_start": warm_start_audit,
         },
     )

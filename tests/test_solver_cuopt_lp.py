@@ -3,9 +3,11 @@ from __future__ import annotations
 import numpy as np
 from scipy import sparse
 
+from activsg_scopf.errors import ScopfError
 from activsg_scopf.network import NetworkData
 from activsg_scopf.solvers.cuopt_lp import (
     derive_rate_a_angle_bounds,
+    prepare_pdlp_warm_start,
     validate_numeric_lp_certificate,
 )
 
@@ -42,6 +44,15 @@ def test_numeric_lp_certificate_reconstructs_valid_minimization_dual() -> None:
     assert certificate["reconstructed_primal_objective"] == 0.5
     assert certificate["reconstructed_dual_objective"] == 0.5
     assert certificate["maximum_stationarity_residual"] == 0.0
+
+
+def test_numeric_lp_certificate_requires_reported_reconstructed_dual_agreement() -> None:
+    certificate = _certificate(reported_dual_objective=0.25)
+
+    assert certificate["passed"] is False
+    assert certificate["dual_feasible"] is True
+    assert certificate["reported_dual_objective_consistent"] is False
+    assert certificate["conservative_numerical_lower_bound"] > 0.49
 
 
 def test_numeric_lp_certificate_rejects_wrong_lower_row_dual_sign() -> None:
@@ -156,6 +167,40 @@ def test_numeric_lp_certificate_does_not_reconstruct_presolve_native_norm() -> N
 
     assert certificate["passed"] is True
     assert certificate["native_metrics_used_as_telemetry_only"] is True
+
+
+def test_pdlp_warm_start_zero_extends_new_constraint_rows() -> None:
+    primal, dual, audit = prepare_pdlp_warm_start(
+        initial_native_primal=np.asarray([0.25, 0.75]),
+        initial_native_row_dual=np.asarray([2.0, -3.0]),
+        num_columns=2,
+        num_constraints=4,
+        presolve=0,
+    )
+
+    np.testing.assert_array_equal(primal, np.asarray([0.25, 0.75]))
+    np.testing.assert_array_equal(dual, np.asarray([2.0, -3.0, 0.0, 0.0]))
+    assert audit["initial_dual_zero_extended_count"] == 2
+    assert audit["presolve_disabled"] is True
+
+
+def test_pdlp_warm_start_rejects_presolve_and_oversized_dual() -> None:
+    with np.testing.assert_raises_regex(ScopfError, "presolve=0"):
+        prepare_pdlp_warm_start(
+            initial_native_primal=np.asarray([0.0]),
+            initial_native_row_dual=None,
+            num_columns=1,
+            num_constraints=1,
+            presolve=-1,
+        )
+    with np.testing.assert_raises_regex(ScopfError, "invalid shape"):
+        prepare_pdlp_warm_start(
+            initial_native_primal=None,
+            initial_native_row_dual=np.asarray([1.0, 2.0]),
+            num_columns=1,
+            num_constraints=1,
+            presolve=0,
+        )
 
 
 def test_rate_a_angle_bounds_follow_shortest_reference_paths() -> None:
