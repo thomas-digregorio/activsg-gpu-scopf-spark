@@ -797,6 +797,7 @@ def run_gpu_lagrangian_experiment(
             save()
 
         payload["all_solved_region_count"] = len(all_region_records)
+        payload["solved_region_history"] = all_region_records
         payload["frontier_regions"] = [
             _region_record(frontier[region_id]) for region_id in sorted(frontier)
         ]
