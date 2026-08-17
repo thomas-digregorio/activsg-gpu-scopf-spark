@@ -855,7 +855,12 @@ def _run_phase_one_attempt(
         "phase_one_model": {
             "columns": phase_model.num_columns,
             "rows": phase_model.num_rows,
-            "maximum_violation_pu": float(runtime["phase_one_maximum_violation_pu"]),
+            "registered_maximum_violation_cap_pu": float(
+                runtime["phase_one_maximum_violation_pu"]
+            ),
+            "box_derived_violation_upper_bound_pu": float(
+                phase_model.column_upper[-1]
+            ),
         },
         "solver_budget_seconds": budget,
         "adapter_wall_time_seconds": time.perf_counter() - started,
@@ -1052,6 +1057,21 @@ def verify_lagrangian_certificate_payload(
                 config.runtime["phase_one_maximum_violation_pu"]
             ),
         )
+        recorded_phase_model = record["phase_one_model"]
+        if (
+            phase_model.num_columns != int(recorded_phase_model["columns"])
+            or phase_model.num_rows != int(recorded_phase_model["rows"])
+            or abs(
+                float(phase_model.column_upper[-1])
+                - float(
+                    recorded_phase_model[
+                        "box_derived_violation_upper_bound_pu"
+                    ]
+                )
+            )
+            > float(config.model["phase_one_replay_tolerance_pu"])
+        ):
+            raise ScopfError(f"Independent Phase-I model mismatch for region {region_id}")
         replayed_phase = replay_phase_one_certificate(
             phase_model, record["phase_one_certificate"]
         )

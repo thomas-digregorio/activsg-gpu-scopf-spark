@@ -15,6 +15,57 @@ from .errors import ScopfError
 FloatArray = npt.NDArray[np.float64]
 
 
+def sufficient_phase_one_violation_bound(
+    source: CanonicalMILP, *, base_mva: float
+) -> float:
+    """Return a finite box-derived rho bound that cannot cut off Phase I."""
+
+    if not isfinite(base_mva) or base_mva <= 0.0:
+        raise ScopfError("Phase-I bound derivation requires positive finite base MVA")
+    lower = np.asarray(source.column_lower, dtype=np.float64)
+    upper = np.asarray(source.column_upper, dtype=np.float64)
+    if not np.all(np.isfinite(lower)) or not np.all(np.isfinite(upper)):
+        raise ScopfError("Phase-I bound derivation requires finite source column bounds")
+    row_lower, row_upper = source.row_bound_arrays()
+    required = 0.0
+    for row in range(source.num_rows):
+        indices, values = source.row_entries(row)
+        coefficients = np.asarray(values, dtype=np.float64)
+        selected_lower = lower[np.asarray(indices, dtype=np.int64)]
+        selected_upper = upper[np.asarray(indices, dtype=np.int64)]
+        maximum_activity = float(
+            np.sum(
+                np.where(
+                    coefficients >= 0.0,
+                    coefficients * selected_upper,
+                    coefficients * selected_lower,
+                )
+            )
+        )
+        minimum_activity = float(
+            np.sum(
+                np.where(
+                    coefficients >= 0.0,
+                    coefficients * selected_lower,
+                    coefficients * selected_upper,
+                )
+            )
+        )
+        if isfinite(float(row_upper[row])):
+            required = max(
+                required,
+                (maximum_activity - float(row_upper[row])) / float(base_mva),
+            )
+        if isfinite(float(row_lower[row])):
+            required = max(
+                required,
+                (float(row_lower[row]) - minimum_activity) / float(base_mva),
+            )
+    if not isfinite(required):
+        raise ScopfError("Phase-I box-derived violation bound is nonfinite")
+    return max(1.0, float(np.nextafter(max(0.0, required), np.inf)))
+
+
 def build_phase_one_model(
     source: CanonicalMILP,
     *,
@@ -34,8 +85,13 @@ def build_phase_one_model(
         raise ScopfError("Phase-I maximum violation must be positive and finite")
     lower = np.asarray(source.column_lower, dtype=np.float64)
     upper = np.asarray(source.column_upper, dtype=np.float64)
-    if not np.all(np.isfinite(lower)) or not np.all(np.isfinite(upper)):
-        raise ScopfError("Phase-I dual replay requires finite source column bounds")
+    violation_upper = sufficient_phase_one_violation_bound(
+        source, base_mva=base_mva
+    )
+    if violation_upper > maximum_violation_pu:
+        raise ScopfError(
+            "Phase-I box-derived violation bound exceeds the registered safety cap"
+        )
 
     phase = CanonicalMILP()
     for name, lo, hi in zip(source.variable_names, lower, upper, strict=True):
@@ -44,7 +100,7 @@ def build_phase_one_model(
         "phase1_violation_pu",
         objective=1.0,
         lower=0.0,
-        upper=float(maximum_violation_pu),
+        upper=violation_upper,
     )
     row_lower, row_upper = source.row_bound_arrays()
     for row, source_name in enumerate(source.row_names):

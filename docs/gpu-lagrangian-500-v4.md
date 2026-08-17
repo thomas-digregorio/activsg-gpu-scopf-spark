@@ -37,6 +37,9 @@ box-dual lower bound, after a `1e-8` p.u. safety deduction, exceeds `1e-6`
 p.u. The complete dual vector, row identities, fixed-unit masks, and
 contingency identities are checkpointed and replayed from raw inputs on CPU.
 This is a numerical FP64 certificate, not an exact rational Farkas proof.
+The Phase-I violation variable receives a finite upper bound derived from the
+source model's variable box and row activities; `1e6` p.u. is only a fail-closed
+safety cap, not the submitted variable bound.
 
 If Phase I cannot certify the child, the tentative split is rolled back and
 the next deterministic generator is tried. A split enters the cover only when

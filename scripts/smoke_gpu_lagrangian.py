@@ -222,6 +222,7 @@ def main() -> None:
             "phase_one_conservative_lower_bound_pu": phase_replay[
                 "conservative_lower_bound_pu"
             ],
+            "phase_one_box_derived_upper_bound_pu": phase_model.column_upper[-1],
             "phase_one_prune_certified": phase_replay["prune_certified"],
         }
     )
