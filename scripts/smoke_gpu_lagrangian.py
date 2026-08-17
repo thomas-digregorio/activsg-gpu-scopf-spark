@@ -2,11 +2,18 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
+from activsg_scopf.config import load_config
 from activsg_scopf.lagrangian import (
     RegionMasks,
     canonical_row_duals,
     evaluate_lagrangian_bound,
     optimize_lagrangian_bound_cupy,
+)
+from activsg_scopf.lagrangian_experiment import (
+    _load_cpu_comparison,
+    validate_lagrangian_experiment_config,
 )
 from activsg_scopf.network import build_network
 from activsg_scopf.reduced import build_reduced_master
@@ -15,6 +22,9 @@ from tests.helpers import triangle_case
 
 
 def main() -> None:
+    config = load_config(Path("/workspace/configs/activsg500-gpu-lagrangian-v1.json"))
+    registration = validate_lagrangian_experiment_config(config)
+    comparison = _load_cpu_comparison(config, registration)
     case, _ = triangle_case()
     network = build_network(case)
     master = build_reduced_master(case, network)
@@ -96,6 +106,8 @@ def main() -> None:
             "cpu_raw_lower_bound": replay.raw_lower_bound,
             "gpu_cpu_difference": difference,
             "device_state_persistent": gpu["device_state_persistent_across_iterations"],
+            "cpu_comparison_objective": comparison["objective"],
+            "cpu_comparison_canonical_hash": comparison["canonical_json_sha256"],
         }
     )
 
