@@ -95,6 +95,10 @@ REGISTERED_EXPERIMENTS = {
         "tag": "experiment-500-gpu-lagrangian-v4",
         "policy": "gpu_pdlp_phase_one_pruning_plus_lagrangian_cover_v4",
     },
+    "activsg500-gpu-lagrangian-v5": {
+        "tag": "experiment-500-gpu-lagrangian-v5",
+        "policy": "gpu_pdlp_phase_one_pruning_plus_lagrangian_cover_v5",
+    },
 }
 V2_BUGFIX_CHANGE = {
     "comparison_baseline": "activsg500-gpu-lagrangian-v1",
@@ -124,6 +128,13 @@ V4_CONTROLLER_CHANGE = {
     "infeasible_leaf_gate": "replayable_gpu_phase_one_box_dual_certificate",
     "secure_incumbent": "serialize_and_independently_verify_before_bound_refinement",
     "portable_lodf_replay": "absolute_tolerance_1e-12",
+}
+V5_BUGFIX_CHANGE = {
+    "comparison_baseline": "activsg500-gpu-lagrangian-v4",
+    "phase_one_row_identity": "semantic_source_row_and_side_order_independent_v1",
+    "legacy_phase_one_replay": "ordered_hash_then_semantic_alignment",
+    "cleanup_audit_replay": "exact_proof_invariants_with_portable_fp64_dust_telemetry",
+    "gap_bookkeeping": "refresh_at_every_frontier_checkpoint",
 }
 
 
@@ -230,7 +241,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
     if benchmark.get("required_git_tag") != experiment["tag"]:
         raise ScopfError("GPU Lagrangian frozen tag changed")
     if (
-        config.benchmark_id.endswith(("-v2", "-v3", "-v4"))
+        config.benchmark_id.endswith(("-v2", "-v3", "-v4", "-v5"))
         and float(config.model.get("reduced_coefficient_zero_tolerance", -1.0)) != 1e-14
     ):
         raise ScopfError("GPU Lagrangian coefficient threshold changed")
@@ -254,6 +265,13 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
             raise ScopfError(
                 "GPU Lagrangian v4 controller identity changed: "
                 f"expected={V4_CONTROLLER_CHANGE}, observed={observed_change}"
+            )
+    if config.benchmark_id.endswith("-v5"):
+        observed_change = benchmark.get("bugfix_change")
+        if observed_change != V5_BUGFIX_CHANGE:
+            raise ScopfError(
+                "GPU Lagrangian v5 bugfix identity changed: "
+                f"expected={V5_BUGFIX_CHANGE}, observed={observed_change}"
             )
     profile = config.raw["platforms"].get("dgx_spark", {})
     required_profile = {
@@ -297,7 +315,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
                 "GPU Lagrangian v3 candidate policy changed: "
                 f"expected={required_runtime}, observed={observed_runtime}"
             )
-    if config.benchmark_id.endswith("-v4"):
+    if config.benchmark_id.endswith(("-v4", "-v5")):
         required_runtime = {
             "maximum_primal_candidate_seconds": 15.0,
             "maximum_primal_candidate_round_seconds": 5.0,
@@ -322,18 +340,20 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
         observed_runtime = {key: runtime.get(key) for key in required_runtime}
         if observed_runtime != required_runtime:
             raise ScopfError(
-                "GPU Lagrangian v4 bounded-region policy changed: "
+                "GPU Lagrangian v4/v5 bounded-region policy changed: "
                 f"expected={required_runtime}, observed={observed_runtime}"
             )
         if float(config.model.get("serialized_lodf_replay_tolerance", -1.0)) != 1e-12:
-            raise ScopfError("GPU Lagrangian v4 LODF replay tolerance changed")
+            raise ScopfError("GPU Lagrangian v4/v5 LODF replay tolerance changed")
         if (
             float(config.model.get("security_equivalence_replay_tolerance", -1.0))
             != 1e-12
         ):
-            raise ScopfError("GPU Lagrangian v4 security-row replay tolerance changed")
+            raise ScopfError(
+                "GPU Lagrangian v4/v5 security-row replay tolerance changed"
+            )
         if float(config.model.get("phase_one_replay_tolerance_pu", -1.0)) != 1e-10:
-            raise ScopfError("GPU Lagrangian v4 Phase-I replay tolerance changed")
+            raise ScopfError("GPU Lagrangian v4/v5 Phase-I replay tolerance changed")
     return {
         "benchmark": benchmark,
         "profile": profile,
@@ -1489,12 +1509,12 @@ def run_gpu_lagrangian_experiment(
         last_tried_commitment: np.ndarray | None = None
         candidate_policy = (
             PrimalCandidatePolicy.from_config(config)
-            if config.benchmark_id.endswith(("-v3", "-v4"))
+            if config.benchmark_id.endswith(("-v3", "-v4", "-v5"))
             else None
         )
         region_attempt_policy = (
             PrimalCandidatePolicy.from_config(config, scope="disjunctive_region")
-            if config.benchmark_id.endswith("-v4")
+            if config.benchmark_id.endswith(("-v4", "-v5"))
             else None
         )
         payload["primal_candidate_policy"] = (

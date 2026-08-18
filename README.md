@@ -83,7 +83,7 @@ activsg-scopf ingest --config configs\activsg10k.json --output work\activsg10k-i
 activsg-scopf benchmark --config configs\activsg10k.json --platform laptop_cpu --output results\activsg10k-laptop-cpu-official.json
 activsg-scopf benchmark --config configs\activsg10k-v2.json --platform laptop_cpu --output results\activsg10k-v2-laptop-cpu-official.json
 activsg-scopf benchmark --config configs\activsg10k-v3.json --platform laptop_cpu --output results\activsg10k-v3-laptop-cpu-official.json
-activsg-scopf gpu-lagrangian-experiment --config configs\activsg500-gpu-lagrangian-v4.json --output results\experiments\activsg500-gpu-lagrangian-v4-dgx-spark.json
+activsg-scopf gpu-lagrangian-experiment --config configs\activsg500-gpu-lagrangian-v5.json --output results\experiments\activsg500-gpu-lagrangian-v5-dgx-spark.json
 ```
 
 `solve` is a bounded nonofficial end-to-end run. `benchmark` is the registered
@@ -93,7 +93,7 @@ replacement even after failure.
 
 ## ACTIVSg500 GPU Lagrangian/disjunctive experiment
 
-The registered `activsg500-gpu-lagrangian-v4` experiment uses no integer solver and
+The registered `activsg500-gpu-lagrangian-v5` experiment uses no integer solver and
 no CPU branch-and-bound. cuOpt PDLP generates continuous relaxation and
 fixed-commitment dispatch solutions; CuPy performs exhaustive contingency
 screening and a persistent FP64 projected-supergradient Lagrangian loop over
@@ -105,11 +105,14 @@ cuOpt representative while retaining every pair identity. A stalled child gets
 one cold restart and then a GPU Phase-I attempt; it can be pruned only with a
 serialized box-dual infeasibility certificate that independently replays.
 
-The only authorized v4 full-model execution is the one registered DGX Spark run
+The authorized v5 full-model execution is one registered DGX Spark run
 with a 600-second end-to-end deadline. Development uses tiny fixtures only. Its
 laptop comparison is the already-published, hashed HiGHS `1e-3` result; no new
 laptop full-model solve is part of this experiment. See the complete
-[v4 controller and acceptance contract](docs/gpu-lagrangian-500-v4.md). The
+[v5 correction and acceptance contract](docs/gpu-lagrangian-500-v5.md). The
+[v4 result report](reports/activsg500-gpu-lagrangian-v4/README.md) preserves the
+verified incumbent, valid two-leaf bound evidence, and row-identity verifier
+failure without relabeling that run as successful. The
 [v3 result report](reports/activsg500-gpu-lagrangian-v3/README.md) preserves the
 bounded-candidate run and its durable root/incumbent evidence. The
 [v2 failure report](reports/activsg500-gpu-lagrangian-v2/README.md) preserves

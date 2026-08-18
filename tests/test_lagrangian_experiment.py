@@ -101,6 +101,30 @@ def test_registered_v4_phase_one_controller_config_is_fail_closed() -> None:
         validate_lagrangian_experiment_config(config)
 
 
+def test_registered_v5_replay_bugfix_config_is_fail_closed() -> None:
+    v4 = load_config(ROOT / "configs" / "activsg500-gpu-lagrangian-v4.json")
+    v5 = load_config(ROOT / "configs" / "activsg500-gpu-lagrangian-v5.json")
+    registration = validate_lagrangian_experiment_config(v5)
+
+    assert v5.benchmark_id == "activsg500-gpu-lagrangian-v5"
+    assert registration["benchmark"]["required_git_tag"] == (
+        "experiment-500-gpu-lagrangian-v5"
+    )
+    assert v5.raw["raw_inputs"] == v4.raw["raw_inputs"]
+    assert v5.model == v4.model
+    assert v5.runtime == v4.runtime
+    assert v5.raw["platforms"] == v4.raw["platforms"]
+    assert registration["benchmark"]["bugfix_change"]["phase_one_row_identity"] == (
+        "semantic_source_row_and_side_order_independent_v1"
+    )
+    assert registration["benchmark"]["bugfix_change"]["gap_bookkeeping"] == (
+        "refresh_at_every_frontier_checkpoint"
+    )
+    v5.raw["benchmark"]["bugfix_change"]["gap_bookkeeping"] = "changed"
+    with pytest.raises(ScopfError, match="v5 bugfix identity changed"):
+        validate_lagrangian_experiment_config(v5)
+
+
 def test_lagrangian_config_rejects_non_500_identity() -> None:
     config = load_config(ROOT / "configs" / "activsg500-gpu-lagrangian-v1.json")
     config.raw["benchmark"]["id"] = "activsg2000-gpu-lagrangian-v1"
