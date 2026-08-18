@@ -4,17 +4,20 @@ import numpy as np
 import pytest
 
 from activsg_scopf import lagrangian_experiment as experiment_module
+from activsg_scopf.canonical import CanonicalMILP
 from activsg_scopf.config import load_config
 from activsg_scopf.deadline import Deadline
 from activsg_scopf.errors import PrimalCandidateRejected, ScopfError
 from activsg_scopf.lagrangian import RegionMasks
 from activsg_scopf.lagrangian_experiment import (
     ACTIVSG2000_EXPERIMENT_ID,
+    ACTIVSG2000_V4_EXPERIMENT_ID,
     EXPERIMENT_ID,
     EXPERIMENT_TAG,
     PrimalCandidatePolicy,
     RegionAttemptRejected,
     _load_cpu_comparison,
+    _map_phase_one_dual_to_source_native,
     _prepare_region_master,
     _region_pmin_pmax_capacity_gate,
     _relative_gap,
@@ -89,17 +92,13 @@ def test_registered_v4_phase_one_controller_config_is_fail_closed() -> None:
     config = load_config(ROOT / "configs" / "activsg500-gpu-lagrangian-v4.json")
     registration = validate_lagrangian_experiment_config(config)
     assert config.benchmark_id == "activsg500-gpu-lagrangian-v4"
-    assert registration["benchmark"]["required_git_tag"] == (
-        "experiment-500-gpu-lagrangian-v4"
-    )
+    assert registration["benchmark"]["required_git_tag"] == ("experiment-500-gpu-lagrangian-v4")
     assert registration["benchmark"]["controller_change"]["infeasible_leaf_gate"] == (
         "replayable_gpu_phase_one_box_dual_certificate"
     )
     assert config.model["serialized_lodf_replay_tolerance"] == 1e-12
     candidate = PrimalCandidatePolicy.from_config(config)
-    region = PrimalCandidatePolicy.from_config(
-        config, scope="disjunctive_region"
-    )
+    region = PrimalCandidatePolicy.from_config(config, scope="disjunctive_region")
     assert candidate.cold_restart_attempts == 1
     assert region.total_seconds == 15.0
     assert region.cold_restart_attempts == 1
@@ -114,9 +113,7 @@ def test_registered_v5_replay_bugfix_config_is_fail_closed() -> None:
     registration = validate_lagrangian_experiment_config(v5)
 
     assert v5.benchmark_id == "activsg500-gpu-lagrangian-v5"
-    assert registration["benchmark"]["required_git_tag"] == (
-        "experiment-500-gpu-lagrangian-v5"
-    )
+    assert registration["benchmark"]["required_git_tag"] == ("experiment-500-gpu-lagrangian-v5")
     assert v5.raw["raw_inputs"] == v4.raw["raw_inputs"]
     assert v5.model == v4.model
     assert v5.runtime == v4.runtime
@@ -138,9 +135,7 @@ def test_registered_v6_phase_one_first_config_is_fail_closed() -> None:
     registration = validate_lagrangian_experiment_config(v6)
 
     assert v6.benchmark_id == "activsg500-gpu-lagrangian-v6"
-    assert registration["benchmark"]["required_git_tag"] == (
-        "experiment-500-gpu-lagrangian-v6"
-    )
+    assert registration["benchmark"]["required_git_tag"] == ("experiment-500-gpu-lagrangian-v6")
     assert v6.raw["raw_inputs"] == v5.raw["raw_inputs"]
     assert v6.model == v5.model
     assert v6.raw["platforms"] == v5.raw["platforms"]
@@ -161,9 +156,7 @@ def test_registered_v7_source_row_mapping_bugfix_is_fail_closed() -> None:
     registration = validate_lagrangian_experiment_config(v7)
 
     assert v7.benchmark_id == "activsg500-gpu-lagrangian-v7"
-    assert registration["benchmark"]["required_git_tag"] == (
-        "experiment-500-gpu-lagrangian-v7"
-    )
+    assert registration["benchmark"]["required_git_tag"] == ("experiment-500-gpu-lagrangian-v7")
     assert v7.raw["raw_inputs"] == v6.raw["raw_inputs"]
     assert v7.model == v6.model
     assert v7.runtime == v6.runtime
@@ -186,9 +179,7 @@ def test_registered_activsg2000_lagrangian_config_is_fail_closed() -> None:
 
     assert config.benchmark_id == ACTIVSG2000_EXPERIMENT_ID
     assert config.case_name == "ACTIVSg2000"
-    assert registration["benchmark"]["required_git_tag"] == (
-        "experiment-2000-gpu-lagrangian-v1"
-    )
+    assert registration["benchmark"]["required_git_tag"] == ("experiment-2000-gpu-lagrangian-v1")
     assert config.runtime["deadline_seconds"] == 1800.0
     assert config.runtime["precheck_phase_one_time_limit_seconds"] == 10.0
     assert config.model["mip_relative_gap_tolerance"] == 1e-3
@@ -198,13 +189,54 @@ def test_registered_activsg2000_lagrangian_config_is_fail_closed() -> None:
     comparison = _load_cpu_comparison(config, registration)
     assert comparison["status"] == "optimal_verified"
     assert comparison["objective"] == pytest.approx(1133479.3855011363)
-    assert comparison["total_wall_time_seconds"] == pytest.approx(
-        1007.3702709000063
-    )
+    assert comparison["total_wall_time_seconds"] == pytest.approx(1007.3702709000063)
 
     config.raw["runtime"]["deadline_seconds"] = 1801.0
     with pytest.raises(ScopfError, match="deadline changed"):
         validate_lagrangian_experiment_config(config)
+
+
+def test_registered_activsg2000_v4_utilization_config_is_fail_closed() -> None:
+    config = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v4.json")
+    registration = validate_lagrangian_experiment_config(config)
+
+    assert config.benchmark_id == ACTIVSG2000_V4_EXPERIMENT_ID
+    assert registration["benchmark"]["required_git_tag"] == ("experiment-2000-gpu-lagrangian-v4")
+    assert config.raw["platforms"]["dgx_spark"]["native_scaling_mode"] == (
+        "power_system_equilibrated_v2"
+    )
+    assert config.runtime["maximum_primal_repairs"] == 12
+    assert config.runtime["parallel_child_solver_contexts"] == 2
+    assert registration["benchmark"]["utilization_change"]["exact_source_pmin_changed"] is False
+    config.raw["runtime"]["network_repair_pair_search_limit"] = 31
+    with pytest.raises(ScopfError, match="runtime policy changed"):
+        validate_lagrangian_experiment_config(config)
+
+
+def test_phase_one_native_dual_maps_lower_upper_and_equality_rows() -> None:
+    source = CanonicalMILP()
+    x = source.add_variable("x", lower=-10.0, upper=10.0)
+    source.add_row("equal", {x: 1.0}, lower=0.0, upper=0.0)
+    source.add_row("ranged", {x: 1.0}, lower=-1.0, upper=1.0)
+    source.add_row("lower_only", {x: 1.0}, lower=-2.0)
+    source.add_row("upper_only", {x: 1.0}, upper=2.0)
+    phase = experiment_module.build_phase_one_model(
+        source, base_mva=100.0, maximum_violation_pu=1e6
+    )
+    phase_dual = np.asarray([-2.0, -3.0, -4.0, -5.0, -6.0, -7.0])
+
+    mapped, audit = _map_phase_one_dual_to_source_native(
+        phase,
+        source,
+        phase_dual,
+        scaling_mode="power_system_equilibrated_v2",
+        base_mva=100.0,
+    )
+
+    np.testing.assert_allclose(mapped, np.asarray([-0.01, 0.04, -0.05, 0.12, -0.14]))
+    assert audit["mapped_phase_side_count"] == 6
+    assert audit["warm_start_only"] is True
+    assert audit["certificate_claimed"] is False
 
 
 def test_v6_exact_pmin_pmax_capacity_gate_precedes_phase_one() -> None:
@@ -386,13 +418,9 @@ def test_v6_zero_phase_one_primal_warm_starts_cost_lp_without_dual(
         initial_warm_start_origin="phase_one_zero_violation_primal_v1",
     )
     assert len(solve_calls) == 2
-    assert np.array_equal(
-        solve_calls[1]["initial_native_primal"], phase.source_native_primal
-    )
+    assert np.array_equal(solve_calls[1]["initial_native_primal"], phase.source_native_primal)
     assert solve_calls[1]["initial_native_row_dual"] is None
-    assert solved.rounds[0]["initial_warm_start_origin"] == (
-        "phase_one_zero_violation_primal_v1"
-    )
+    assert solved.rounds[0]["initial_warm_start_origin"] == ("phase_one_zero_violation_primal_v1")
 
 
 def test_lagrangian_config_rejects_case_mismatched_identity() -> None:
@@ -821,9 +849,7 @@ def test_v4_region_uses_warm_attempt_then_exactly_one_cold_restart(
             initial_pairs=(),
             screener=OneViolation(),  # type: ignore[arg-type]
             checkpoint=lambda: None,
-            candidate_policy=PrimalCandidatePolicy.from_config(
-                config, scope="disjunctive_region"
-            ),
+            candidate_policy=PrimalCandidatePolicy.from_config(config, scope="disjunctive_region"),
         )
     assert len(solve_calls) == 3
     assert solve_calls[1]["initial_native_primal"] is not None

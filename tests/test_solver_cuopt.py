@@ -9,6 +9,7 @@ from activsg_scopf.solvers.cuopt import (
     FULL_MIP_START,
     INTEGER_ONLY_MIP_START,
     NO_NATIVE_SCALING,
+    POWER_SYSTEM_EQUILIBRATED_SCALING,
     POWER_SYSTEM_PER_UNIT_SCALING,
     IncumbentCommitmentTrace,
     _callback_metric,
@@ -40,9 +41,7 @@ def test_callback_metric_discards_cuopt_no_bound_sentinel() -> None:
 
 
 def test_incumbent_commitment_trace_compresses_stable_callbacks() -> None:
-    trace = IncumbentCommitmentTrace(
-        np.asarray([0, 2, 4]), ["u_g0000", "u_g0001", "u_g0002"]
-    )
+    trace = IncumbentCommitmentTrace(np.asarray([0, 2, 4]), ["u_g0000", "u_g0001", "u_g0002"])
     trace.record_callback(
         np.asarray([1.0, 0.0, 1.0]),
         elapsed_seconds=1.0,
@@ -173,10 +172,7 @@ def test_feasible_found_with_finite_bound_certifies_requested_gap() -> None:
     assert certificate["calculated_gap_meets_request"] is True
     assert certificate["native_residuals_meet_tolerance"] is True
     json.dumps(certificate)
-    assert abs(
-        float(certificate["calculated_mip_relative_gap"])
-        - 0.0001255739331724089
-    ) < 1e-14
+    assert abs(float(certificate["calculated_mip_relative_gap"]) - 0.0001255739331724089) < 1e-14
 
 
 def test_gap_certificate_fails_closed_without_requested_bound_gap() -> None:
@@ -331,24 +327,18 @@ def test_native_free_column_split_rejects_free_integer_column() -> None:
 def test_native_elimination_selects_fixed_and_unused_zero_cost_columns() -> None:
     model = CanonicalMILP()
     unused = model.add_variable("unused", lower=0.0, upper=1.0, integer=True)
-    fixed = model.add_variable(
-        "fixed", objective=3.0, lower=2.0, upper=2.0
-    )
+    fixed = model.add_variable("fixed", objective=3.0, lower=2.0, upper=2.0)
     active = model.add_variable("active", lower=0.0, upper=5.0)
     model.add_row("balance", {fixed: 1.0, active: 1.0}, lower=4.0, upper=4.0)
 
-    np.testing.assert_array_equal(
-        fixed_or_unused_columns(model), np.asarray([unused, fixed])
-    )
+    np.testing.assert_array_equal(fixed_or_unused_columns(model), np.asarray([unused, fixed]))
 
 
 def _scaling_model() -> CanonicalMILP:
     model = CanonicalMILP()
     u = model.add_variable("u_g0", lower=0.0, upper=1.0, integer=True)
     pg = model.add_variable("pg_g0", objective=20.0, lower=0.0, upper=100.0)
-    segment = model.add_variable(
-        "pseg_g0_s0", objective=5.0, lower=0.0, upper=25.0
-    )
+    segment = model.add_variable("pseg_g0_s0", objective=5.0, lower=0.0, upper=25.0)
     theta = model.add_variable("theta_b0", lower=-np.pi, upper=np.pi)
     flow = model.add_variable("flow_l0", lower=-200.0, upper=200.0)
     model.add_row(
@@ -357,12 +347,8 @@ def _scaling_model() -> CanonicalMILP:
         lower=0.0,
         upper=0.0,
     )
-    model.add_row(
-        "nodal_balance_b0", {pg: 1.0, flow: -1.0}, lower=50.0, upper=50.0
-    )
-    model.add_row(
-        "dc_flow_l0", {flow: 1.0, theta: -500.0}, lower=0.0, upper=0.0
-    )
+    model.add_row("nodal_balance_b0", {pg: 1.0, flow: -1.0}, lower=50.0, upper=50.0)
+    model.add_row("dc_flow_l0", {flow: 1.0, theta: -500.0}, lower=0.0, upper=0.0)
     model.add_row("angle_upper_l0", {theta: 1.0}, upper=0.5)
     model.add_row("c0001_m0002_upper", {flow: 1.25}, upper=175.0)
     return model
@@ -371,9 +357,7 @@ def _scaling_model() -> CanonicalMILP:
 def test_no_native_scaling_is_identity() -> None:
     model = _scaling_model()
 
-    column_scale, row_scale = native_scaling_vectors(
-        model, mode=NO_NATIVE_SCALING, base_mva=100.0
-    )
+    column_scale, row_scale = native_scaling_vectors(model, mode=NO_NATIVE_SCALING, base_mva=100.0)
 
     np.testing.assert_array_equal(column_scale, np.ones(model.num_columns))
     np.testing.assert_array_equal(row_scale, np.ones(model.num_rows))
@@ -385,12 +369,8 @@ def test_power_system_native_scaling_is_exact_diagonal_reformulation() -> None:
         model, mode=POWER_SYSTEM_PER_UNIT_SCALING, base_mva=100.0
     )
 
-    np.testing.assert_array_equal(
-        column_scale, np.asarray([1.0, 100.0, 100.0, 1.0, 100.0])
-    )
-    np.testing.assert_allclose(
-        row_scale, np.asarray([0.01, 0.01, 0.002, 1.0, 0.01])
-    )
+    np.testing.assert_array_equal(column_scale, np.asarray([1.0, 100.0, 100.0, 1.0, 100.0]))
+    np.testing.assert_allclose(row_scale, np.asarray([0.01, 0.01, 0.002, 1.0, 0.01]))
 
     canonical_values = np.asarray([1.0, 50.0, 40.0, 0.1, 50.0])
     native_values = canonical_values / column_scale
@@ -403,9 +383,36 @@ def test_power_system_native_scaling_is_exact_diagonal_reformulation() -> None:
         rtol=0.0,
         atol=1e-14,
     )
-    assert float((objective * column_scale) @ native_values) == float(
-        objective @ canonical_values
+    assert float((objective * column_scale) @ native_values) == float(objective @ canonical_values)
+
+
+def test_equilibrated_power_system_scaling_normalizes_each_native_row() -> None:
+    model = _scaling_model()
+    column_scale, row_scale = native_scaling_vectors(
+        model, mode=POWER_SYSTEM_EQUILIBRATED_SCALING, base_mva=100.0
     )
+
+    np.testing.assert_array_equal(column_scale, np.asarray([1.0, 100.0, 100.0, 1.0, 100.0]))
+    matrix = model.matrix_csr().multiply(column_scale).multiply(row_scale[:, None])
+    lower, upper = model.row_bound_arrays()
+    for row in range(model.num_rows):
+        values = np.abs(matrix.getrow(row).data).tolist()
+        values.extend(
+            abs(float(bound) * row_scale[row])
+            for bound in (lower[row], upper[row])
+            if np.isfinite(bound)
+        )
+        assert max(values) == pytest.approx(1.0)
+
+    canonical_values = np.asarray([1.0, 50.0, 40.0, 0.1, 50.0])
+    audit = native_scaling_audit(
+        model,
+        canonical_values,
+        mode=POWER_SYSTEM_EQUILIBRATED_SCALING,
+        base_mva=100.0,
+    )
+    assert audit["maximum_native_activity_identity_error"] < 1e-12
+    assert audit["maximum_canonicalized_row_violation_identity_error"] < 1e-12
 
 
 def test_power_system_native_scaling_rejects_nonpositive_base_mva() -> None:
@@ -432,7 +439,4 @@ def test_power_system_native_scaling_audit_reports_equivalence() -> None:
     assert audit["maximum_canonicalized_row_violation_identity_error"] < 1e-12
     assert audit["maximum_value_round_trip_error"] == 0.0
     assert audit["objective_identity_error"] == 0.0
-    assert (
-        audit["native_matrix_coefficients"]["ratio"]
-        < audit["raw_matrix_coefficients"]["ratio"]
-    )
+    assert audit["native_matrix_coefficients"]["ratio"] < audit["raw_matrix_coefficients"]["ratio"]

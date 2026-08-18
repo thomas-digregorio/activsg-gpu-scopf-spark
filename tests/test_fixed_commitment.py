@@ -1,3 +1,4 @@
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -17,11 +18,13 @@ from activsg_scopf.lagrangian_experiment import (
     ACTIVSG2000_V3_EXPERIMENT_ID,
     PrimalCandidatePolicy,
     RegionAttemptRejected,
+    _network_feasible_commitment_repairs,
     _prepare_region_master,
     _solve_fixed_commitment_feasibility,
     validate_lagrangian_experiment_config,
 )
 from activsg_scopf.network import build_contingency_catalog, build_network
+from activsg_scopf.reduced import CouplingRow, fix_commitments
 from activsg_scopf.screening import ContingencyScreener
 from activsg_scopf.solvers.cuopt import native_scaling_vectors
 from activsg_scopf.solvers.cuopt_lp import ContinuousSolveResult
@@ -58,16 +61,10 @@ def test_fixed_commitment_projection_lifts_exact_pmin_and_pwl_segments() -> None
     assert lifted[master.index.commitment_by_generator[0]] == 1.0
     assert lifted[master.index.dispatch_by_generator[0]] == 62.0
     segments = np.asarray(
-        [
-            lifted[column]
-            for column in master.index.segments_by_generator[0]
-            if column is not None
-        ]
+        [lifted[column] for column in master.index.segments_by_generator[0] if column is not None]
     )
     assert np.sum(segments) == 37.0
-    assert projection.validate_lift(
-        np.asarray([62.0]), tolerance_mw=1e-10
-    )["passed"]
+    assert projection.validate_lift(np.asarray([62.0]), tolerance_mw=1e-10)["passed"]
 
 
 def test_registered_activsg2000_v2_feasibility_fix_is_fail_closed() -> None:
@@ -75,13 +72,9 @@ def test_registered_activsg2000_v2_feasibility_fix_is_fail_closed() -> None:
     registration = validate_lagrangian_experiment_config(config)
 
     assert config.benchmark_id == ACTIVSG2000_V2_EXPERIMENT_ID
-    assert registration["benchmark"]["required_git_tag"] == (
-        "experiment-2000-gpu-lagrangian-v2"
-    )
+    assert registration["benchmark"]["required_git_tag"] == ("experiment-2000-gpu-lagrangian-v2")
     fix = registration["benchmark"]["feasibility_fix"]
-    assert fix["exact_source_pmin_pmax"] == (
-        "retained_without_clipping_relaxation_or_replacement"
-    )
+    assert fix["exact_source_pmin_pmax"] == ("retained_without_clipping_relaxation_or_replacement")
     assert fix["cpu_commitment_or_dispatch_seeded"] is False
     assert config.runtime["deadline_seconds"] == 1800.0
 
@@ -106,9 +99,7 @@ def test_constant_coupling_violation_rejects_only_fixed_candidate(
     monkeypatch.setattr(
         experiment_module,
         "solve_cuopt_continuous_pdlp",
-        lambda *_args, **_kwargs: pytest.fail(
-            "constant-row candidate rejection must precede PDLP"
-        ),
+        lambda *_args, **_kwargs: pytest.fail("constant-row candidate rejection must precede PDLP"),
     )
     catalog = build_contingency_catalog(case, network, table)
     with pytest.raises(RegionAttemptRejected) as rejected:
@@ -132,14 +123,68 @@ def test_constant_coupling_violation_rejects_only_fixed_candidate(
     assert precheck["full_model_infeasibility_claimed"] is False
 
 
+def test_network_aware_repair_turns_off_fixed_output_row_trigger() -> None:
+    config = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v2.json")
+    original, _ = triangle_case()
+    gen = original.gen.copy()
+    gen[1, 7] = 1.0
+    gen[1, 8] = 10.0
+    gen[1, 9] = 10.0
+    case = replace(original, gen=gen)
+    network = build_network(case)
+    masks = RegionMasks.root(2)
+    master = _prepare_region_master(
+        case=case,
+        network=network,
+        config=config,
+        masks=masks,
+        initial_pairs=(),
+    )
+    row_index = master.canonical.add_row(
+        "synthetic_constant_security_upper",
+        {master.index.dispatch_by_generator[1]: 1.0},
+        upper=9.0,
+    )
+    master.coupling_rows.append(
+        CouplingRow(
+            row_index=row_index,
+            row_name="synthetic_constant_security_upper",
+            rhs=9.0,
+            generator_coefficients=np.asarray([0.0, 1.0]),
+            bus_coefficients=np.zeros(3),
+            kind="test_security",
+        )
+    )
+    candidate = np.asarray([1, 1], dtype=np.int8)
+    fix_commitments(master, candidate == 0, candidate == 1)
+
+    repairs = _network_feasible_commitment_repairs(
+        case=case,
+        master=master,
+        commitment=candidate,
+        masks=masks,
+        violated_row_name="synthetic_constant_security_upper",
+        demand_mw=60.0,
+        on_values=np.asarray([0.0, 100.0]),
+        maximum_repairs=4,
+        pair_search_limit=8,
+        tolerance_mw=1e-4,
+    )
+
+    assert len(repairs) == 1
+    np.testing.assert_array_equal(repairs[0].commitment, np.asarray([1, 0]))
+    assert repairs[0].audit["turned_off_generator_source_rows"] == [2]
+    assert repairs[0].audit["repaired_row_shortfall_mw"] == 0.0
+    assert repairs[0].audit["capacity_shortfall_mw"] == 0.0
+    assert repairs[0].audit["exact_source_pmin_pmax_retained"] is True
+
+
 def test_registered_activsg2000_v3_candidate_rejection_fix_is_fail_closed() -> None:
     config = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v3.json")
     registration = validate_lagrangian_experiment_config(config)
 
     assert config.benchmark_id == ACTIVSG2000_V3_EXPERIMENT_ID
-    assert registration["benchmark"]["required_git_tag"] == (
-        "experiment-2000-gpu-lagrangian-v3"
-    )
+    assert registration["benchmark"]["required_git_tag"] == ("experiment-2000-gpu-lagrangian-v3")
     fix = registration["benchmark"]["candidate_rejection_fix"]
     assert fix["constant_coupling_row_result"] == (
         "reject_only_the_fixed_commitment_candidate_before_pdlp"
@@ -148,9 +193,7 @@ def test_registered_activsg2000_v3_candidate_rejection_fix_is_fail_closed() -> N
     assert fix["continue_candidate_queue"] is True
     assert config.runtime["deadline_seconds"] == 1800.0
 
-    config.raw["benchmark"]["candidate_rejection_fix"][
-        "continue_candidate_queue"
-    ] = False
+    config.raw["benchmark"]["candidate_rejection_fix"]["continue_candidate_queue"] = False
     with pytest.raises(ScopfError, match="candidate-rejection identity changed"):
         validate_lagrangian_experiment_config(config)
 
@@ -189,9 +232,7 @@ def test_projected_phase_one_returns_lifted_secure_fixture_dispatch(
             },
         )
 
-    monkeypatch.setattr(
-        experiment_module, "solve_cuopt_continuous_pdlp", fake_solve
-    )
+    monkeypatch.setattr(experiment_module, "solve_cuopt_continuous_pdlp", fake_solve)
     result = _solve_fixed_commitment_feasibility(
         region_id="fixture",
         commitment=np.asarray([1], dtype=np.int8),

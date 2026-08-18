@@ -29,8 +29,13 @@ SUPPORTED_MIP_START_MODES = frozenset(
 )
 NO_NATIVE_SCALING = "none"
 POWER_SYSTEM_PER_UNIT_SCALING = "power_system_per_unit_v1"
+POWER_SYSTEM_EQUILIBRATED_SCALING = "power_system_equilibrated_v2"
 SUPPORTED_NATIVE_SCALING_MODES = frozenset(
-    {NO_NATIVE_SCALING, POWER_SYSTEM_PER_UNIT_SCALING}
+    {
+        NO_NATIVE_SCALING,
+        POWER_SYSTEM_PER_UNIT_SCALING,
+        POWER_SYSTEM_EQUILIBRATED_SCALING,
+    }
 )
 MIP_START_NATIVE_POLICY = "presolve_off_explicit_free_split_readback_v2"
 MIP_START_REJECTION_TEXT = "Error cannot add the provided initial solution!"
@@ -579,6 +584,25 @@ def native_scaling_vectors(
             row_scale[row] = 1.0 / max(theta_coefficients)
         else:
             row_scale[row] = 1.0 / float(base_mva)
+    if mode == POWER_SYSTEM_EQUILIBRATED_SCALING:
+        row_lower, row_upper = model.row_bound_arrays()
+        for row in range(model.num_rows):
+            indices, coefficients = model.row_entries(row)
+            native_coefficients = [
+                abs(float(coefficient) * column_scale[index] * row_scale[row])
+                for index, coefficient in zip(indices, coefficients, strict=True)
+            ]
+            magnitudes = native_coefficients + [
+                abs(float(bound) * row_scale[row])
+                for bound in (row_lower[row], row_upper[row])
+                if np.isfinite(bound)
+            ]
+            maximum = max(magnitudes, default=0.0)
+            if maximum > 0.0:
+                # A positive diagonal row transformation is mathematically
+                # exact.  The broad cap avoids manufacturing extreme native
+                # coefficients from an unusually tiny but valid source row.
+                row_scale[row] *= float(np.clip(1.0 / maximum, 1e-6, 1e6))
     if (
         not np.all(np.isfinite(column_scale))
         or not np.all(column_scale > 0)
