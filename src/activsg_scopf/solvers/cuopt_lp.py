@@ -185,9 +185,7 @@ def prepare_pdlp_warm_start(
         "initial_primal_submitted": initial_native_primal is not None,
         "initial_dual_submitted": initial_native_row_dual is not None,
     }
-    warm_start_requested = (
-        initial_native_primal is not None or initial_native_row_dual is not None
-    )
+    warm_start_requested = initial_native_primal is not None or initial_native_row_dual is not None
     if warm_start_requested and int(presolve) != 0:
         raise ScopfError("cuOpt PDLP warm starts require presolve=0")
     warm_primal = None
@@ -209,9 +207,7 @@ def prepare_pdlp_warm_start(
         warm_dual[: supplied_dual.size] = supplied_dual
         audit["initial_dual_supplied_count"] = int(supplied_dual.size)
         audit["initial_dual_native_count"] = int(warm_dual.size)
-        audit["initial_dual_zero_extended_count"] = int(
-            warm_dual.size - supplied_dual.size
-        )
+        audit["initial_dual_zero_extended_count"] = int(warm_dual.size - supplied_dual.size)
         audit["initial_dual_sha256"] = hashlib.sha256(warm_dual.tobytes()).hexdigest()
     return warm_primal, warm_dual, audit
 
@@ -442,11 +438,17 @@ def solve_cuopt_continuous_pdlp(
     presolve: int = -1,
     initial_native_primal: np.ndarray | None = None,
     initial_native_row_dual: np.ndarray | None = None,
+    concurrent_solver_context: bool = False,
 ) -> ContinuousSolveResult:
     """Relax every integer column and solve the resulting LP using PDLP only."""
 
     if time_limit_seconds <= 0:
         raise ScopfError("cuOpt continuous solve requires a positive time limit")
+    if concurrent_solver_context and not log_to_console:
+        raise ScopfError(
+            "Concurrent cuOpt contexts require console logging because native "
+            "log_file is process-global"
+        )
     try:
         import cuopt
         from cuopt import linear_programming
@@ -561,11 +563,13 @@ def solve_cuopt_continuous_pdlp(
             f"requested={requested_parameters}, observed={readback}"
         )
 
-    with NamedTemporaryFile(
-        mode="w", prefix="activsg-cuopt-pdlp-lp-", suffix=".log", delete=False
-    ) as native_log_stream:
-        native_log_path = Path(native_log_stream.name)
-    settings.set_parameter("log_file", str(native_log_path))
+    native_log_path: Path | None = None
+    if not concurrent_solver_context:
+        with NamedTemporaryFile(
+            mode="w", prefix="activsg-cuopt-pdlp-lp-", suffix=".log", delete=False
+        ) as native_log_stream:
+            native_log_path = Path(native_log_stream.name)
+        settings.set_parameter("log_file", str(native_log_path))
     native_log = ""
     try:
         problem._to_data_model()
@@ -579,23 +583,30 @@ def solve_cuopt_continuous_pdlp(
         )
         if warm_primal is not None:
             data_model.set_initial_primal_solution(warm_primal)
-            observed_primal = np.asarray(
-                data_model.get_initial_primal_solution(), dtype=np.float64
-            )
+            observed_primal = np.asarray(data_model.get_initial_primal_solution(), dtype=np.float64)
             if not np.array_equal(observed_primal, warm_primal):
                 raise ScopfError("cuOpt PDLP initial primal readback mismatch")
         if warm_dual is not None:
             data_model.set_initial_dual_solution(warm_dual)
-            observed_dual = np.asarray(
-                data_model.get_initial_dual_solution(), dtype=np.float64
-            )
+            observed_dual = np.asarray(data_model.get_initial_dual_solution(), dtype=np.float64)
             if not np.array_equal(observed_dual, warm_dual):
                 raise ScopfError("cuOpt PDLP initial dual readback mismatch")
         solution = linear_programming.Solve(data_model, settings)
-        native_log = native_log_path.read_text(encoding="utf-8", errors="replace")
+        if native_log_path is not None:
+            native_log = native_log_path.read_text(encoding="utf-8", errors="replace")
     finally:
-        native_log_path.unlink(missing_ok=True)
-    native_log_audit = audit_cuopt_native_log(native_log)
+        if native_log_path is not None:
+            native_log_path.unlink(missing_ok=True)
+    native_log_audit = (
+        {
+            "available": False,
+            "reason": "console_only_for_threaded_concurrent_solver_context",
+            "per_context_file_capture_disabled": True,
+            "integer_solver_marker_scan_performed": False,
+        }
+        if concurrent_solver_context
+        else audit_cuopt_native_log(native_log)
+    )
     native_log_metrics = _pdlp_log_metrics(native_log)
     status_value = solution.get_termination_status()
     status = str(getattr(status_value, "name", status_value))
@@ -694,9 +705,13 @@ def solve_cuopt_continuous_pdlp(
 
     variable_types = _row_types(np.asarray(problem.model.get_variable_types()))
     branch_text = native_log.casefold()
-    no_branch_and_bound = not any(
-        marker in branch_text
-        for marker in ("branch-and-bound", "branch and bound", "mip node", "b&b")
+    no_branch_and_bound = (
+        None
+        if concurrent_solver_context
+        else not any(
+            marker in branch_text
+            for marker in ("branch-and-bound", "branch and bound", "mip node", "b&b")
+        )
     )
     return ContinuousSolveResult(
         status=status,
@@ -730,6 +745,13 @@ def solve_cuopt_continuous_pdlp(
             "primal_feasibility_tolerance": float(primal_feasibility_tolerance),
             "certificate_residual_tolerance": float(certificate_residual_tolerance),
             "native_log_audit": native_log_audit,
+            "concurrent_solver_context": bool(concurrent_solver_context),
+            "concurrent_context_proof": {
+                "method_readback_is_pdlp": readback["method"] == 1,
+                "native_integer_columns_zero": int(np.count_nonzero(variable_types == "I")) == 0,
+                "per_context_log_file_disabled": bool(concurrent_solver_context),
+                "console_logging_enabled": bool(log_to_console),
+            },
             "native_log_final_metrics": native_log_metrics,
             "native_log_branch_and_bound_markers_absent": no_branch_and_bound,
             "native_log_sha256": hashlib.sha256(native_log.encode("utf-8")).hexdigest(),

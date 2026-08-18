@@ -37,6 +37,7 @@ def solve_one(label: str, lower_bound: float) -> dict[str, Any]:
         log_to_console=True,
         per_constraint_residual=True,
         presolve=0,
+        concurrent_solver_context=True,
     )
     expected = 4096.0 * lower_bound
     objective_error = (
@@ -47,7 +48,9 @@ def solve_one(label: str, lower_bound: float) -> dict[str, Any]:
         and solved.statistics.get("solved_by_pdlp") is True
         and solved.values is not None
         and solved.native_row_dual is not None
-        and solved.statistics.get("native_log_branch_and_bound_markers_absent") is True
+        and solved.statistics.get("native_integer_columns") == 0
+        and solved.statistics.get("concurrent_context_proof", {}).get("method_readback_is_pdlp")
+        is True
         and solved.statistics.get("dual_certificate", {}).get("primal_feasible") is True
         and objective_error is not None
         and objective_error <= 1e-2

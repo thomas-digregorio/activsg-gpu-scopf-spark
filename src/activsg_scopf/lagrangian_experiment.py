@@ -7,9 +7,11 @@ import json
 import platform
 import subprocess
 import sys
+import threading
 import time
 from collections import deque
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -630,7 +632,10 @@ def _solve_summary(result: ContinuousSolveResult) -> dict[str, Any]:
         "dual_certificate_passed": certificate.get("passed"),
         "primal_feasible": certificate.get("primal_feasible"),
         "native_log_final_metrics": result.statistics.get("native_log_final_metrics"),
+        "native_log_audit": result.statistics.get("native_log_audit"),
         "native_log_sha256": result.statistics.get("native_log_sha256"),
+        "concurrent_solver_context": result.statistics.get("concurrent_solver_context"),
+        "concurrent_context_proof": result.statistics.get("concurrent_context_proof"),
         "native_lp_stats": result.statistics.get("lp_stats"),
         "termination_reason": result.statistics.get("termination_reason"),
         "warm_start": result.statistics.get("warm_start"),
@@ -741,6 +746,7 @@ def _solve_region(
     initial_native_primal: np.ndarray | None = None,
     initial_native_row_dual: np.ndarray | None = None,
     initial_warm_start_origin: str | None = None,
+    concurrent_solver_context: bool = False,
 ) -> SolvedRegion:
     region_started = time.perf_counter()
     profile = config.raw["platforms"]["dgx_spark"]
@@ -846,6 +852,7 @@ def _solve_region(
             presolve=int(profile["presolve"]),
             initial_native_primal=native_primal,
             initial_native_row_dual=native_dual,
+            concurrent_solver_context=concurrent_solver_context,
         )
         adapter_wall = time.perf_counter() - started
         round_record: dict[str, Any] = {
@@ -856,6 +863,7 @@ def _solve_region(
             "adapter_wall_time_seconds": adapter_wall,
             "solve": _solve_summary(last_solve),
             "cold_restart": cold_restart_active,
+            "concurrent_solver_context": concurrent_solver_context,
         }
         if round_number == 1 and initial_warm_start_origin is not None:
             round_record["initial_warm_start_origin"] = initial_warm_start_origin
@@ -2466,6 +2474,7 @@ def run_gpu_lagrangian_experiment(
         "pruned_regions": [],
         "phase_one_prechecks": [],
         "phase_one_fallback_attempts": [],
+        "parallel_child_batches": [],
         "frontier_regions": [],
         "primal_repairs": [],
         "secure_incumbent_checkpoint_history": [],
@@ -2656,6 +2665,38 @@ def run_gpu_lagrangian_experiment(
             candidate_policy.as_dict() if candidate_policy is not None else None
         )
         payload["primal_candidate_queue"] = []
+        payload["initial_commitment_candidate_pipeline"] = (
+            {
+                "enabled": True,
+                "order": [
+                    "exact_aggregate_pmin_pmax_capacity_repair",
+                    "exact_fixed_commitment_projection_precheck",
+                    "gpu_pdlp_phase_one",
+                    "exhaustive_cupy_contingency_screen",
+                    "exact_cost_lp",
+                ],
+                "network_aware_repair_after_constant_row_rejection": True,
+                "candidate_generation_is_not_feasibility_proof": True,
+                "exact_source_pmin_pmax_retained": True,
+            }
+            if config.benchmark_id == ACTIVSG2000_V4_EXPERIMENT_ID
+            else {"enabled": False}
+        )
+        payload["parallel_child_policy"] = (
+            {
+                "enabled": True,
+                "solver_contexts": int(config.runtime["parallel_child_solver_contexts"]),
+                "minimum_frontier_regions": int(
+                    config.runtime["parallel_child_minimum_frontier_regions"]
+                ),
+                "independent_cupy_screeners": True,
+                "native_log_capture": (
+                    "console_only_for_concurrent_contexts_file_backed_for_sequential_contexts"
+                ),
+            }
+            if config.benchmark_id == ACTIVSG2000_V4_EXPERIMENT_ID
+            else {"enabled": False}
+        )
         payload["disjunctive_region_attempt_policy"] = (
             region_attempt_policy.as_dict() if region_attempt_policy is not None else None
         )
@@ -3220,6 +3261,7 @@ def run_gpu_lagrangian_experiment(
             pruned_children: dict[str, dict[str, Any]] = {}
             tentative_outcomes: list[dict[str, Any]] = []
             split_failed = False
+            child_specs: list[dict[str, Any]] = []
             for child_id, child_masks in ((off_id, off_masks), (on_id, on_masks)):
                 child_initial_pairs = tuple(sorted(global_pairs.values()))
                 prepared_master: ReducedMaster | None = None
@@ -3294,32 +3336,137 @@ def run_gpu_lagrangian_experiment(
                             else "phase_one_zero_violation_primal_v1"
                         )
                     save()
+                child_specs.append(
+                    {
+                        "child_id": child_id,
+                        "masks": child_masks,
+                        "initial_pairs": child_initial_pairs,
+                        "prepared_master": prepared_master,
+                        "initial_native_primal": phase_warm_start,
+                        "initial_native_row_dual": phase_dual_warm_start,
+                        "initial_warm_start_origin": warm_start_origin,
+                    }
+                )
 
-                payload["active_stage"] = f"disjunctive_region_{child_id}"
+            parallel_contexts = int(config.runtime.get("parallel_child_solver_contexts", 1))
+            parallel_minimum_frontier = int(
+                config.runtime.get("parallel_child_minimum_frontier_regions", 10**9)
+            )
+            use_parallel_children = bool(
+                config.benchmark_id == ACTIVSG2000_V4_EXPERIMENT_ID
+                and parallel_contexts == 2
+                and len(frontier) >= parallel_minimum_frontier
+                and len(child_specs) == 2
+            )
+            cost_outcomes: dict[str, tuple[SolvedRegion | None, RegionAttemptRejected | None]] = {}
+
+            def solve_child_cost(
+                spec: dict[str, Any],
+                *,
+                child_screener: ContingencyScreener,
+                concurrent_context: bool,
+                progress_callback: Callable[[dict[str, Any]], None],
+            ) -> tuple[SolvedRegion | None, RegionAttemptRejected | None]:
                 try:
-                    child = _solve_region(
-                        region_id=child_id,
-                        masks=child_masks,
-                        case=case,
-                        network=network,
-                        catalog=catalog,
-                        config=config,
-                        deadline=deadline,
-                        initial_pairs=child_initial_pairs,
-                        screener=screener,
-                        checkpoint=save,
-                        progress=save_region_progress,
-                        candidate_policy=region_attempt_policy,
-                        prepared_master=prepared_master,
-                        initial_native_primal=phase_warm_start,
-                        initial_native_row_dual=phase_dual_warm_start,
-                        initial_warm_start_origin=warm_start_origin,
+                    return (
+                        _solve_region(
+                            region_id=str(spec["child_id"]),
+                            masks=spec["masks"],
+                            case=case,
+                            network=network,
+                            catalog=catalog,
+                            config=config,
+                            deadline=deadline,
+                            initial_pairs=spec["initial_pairs"],
+                            screener=child_screener,
+                            checkpoint=lambda: None,
+                            progress=progress_callback,
+                            candidate_policy=region_attempt_policy,
+                            prepared_master=spec["prepared_master"],
+                            initial_native_primal=spec["initial_native_primal"],
+                            initial_native_row_dual=spec["initial_native_row_dual"],
+                            initial_warm_start_origin=spec["initial_warm_start_origin"],
+                            concurrent_solver_context=concurrent_context,
+                        ),
+                        None,
                     )
-                except RegionAttemptRejected as rejected:
-                    payload.pop("active_region_progress", None)
+                except RegionAttemptRejected as error:
+                    return None, error
+
+            if use_parallel_children:
+                payload["active_stage"] = f"parallel_disjunctive_regions_{off_id}_{on_id}"
+                progress_lock = threading.Lock()
+
+                def save_parallel_progress(
+                    child_id: str,
+                    record: dict[str, Any],
+                    _progress_lock: threading.Lock = progress_lock,
+                ) -> None:
+                    with _progress_lock:
+                        payload.setdefault("active_parallel_region_progress", {})[child_id] = record
+                        save()
+
+                batch_started = time.perf_counter()
+                parallel_screeners = {
+                    str(spec["child_id"]): ContingencyScreener(
+                        network,
+                        catalog,
+                        backend="cupy",
+                        chunk_columns=int(config.model["screen_chunk_columns"]),
+                    )
+                    for spec in child_specs
+                }
+                with ThreadPoolExecutor(
+                    max_workers=parallel_contexts,
+                    thread_name_prefix="activsg-cuopt-child",
+                ) as pool:
+                    futures = {
+                        str(spec["child_id"]): pool.submit(
+                            solve_child_cost,
+                            spec,
+                            child_screener=parallel_screeners[str(spec["child_id"])],
+                            concurrent_context=True,
+                            progress_callback=lambda record, child_id=str(spec["child_id"]): (
+                                save_parallel_progress(child_id, record)
+                            ),
+                        )
+                        for spec in child_specs
+                    }
+                    for child_id in sorted(futures):
+                        cost_outcomes[child_id] = futures[child_id].result()
+                payload.pop("active_parallel_region_progress", None)
+                payload.setdefault("parallel_child_batches", []).append(
+                    {
+                        "policy": "two_threaded_independent_cuopt_pdlp_contexts_v1",
+                        "child_region_ids": sorted(cost_outcomes),
+                        "frontier_region_count_before_batch": len(frontier),
+                        "wall_time_seconds": time.perf_counter() - batch_started,
+                        "native_log_policy": (
+                            "console_only_per_context_file_disabled_due_cuopt_process_global_logger"
+                        ),
+                    }
+                )
+                save()
+            else:
+                for spec in child_specs:
+                    child_id = str(spec["child_id"])
+                    payload["active_stage"] = f"disjunctive_region_{child_id}"
+                    cost_outcomes[child_id] = solve_child_cost(
+                        spec,
+                        child_screener=screener,
+                        concurrent_context=False,
+                        progress_callback=save_region_progress,
+                    )
+
+            for spec in child_specs:
+                child_id = str(spec["child_id"])
+                child_masks = spec["masks"]
+                child, rejected = cost_outcomes[child_id]
+                payload.pop("active_region_progress", None)
+                if rejected is not None:
                     global_pairs.update((pair.pair_id, pair) for pair in rejected.security_pairs)
                     if region_attempt_policy is None:
-                        raise
+                        raise rejected
                     payload["active_stage"] = f"phase_one_{child_id}"
                     phase_result = _run_phase_one_attempt(
                         region_id=child_id,
@@ -3354,7 +3501,8 @@ def run_gpu_lagrangian_experiment(
                         continue
                     split_failed = True
                     break
-                payload.pop("active_region_progress", None)
+                if child is None:
+                    raise ScopfError("Disjunctive child solve returned no outcome")
                 solved_children[child_id] = child
                 global_pairs.update((pair.pair_id, pair) for pair in child.security_pairs)
                 tentative_outcomes.append(

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 from scipy import sparse
 
 from activsg_scopf.errors import ScopfError
@@ -8,8 +9,24 @@ from activsg_scopf.network import NetworkData
 from activsg_scopf.solvers.cuopt_lp import (
     derive_rate_a_angle_bounds,
     prepare_pdlp_warm_start,
+    solve_cuopt_continuous_pdlp,
     validate_numeric_lp_certificate,
 )
+
+
+def test_concurrent_cuopt_context_requires_console_logging() -> None:
+    with pytest.raises(ScopfError, match="require console logging"):
+        solve_cuopt_continuous_pdlp(
+            None,  # type: ignore[arg-type]
+            time_limit_seconds=1.0,
+            optimality_tolerance=1e-8,
+            primal_feasibility_tolerance=1e-6,
+            certificate_residual_tolerance=1e-7,
+            native_scaling_mode="power_system_equilibrated_v2",
+            native_base_mva=100.0,
+            log_to_console=False,
+            concurrent_solver_context=True,
+        )
 
 
 def _certificate(**overrides: object) -> dict[str, object]:
