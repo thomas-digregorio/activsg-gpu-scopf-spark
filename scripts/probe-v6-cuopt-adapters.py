@@ -32,7 +32,7 @@ def continuous_probe() -> dict[str, object]:
         "log_to_console": True,
         "presolve": 0,
         "pdlp_solver_mode": 1,
-        "save_best_primal_solution": True,
+        "save_best_primal_so_far": True,
     }
     first = solve_cuopt_continuous_pdlp(model, **arguments)
     if first.pdlp_warm_start_data is None:

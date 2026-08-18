@@ -70,7 +70,7 @@
       "pdlp_precision": "fp64",
       "pdlp_solver_mode_native": 1,
       "pdlp_solver_mode": "stable2",
-      "save_best_primal_solution": true,
+      "save_best_primal_so_far": true,
       "pdlp_optimality_tolerance": 1e-8,
       "dual_certificate_residual_tolerance": 1e-7,
       "per_constraint_residual": true,

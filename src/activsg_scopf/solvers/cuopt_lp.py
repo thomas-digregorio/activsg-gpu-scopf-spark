@@ -441,7 +441,7 @@ def solve_cuopt_continuous_pdlp(
     initial_native_row_dual: np.ndarray | None = None,
     initial_pdlp_warm_start_data: Any | None = None,
     pdlp_solver_mode: int = 4,
-    save_best_primal_solution: bool = True,
+    save_best_primal_so_far: bool = True,
     concurrent_solver_context: bool = False,
 ) -> ContinuousSolveResult:
     """Relax every integer column and solve the resulting LP using PDLP only."""
@@ -555,7 +555,7 @@ def solve_cuopt_continuous_pdlp(
     settings.set_parameter("method", 1)
     settings.set_parameter("pdlp_solver_mode", int(pdlp_solver_mode))
     settings.set_parameter("pdlp_precision", 1)
-    settings.set_parameter("save_best_primal_solution", bool(save_best_primal_solution))
+    settings.set_parameter("save_best_primal_so_far", bool(save_best_primal_so_far))
     settings.set_parameter("per_constraint_residual", bool(per_constraint_residual))
     settings.set_parameter("presolve", int(presolve))
     settings.set_parameter("log_to_console", bool(log_to_console))
@@ -564,7 +564,7 @@ def solve_cuopt_continuous_pdlp(
         "method": 1,
         "pdlp_solver_mode": int(pdlp_solver_mode),
         "pdlp_precision": 1,
-        "save_best_primal_solution": bool(save_best_primal_solution),
+        "save_best_primal_so_far": bool(save_best_primal_so_far),
         "per_constraint_residual": bool(per_constraint_residual),
         "presolve": int(presolve),
     }

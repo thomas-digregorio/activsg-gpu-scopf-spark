@@ -745,7 +745,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
         required_v6_profile = {
             "pdlp_solver_mode_native": 1,
             "pdlp_solver_mode": "stable2",
-            "save_best_primal_solution": True,
+            "save_best_primal_so_far": True,
             "integer_solver": "cuopt_gpu_heuristics_only_for_primal",
             "branch_and_bound": False,
         }

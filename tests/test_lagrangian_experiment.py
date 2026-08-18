@@ -251,7 +251,7 @@ def test_registered_activsg2000_v6_numerical_runtime_fix_is_fail_closed() -> Non
     assert v6.runtime["deadline_seconds"] == 990.0
     assert v6.runtime["gpu_primal_heuristics_seconds"] == 300.0
     assert v6.raw["platforms"]["dgx_spark"]["pdlp_solver_mode_native"] == 1
-    assert v6.raw["platforms"]["dgx_spark"]["save_best_primal_solution"] is True
+    assert v6.raw["platforms"]["dgx_spark"]["save_best_primal_so_far"] is True
     fix = registration["benchmark"]["numerical_and_runtime_fix"]
     assert fix["primal_generator"] == (
         "cuopt_gpu_heuristics_only_on_sparse_full_root_master_v2"
