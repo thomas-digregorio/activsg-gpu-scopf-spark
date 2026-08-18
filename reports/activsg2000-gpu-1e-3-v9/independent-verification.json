@@ -1,0 +1,24 @@
+{
+  "checked_security_sides": 17563400,
+  "checked_valid_outages": 2740,
+  "details": {
+    "base_limit_violation_pu": 0.0,
+    "conditional_pmin_pmax_violation_pu": 2.1266401972752647e-11,
+    "dc_flow_equation_residual_pu": 3.647977422360782e-09,
+    "dispatch_definition_violation_pu": 3.068066689593252e-11,
+    "global_balance_residual_pu": 1.0613803169690072e-11,
+    "independent_base_dc_solution_residual_pu": 1.3387594322011865e-09,
+    "nodal_balance_residual_pu": 1.1729426319107006e-10,
+    "reference_angle_residual_rad": 0.0,
+    "segment_bound_violation_pu": 3.771312151457096e-12
+  },
+  "elapsed_seconds": 1.3435055000009015,
+  "maximum_angle_limit_violation_rad": 0.0,
+  "maximum_integrality_violation": 2.220446049250313e-16,
+  "maximum_model_residual_pu": 3.647977422360782e-09,
+  "maximum_security_violation_pu": 0.054596464067250564,
+  "objective_difference": 2.561137080192566e-09,
+  "objective_recalculated": 1132724.8128244013,
+  "passed": false,
+  "security_check_method": "independent raw-input FP64 sparse factorization, chunked LODF exhaustive screen, and selected explicit post-outage DC solves"
+}

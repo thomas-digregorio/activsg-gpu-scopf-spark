@@ -1,0 +1,80 @@
+{
+  "schema_version": "1.0.0",
+  "experiment_suite_id": "activsg500-gpu-lagrangian-v2",
+  "frozen_identity": {
+    "commit": "a65c4ca6e8c65803b6d685af4dfcf149907c3f45",
+    "tag": "experiment-500-gpu-lagrangian-v2",
+    "config_sha256": "27d1ae67d830f443f6792059665aa46f6a41d8086957f093765c67ccea24d156"
+  },
+  "status": "deadline_budget_exhausted",
+  "error": "No solver budget remains before verification reserve",
+  "dgx_spark_total_wall_time_seconds": 545.6644194109995,
+  "dgx_spark_elapsed_seconds": 545.1802579779996,
+  "requested_relative_gap": 0.001,
+  "accepted_objective": null,
+  "accepted_bound": null,
+  "accepted_relative_gap": null,
+  "accepted_commitment": null,
+  "accepted_dispatch": null,
+  "accepted_prices": null,
+  "root_continuous_relaxation": {
+    "base_rows": 1811,
+    "base_columns": 672,
+    "base_nonzeros": 37062,
+    "base_objective_from_native_log_rounded": 65481.2452,
+    "base_native_solve_seconds": 0.667,
+    "base_iterations": 13400,
+    "security_rows_added": 167,
+    "security_rows_total": 1978,
+    "security_nonzeros_total": 45709,
+    "security_objective_from_native_log_rounded": 77393.1302,
+    "security_native_solve_seconds": 0.321,
+    "security_iterations": 4700,
+    "final_exhaustive_screen_reached": true,
+    "accepted_replayable_lagrangian_bound_preserved": false
+  },
+  "first_fixed_commitment_repair": {
+    "origin": "root_lp_rounding",
+    "commitment_sha256": "726b50cb26e3392c2bb897392b0997aa48b2b6f7b979d29be143c9be6ec622a1",
+    "matches_registered_cpu_commitment": false,
+    "round_native_seconds": [
+      120.005759102,
+      120.006104412,
+      120.005353318,
+      120.002260728,
+      59.791035423
+    ],
+    "canonical_residual_pu": [
+      0.2966093979892412,
+      0.2966088152766497,
+      0.40693964928914284,
+      0.3096338503142033,
+      0.29684255549188493
+    ],
+    "screened_round_count": 0,
+    "warm_start_submitted_from_round": 2,
+    "status": "rejected_no_solver_budget"
+  },
+  "all_online_fallback": {
+    "commitment_sha256": "51e14a913680f24c85fe3b0e2e5b57f7202f117bb214f8ffdd4ea0f4e921fd52",
+    "solve_started": false,
+    "status": "rejected_no_solver_budget"
+  },
+  "registered_laptop_cpu_comparison": {
+    "status": "optimal_verified",
+    "objective": 79410.651432182,
+    "bound": 79410.651432182,
+    "relative_gap": 0.0,
+    "commitment_count": 50,
+    "total_wall_time_seconds": 2.702380099988659,
+    "cpu_commitment_sha256": "2e8d25c99f2f1c4e35039adb1f7d5509918dbf2b96cc0e2431b7ecc9cca2c638",
+    "dgx_to_laptop_wall_time_ratio": 201.919937
+  },
+  "artifacts": {
+    "result_json_sha256": "0bbadab36a2dbd7379cb39d5606954dfdf305e5b277e960a8c1e88749e2f4e34",
+    "run_registry_sha256": "e426ffffd8a9d87125be1152b4f70d4089b7399293cae809cabb894c3665ff13",
+    "last_checkpoint_sha256": "a1a483692305cf9e8f8fb85868d5de1e5e588a384edf24c515f787f3a47b3f9b",
+    "worker_console_sha256": "cbe7d600bb85e3ebb5730337f945f4d731ebb2aa9f4565b9c21b007b95d223a5",
+    "launcher_log_sha256": "0b3709566925f8bed1376855d60a0629b49744196366098c547fd83d18080072"
+  }
+}

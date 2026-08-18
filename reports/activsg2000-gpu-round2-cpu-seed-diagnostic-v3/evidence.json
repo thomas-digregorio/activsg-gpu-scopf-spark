@@ -1,0 +1,54 @@
+{
+  "schema_version": "1.0.0",
+  "case_name": "ACTIVSg2000",
+  "diagnostic_id": "activsg2000-gpu-round2-cpu-seed-diagnostic-v3",
+  "frozen_identity": {
+    "commit": "877e3ed43a5a5e686d6f8fb8d01738c794f8329d",
+    "config_sha256": "5aafdcaff964d65142eb3cfffe4980e07bd8646fcd8af5f6403cffa61f5178f3",
+    "tag": "diagnostic-2000-gpu-round2-cpu-seed-v3"
+  },
+  "status": "diagnostic_incumbent_returned_but_acceptance_gate_failed",
+  "native_status": "Optimal",
+  "requested_gap_certified": true,
+  "constraint_generation_enabled": false,
+  "native_scaling_mode": "power_system_per_unit_v1",
+  "model_dimensions": {
+    "columns": 9220,
+    "rows": 8961,
+    "nonzeros": 27120,
+    "fixed_security_rows": 173
+  },
+  "solve": {
+    "native_solve_time_seconds": 20.03793261,
+    "objective": 1131794.3544796335,
+    "bound": 1130841.0593988446,
+    "mip_gap": 0.0008422864781158988,
+    "nodes": 2709,
+    "simplex_iterations": 62267,
+    "native_max_constraint_violation": 1.5605849945643513e-11,
+    "native_max_integrality_violation": 6.661338147750939e-16,
+    "native_max_variable_bound_violation": 1.3322676295501878e-15
+  },
+  "exhaustive_screen": {
+    "evaluated_sides": 17563400,
+    "violations_above_tolerance": 14,
+    "maximum_pair_id": "c2344_m2007_lower",
+    "maximum_violation_pu": 0.1517224016561613
+  },
+  "independent_verification": {
+    "passed": false,
+    "maximum_model_residual_pu": 1.014025770018634e-9,
+    "maximum_security_violation_pu": 0.1517224016579496,
+    "objective_difference": 1.862645149230957e-9
+  },
+  "total_wall_time_seconds": 23.853217759999097,
+  "peak_memory": {
+    "process_rss_bytes": 1956610048,
+    "cuda_device_memory_delta_bytes": 6903537664
+  },
+  "sha256": {
+    "raw_result": "95754cc479008a4032143f50acd0f02700d0b06c2aabf1d052948e0cbc1d454d",
+    "console_log": "a9181dec00be93e80354c071fd863ab5a6675839c8b1d33bfeb616c5f5ebb938",
+    "run_registry": "d77077d9bb716d649d7e602a44d3823bd8377e305ed3cfe6a7714523d8a4ef93"
+  }
+}

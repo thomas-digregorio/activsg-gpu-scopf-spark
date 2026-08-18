@@ -1,0 +1,56 @@
+{
+  "schema_version": "1.0.0",
+  "case_name": "ACTIVSg2000",
+  "diagnostic_id": "activsg2000-gpu-round2-cpu-seed-diagnostic-v1",
+  "frozen_identity": {
+    "commit": "70ac5b517e5bfee6a81685430f4ca718ad9f1900",
+    "tag": "diagnostic-2000-gpu-round2-cpu-seed-v1"
+  },
+  "status": "diagnostic_no_incumbent_from_verified_full_start",
+  "native_status": "NoTermination",
+  "solver_launched": true,
+  "constraint_generation_enabled": false,
+  "fixed_security_rows": 173,
+  "model_dimensions": {
+    "columns": 9220,
+    "rows": 8961,
+    "nonzeros": 27120,
+    "native_constraints": 8961
+  },
+  "mip_start": {
+    "mode": "all_columns",
+    "columns": 9220,
+    "integer_columns": 432,
+    "maximum_row_violation": 2.420986220386112e-7,
+    "maximum_column_bound_violation": 5.994036200718256e-8,
+    "maximum_integrality_violation": 0.0,
+    "independent_security_violation_pu": 7.875883056840393e-10,
+    "independent_verification_passed": true
+  },
+  "solve": {
+    "native_solve_time_seconds": 0.0,
+    "adapter_wall_time_seconds": 0.3938759930024389,
+    "nodes": 0,
+    "simplex_iterations": 0,
+    "has_incumbent": false,
+    "objective": null,
+    "bound": null,
+    "mip_gap_certified": false
+  },
+  "total_wall_time_seconds": 1.9244666470040102,
+  "sha256": {
+    "secure_cpu_result": "5573425a8e625c0c964b2c61d33ca80666de74a350e9431a96e5ce9b90e02e3f",
+    "gpu_v3_round2_result": "9b9e7d3b0dfdad0faeb740f639307844920c18eb85c07ac9705f8b84e034366c",
+    "raw_result": "53f7bb8929eb27a930facbf2a0ede4a340ff01b6ddcc0418bfa7055a598945e7",
+    "console_log": "0b29ebb627541dae7242b2b909c949563a3f93cee2bf3523fdcbee1bb9ea6247",
+    "run_registry": "f7ee1113b82cadabb6a03cf4cdea14f064ed0b5cc13f0ab194fec783929e228e"
+  },
+  "post_run_component_attribution": {
+    "exact_bound_start_native_status": "Optimal",
+    "bound_excess": 6e-8,
+    "bound_excess_native_status": "NoTermination",
+    "equality_residual": 2.4e-7,
+    "equality_residual_native_status": "Optimal",
+    "conclusion": "sub-tolerance variable-bound excess in full MIP start causes immediate NoTermination"
+  }
+}

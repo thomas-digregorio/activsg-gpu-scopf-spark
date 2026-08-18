@@ -1,0 +1,60 @@
+{
+  "schema_version": "1.0.0",
+  "experiment_suite_id": "activsg500-gpu-lagrangian-v6",
+  "frozen_identity": {
+    "commit": "ee36e78f5f67b09d66493a07ef564c9bed62edf5",
+    "tag": "experiment-500-gpu-lagrangian-v6",
+    "config_sha256": "f369c75ccaaaf299cc0007336e78587912194c614238369970cc3cd45af24be3",
+    "container_image_id": "sha256:b425dc216c437d3f502656ba61d5ca7c3ff86ccb4c2b6aa94e45e7c3ed9a24a3",
+    "case_sha256": "8ca6d54ea5179eeb03fe29d7b645618e7a86338c172247e81687476660f6dcbe",
+    "contingency_sha256": "f6b2e7e38fd1cf5e09e877cf04233b4d0487d6d0e99903070d519eade12b76a9"
+  },
+  "run": {
+    "status": "failed_exception",
+    "started_at_utc": "2026-08-18T02:55:18.759787+00:00",
+    "finished_at_utc": "2026-08-18T02:55:19.515935+00:00",
+    "total_wall_time_seconds": 0.754108831002668,
+    "worker_elapsed_seconds": 0.44424950699612964,
+    "error_type": "ScopfError",
+    "error": "Prepared region master commitment bounds changed",
+    "objective": null,
+    "lower_bound": null,
+    "relative_gap": null,
+    "root_lp_solve_count": 0,
+    "phase_one_precheck_count": 0,
+    "full_authorized_run_count": 1,
+    "automatic_retry_performed": false
+  },
+  "failure_attribution": {
+    "stage": "root_region_pre_solve_validation",
+    "cause": "generator_source_row_dictionary_key_used_as_canonical_commitment_column",
+    "tiny_fixture_blind_spot": "eligible_source_row_zero_equaled_commitment_column_zero",
+    "scientific_result_available": false,
+    "speedup_measurement_available": false,
+    "failed_v6_identity_preserved": true
+  },
+  "timings_seconds": {
+    "raw_input_loading": 0.003446278002229519,
+    "network_and_reduced_model_build": 0.07263501700072084,
+    "result_serialization": 0.0007130320009309798,
+    "total_wall_time": 0.754108831002668
+  },
+  "peak_memory": {
+    "process_rss_bytes": 428904448,
+    "cupy_pool_used_bytes": 0,
+    "cuda_device_memory_delta_bytes": 34598912
+  },
+  "acceptance_gates": {
+    "secure_primal_independently_verified": false,
+    "disjunctive_lagrangian_bound_independently_replayed": false,
+    "gap_certified": false,
+    "overall_success": false
+  },
+  "artifacts": {
+    "result_json_sha256": "efdddabc5dad80d5b98b9ec2f35f727866b27e3f2672961698db6efde65dffbd",
+    "run_registry_sha256": "d142c6f012b61de6fdc37250c1515ea7016d7c21c19215a6ce4421d842c286e1",
+    "last_checkpoint_sha256": "b24b5c6bcf5f5b0d400004ccdef1f8a1172f53f8d16109509f258ecef3be4455",
+    "worker_console_sha256": "e028b4dd633c38108e83d2c82fec3955ce8d2b6cf875dc44f40a758a92341143",
+    "launcher_log_sha256": "e028b4dd633c38108e83d2c82fec3955ce8d2b6cf875dc44f40a758a92341143"
+  }
+}

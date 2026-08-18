@@ -1,0 +1,97 @@
+{
+  "schema_version": "1.0.0",
+  "experiment_suite_id": "activsg2000-gpu-lagrangian-v1",
+  "status": "ready_to_freeze_user_authorized",
+  "recorded_at_utc": "2026-08-18T15:08:45.5762963Z",
+  "implementation_commit": "9a806529d1134ca32848dbd22dd7ebc59faafc84",
+  "configuration": {
+    "path": "configs/activsg2000-gpu-lagrangian-v1.json",
+    "sha256": "62b6782f0eb9214118fe60503a5fb61d4c227de4ae3a512183a551b89eba51cc",
+    "build_script_sha256": "59761e7ae3aae948f4e7a9b42a43ed43f0da7088a9b1cef1ccbdca011423ed50",
+    "run_script_sha256": "448a82f6846653097a5a3c3a420f71825a6c14867bd1ec76bd65e2593767aa69",
+    "case_sha256": "8d00618de8fd10bf35a599f59d2deebfecd0d86e28fcff73219ad7c4ebab860b",
+    "contingency_sha256": "198b39f0381925a4ddacbe2148973cb1d93ddfe220303829cf87b16d45190bba",
+    "exact_source_pmin_retained": true,
+    "single_hour_preventive_model": true,
+    "requested_relative_gap": 0.001,
+    "deadline_seconds": 1800.0,
+    "integer_solver": "none",
+    "branch_and_bound": false,
+    "custom_cuda_kernel": false
+  },
+  "registered_coefficient_cleanup": {
+    "absolute_drop_tolerance": 1e-09,
+    "solver_rows_are_outward_relaxations": true,
+    "raw_input_independent_verifier_unchanged": true,
+    "dgx_minimum_retained_native_coefficient": 1.422346713475267e-08,
+    "dgx_potential_flow_dropped_count": 226191,
+    "dgx_potential_flow_max_dropped_coefficient": 7.631460363194531e-10,
+    "dgx_generator_dropped_count": 100622,
+    "dgx_generator_max_dropped_coefficient": 5.240164376986967e-10,
+    "dgx_total_rhs_outward_relaxation_mw": 1.8763914428826892e-07,
+    "dgx_max_row_rhs_outward_relaxation_mw": 9.149327002219243e-08,
+    "dgx_max_row_rhs_outward_relaxation_pu": 9.149327002219243e-10
+  },
+  "laptop_validation": {
+    "full_activsg2000_optimization_performed": false,
+    "full_tiny_fixture_test_suite": "passed_with_expected_gpu_only_skips",
+    "ruff": "passed",
+    "json_loading_and_fail_closed_registration": "passed",
+    "shell_syntax_validation": "passed",
+    "activsg2000_read_only_model_build": {
+      "optimization_performed": false,
+      "bus_count": 2000,
+      "source_generator_count": 544,
+      "eligible_generator_count": 432,
+      "base_reduced_master_row_count": 9995,
+      "base_reduced_master_column_count": 4014,
+      "valid_outage_count": 2740,
+      "rate_a_positive_active_branch_count": 3206,
+      "exact_contingency_side_count": 17563400,
+      "selected_lodf_column_max_abs_error": 4.440892098500626e-18,
+      "all_source_row_to_commitment_column_mappings_validated": true,
+      "exact_pmin_unchanged": true
+    }
+  },
+  "registered_cpu_comparison": {
+    "source": "reports/activsg2000-gap-sensitivity-v1/comparison.json",
+    "source_tag": "experiment-2000-gap-v1",
+    "source_commit": "173fd0c10b8af5ed431956f2eea9726032df6f9e",
+    "canonical_json_sha256": "d59df0467d06fcacd591c07b507c56c483f7ae36b319d205e2df5f684dfeb90f",
+    "raw_result_sha256": "5573425a8e625c0c964b2c61d33ca80666de74a350e9431a96e5ce9b90e02e3f",
+    "objective": 1133479.3855011363,
+    "best_bound": 1132599.3522354912,
+    "relative_gap": 0.0007763998859633739,
+    "committed_generator_count": 327,
+    "end_to_end_seconds": 1007.3702709000063
+  },
+  "dgx_spark_validation": {
+    "full_activsg2000_run_count": 0,
+    "all_one_shot_paths_absent": true,
+    "host_repository_commit": "9a806529d1134ca32848dbd22dd7ebc59faafc84",
+    "configuration_and_script_hashes_match_laptop": true,
+    "smoke_image_id": "sha256:2361ae701b91a434f53f95eef13092dc0a2271507e9c896b3107e345bc042f6f",
+    "smoke_source_commit": "9a806529d1134ca32848dbd22dd7ebc59faafc84",
+    "gpu_real_model_read_only_smoke_runs": 1,
+    "gpu_smoke": {
+      "cuopt_version": "26.6.0",
+      "device": "NVIDIA GB10",
+      "prepared_region_source_row_mapping_validated": true,
+      "pdlp_primal_dual_fixture_passed": true,
+      "gpu_cpu_lagrangian_bound_difference": 0.0,
+      "lagrangian_state_device_resident": true,
+      "infeasible_child_phase_one_prune_certified": true,
+      "feasible_child_phase_one_zero_violation_primal_retained": true,
+      "feasible_child_cost_lp_primal_warm_started": true,
+      "tiny_fixture_final_security_violation_pu": 0.0
+    }
+  },
+  "one_shot_run_gate": {
+    "required_tag": "experiment-2000-gpu-lagrangian-v1",
+    "explicit_user_approval_received": true,
+    "full_run_count_allowed": 1,
+    "deadline_seconds": 1800.0,
+    "automatic_retry": false,
+    "all_one_shot_paths_confirmed_absent_before_freeze": true
+  }
+}

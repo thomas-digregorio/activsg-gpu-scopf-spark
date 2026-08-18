@@ -1,0 +1,72 @@
+{
+  "$schema": "../schemas/config.schema.json",
+  "schema_version": "1.0.0",
+  "case_name": "ACTIVSg2000",
+  "raw_inputs": {
+    "case_file": "data/raw/matpower-8.1/case_ACTIVSg2000.m",
+    "case_sha256": "8d00618de8fd10bf35a599f59d2deebfecd0d86e28fcff73219ad7c4ebab860b",
+    "contingency_file": "data/raw/matpower-8.1/contab_ACTIVSg2000.m",
+    "contingency_sha256": "198b39f0381925a4ddacbe2148973cb1d93ddfe220303829cf87b16d45190bba"
+  },
+  "model": {
+    "interval_hours": 1.0,
+    "pwl_segments": 10,
+    "mip_relative_gap_tolerance": 0.001,
+    "model_residual_tolerance_pu": 0.000001,
+    "security_violation_tolerance_pu": 0.00001,
+    "lodf_validation_tolerance_pu": 1e-9,
+    "lodf_validation_columns": 3,
+    "lodf_build_chunk_columns": 256,
+    "screen_chunk_columns": 256
+  },
+  "runtime": {
+    "deadline_seconds": 600.0,
+    "verification_reserve_seconds": 60.0,
+    "serialization_reserve_seconds": 15.0,
+    "maximum_constraint_generation_rounds": 100,
+    "lp_round_time_limit_seconds": 120.0
+  },
+  "platforms": {
+    "dgx_spark": {
+      "solver": "cuopt",
+      "screening": "cupy",
+      "solver_threads": 0,
+      "native_scaling_mode": "power_system_per_unit_v1",
+      "lp_method": "pdlp",
+      "pdlp_solver_mode": "stable3",
+      "pdlp_precision": "fp64",
+      "pdlp_optimality_tolerance": 1e-8,
+      "dual_certificate_residual_tolerance": 1e-7,
+      "per_constraint_residual": true,
+      "redundant_angle_bounds": "rate_a_dc_shortest_path_v1",
+      "container_image": "nvidia/cuopt@sha256:0faac7182b32f5be747e30f081427e80e8dfeccd8f49613814d3d217167fe1ad",
+      "cuopt_version": "26.06.00",
+      "diagnostics": {
+        "enabled": true,
+        "console_logging": true
+      }
+    }
+  },
+  "benchmark": {
+    "id": "activsg2000-gpu-lp-certificate-v14",
+    "required_git_tag": "experiment-2000-gpu-lp-certificate-v14",
+    "official": false,
+    "kind": "gpu_lp_relaxation_certificate",
+    "experiment_suite_id": "activsg2000-gpu-lp-certificate-v14",
+    "reference_incumbent": {
+      "objective": 1133047.8684341211,
+      "result_sha256": "764bd04415828c02238417161fa74ff65d1cb6a32e838bb12e987a5152a4594a",
+      "source_tag": "experiment-2000-gpu-commitment-trace-v11",
+      "source_commit": "67d64dff6efcb62dcf38182c05b90e374a7df439",
+      "independently_verified_n_minus_1": true
+    },
+    "diagnostic_change": {
+      "comparison_baseline": "activsg2000-gpu-lp-certificate-v13",
+      "integrality": "all_432_commitment_columns_relaxed_to_unit_interval",
+      "dual_bound_method": "gpu_pdlp_continuous_lp_without_mip_or_branch_and_bound",
+      "fractional_contingency_generation": "exhaustive_after_every_lp_solve",
+      "v14_checker_fix": "use_model_primal_tolerance_and_finite_rate_a_implied_angle_bounds",
+      "pdlp_accuracy_fix": "enable_per_constraint_residual"
+    }
+  }
+}

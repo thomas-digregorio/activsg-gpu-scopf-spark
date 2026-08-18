@@ -1,0 +1,20 @@
+FROM nvidia/cuopt@sha256:0faac7182b32f5be747e30f081427e80e8dfeccd8f49613814d3d217167fe1ad
+
+ARG SOURCE_COMMIT=unfrozen
+LABEL org.opencontainers.image.source="https://github.com/thomas-digregorio/activsg-gpu-scopf-spark"
+LABEL org.opencontainers.image.revision="${SOURCE_COMMIT}"
+
+ENV ACTIVSG_CUOPT_IMAGE="nvidia/cuopt@sha256:0faac7182b32f5be747e30f081427e80e8dfeccd8f49613814d3d217167fe1ad"
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+
+WORKDIR /workspace
+RUN apt-get update \
+    && apt-get install --yes --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
+RUN python -m pip install --no-cache-dir --no-deps highspy==1.15.1
+COPY pyproject.toml README.md NOTICE.md ./
+COPY src ./src
+RUN python -m pip install --no-cache-dir --no-deps .
+
+ENTRYPOINT ["activsg-scopf"]

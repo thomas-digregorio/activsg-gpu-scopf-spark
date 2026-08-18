@@ -1,0 +1,177 @@
+{
+  "absolute_gap": 2412.6579089302104,
+  "added_security_pairs": 363,
+  "bound": 1130527.1304606935,
+  "campaign": "activsg2000-gpu-gap-sensitivity-v5",
+  "commitment_count": 328,
+  "constraint_generation_rounds": [
+    {
+      "adapter_status": "FeasibleFound",
+      "adapter_wall_seconds": 5.594020663003903,
+      "bound": 1118297.105971293,
+      "mip_gap": 0.0001756116680973317,
+      "native_solve_seconds": 5.192783418,
+      "native_status": "FeasibleFound",
+      "objective": 1118493.5264852366,
+      "partial_integer_mip_start_columns": 0,
+      "requested_gap_certified": true,
+      "round": 1,
+      "rows_before_solve": 8788,
+      "screen_maximum_violation_pu": 2.14963000923198,
+      "screen_new_violated_pairs": 349,
+      "screen_seconds": 1.0320305890054442,
+      "solver_budget_seconds": 899.3477629380068
+    },
+    {
+      "adapter_status": "Optimal",
+      "adapter_wall_seconds": 41.81043201600551,
+      "bound": 1130882.4058991517,
+      "mip_gap": 0.0008531053578252214,
+      "native_solve_seconds": 41.711940562,
+      "native_status": "Optimal",
+      "objective": 1131847.9914849338,
+      "partial_integer_mip_start_columns": 432,
+      "requested_gap_certified": true,
+      "round": 2,
+      "rows_before_solve": 9137,
+      "screen_maximum_violation_pu": 0.33558450914348553,
+      "screen_new_violated_pairs": 14,
+      "screen_seconds": 0.03673612800776027,
+      "solver_budget_seconds": 892.6778778269945
+    },
+    {
+      "adapter_status": "FeasibleFound",
+      "adapter_wall_seconds": 852.377109730005,
+      "bound": 1130527.1304606935,
+      "mip_gap": 0.0021295552806028916,
+      "native_solve_seconds": 851.769564047,
+      "native_status": "FeasibleFound",
+      "objective": 1132939.7883696237,
+      "partial_integer_mip_start_columns": 432,
+      "requested_gap_certified": false,
+      "round": 3,
+      "rows_before_solve": 9151,
+      "screen_maximum_violation_pu": 5.968558980384841e-15,
+      "screen_new_violated_pairs": 0,
+      "screen_seconds": 0.046450465015368536,
+      "solver_budget_seconds": 850.7799297489983
+    }
+  ],
+  "dispatch_total_mw": 67109.21,
+  "dispatch_total_pu": 671.0921000000001,
+  "failure_gate": "requested_mip_gap_not_certified",
+  "final_model_dimensions": {
+    "columns": 9220,
+    "nonzeros": 27500,
+    "rows": 9151
+  },
+  "final_screen": {
+    "final_exhaustive_screen_maximum_violation_pu": 5.968558980384841e-15,
+    "final_exhaustive_screen_new_violations": 0,
+    "final_exhaustive_screen_round": 3,
+    "final_exhaustive_screen_tolerance_pu": 1e-05,
+    "final_exhaustive_screen_zero_above_tolerance": true,
+    "independent_verification_passed": false,
+    "requested_mip_gap_certified": false,
+    "requested_mip_gap_tolerance": 0.001
+  },
+  "frozen_identity": {
+    "commit": "c3ee4300330c614c3a30eb47180a267c28988129",
+    "config_sha256": "8e9f1433b9d84b5e0b897fef9f24500861c08567d8518d362768e16ae53be732",
+    "tag": "experiment-2000-gpu-gap-v5"
+  },
+  "initialization": {
+    "external_cpu_mip_start": false,
+    "later_rounds": "prior_gpu_integer_commitment_only",
+    "round_1": "cold"
+  },
+  "mip_gap": 0.0021295552806028916,
+  "objective": 1132939.7883696237,
+  "observed_mip_start_status": "submitted_by_adapter_but_rejected_by_cuopt_in_rounds_2_and_3",
+  "peak_memory": {
+    "cuda_device_memory_delta_bytes": 14435536896,
+    "cupy_pool_used_bytes": 70301696,
+    "process_rss_bytes": 8267476992
+  },
+  "post_run_independent_verification": {
+    "checked_security_sides": 17563400,
+    "checked_valid_outages": 2740,
+    "details": {
+      "base_limit_violation_pu": 0.0,
+      "conditional_pmin_pmax_violation_pu": 4.547473508864641e-15,
+      "dc_flow_equation_residual_pu": 1.286343831452541e-10,
+      "dispatch_definition_violation_pu": 2.2737367544323206e-15,
+      "global_balance_residual_pu": 9.094947017729283e-15,
+      "independent_base_dc_solution_residual_pu": 6.882373781991191e-11,
+      "nodal_balance_residual_pu": 5.641709321935196e-14,
+      "reference_angle_residual_rad": 0.0,
+      "segment_bound_violation_pu": 1.1564924220925509e-14
+    },
+    "elapsed_seconds": 0.5510960480023641,
+    "maximum_angle_limit_violation_rad": 0.0,
+    "maximum_integrality_violation": 6.661338147750939e-16,
+    "maximum_model_residual_pu": 1.286343831452541e-10,
+    "maximum_security_violation_pu": 1.290345608140342e-13,
+    "objective_difference": 1.862645149230957e-09,
+    "objective_recalculated": 1132939.7883696218,
+    "passed": true,
+    "security_check_method": "independent raw-input FP64 sparse factorization, chunked LODF exhaustive screen, and selected explicit post-outage DC solves"
+  },
+  "pricing_status": "withheld_mip_gap_not_certified",
+  "raw_evidence": {
+    "config": {
+      "bytes": 2230,
+      "sha256": "8e9f1433b9d84b5e0b897fef9f24500861c08567d8518d362768e16ae53be732"
+    },
+    "event_log": {
+      "bytes": 5761,
+      "sha256": "ee2632f00b3248f1b23dcbfc91e7ed32f102dcafeaad2e03dda447e33bae8ae6"
+    },
+    "gpu_result": {
+      "bytes": 1823962,
+      "sha256": "9525a99005e8125622b2ee149654869f6cb09144d7bdf9d9c3f4edfdcaa10ce4"
+    },
+    "independent_verification": {
+      "bytes": 1125,
+      "sha256": "6e0acfd4f5c9c948e8952a2c4279bcfee412e4f03137232fee3c5f5559ed1fd4"
+    },
+    "launcher_console": {
+      "bytes": 148,
+      "sha256": "e454642b3dfc37b692dbdcdec4fae487c171b3f5073da1ca65b6dbbff5632e53"
+    },
+    "run_registry": {
+      "bytes": 1012,
+      "sha256": "caf324db8e1fc48bb60d6548d45eebb9e10dc7055f1b4698c86158a9f5d3f472"
+    },
+    "worker_console": {
+      "bytes": 79229,
+      "sha256": "257f6e1b6b86033e0f721166ea30b30a54132282afe9f5a44b96f2f7f7562919"
+    }
+  },
+  "requested_mip_gap": 0.001,
+  "schema_version": "1.0.0",
+  "solver_allowance_seconds": 900.0,
+  "source_identity": {
+    "case_file": "case_ACTIVSg2000.m",
+    "case_sha256": "8d00618de8fd10bf35a599f59d2deebfecd0d86e28fcff73219ad7c4ebab860b",
+    "contingency_file": "contab_ACTIVSg2000.m",
+    "contingency_sha256": "198b39f0381925a4ddacbe2148973cb1d93ddfe220303829cf87b16d45190bba",
+    "row_identity_convention": {
+      "branch": "branch-row-NNNN is the immutable one-based mpc.branch source row",
+      "contingency_change": "source_row is the immutable one-based chgtab row",
+      "generator": "gen-row-NNNN is the immutable one-based mpc.gen source row"
+    }
+  },
+  "status": "incomplete_restricted_master_gap_not_certified",
+  "success": false,
+  "timings_seconds": {
+    "model_and_factor_build": 0.2751914059917908,
+    "raw_input_loading": 0.015624651015968993,
+    "result_serialization": 0.009501833992544562,
+    "screen_workspace_build": 0.04231094001443125,
+    "screening": 1.115217182028573,
+    "solver_rounds": 899.7815624090144,
+    "solver_session_build": 3.004801692441106e-05
+  },
+  "total_wall_time_seconds": 902.9376967209973
+}

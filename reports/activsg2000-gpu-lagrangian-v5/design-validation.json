@@ -1,0 +1,70 @@
+{
+  "schema_version": "1.0.0",
+  "experiment_suite_id": "activsg2000-gpu-lagrangian-v5",
+  "status": "implementation_verified_run_authorized_not_started",
+  "case_name": "ACTIVSg2000",
+  "source_case_sha256": "8d00618de8fd10bf35a599f59d2deebfecd0d86e28fcff73219ad7c4ebab860b",
+  "source_contingency_sha256": "198b39f0381925a4ddacbe2148973cb1d93ddfe220303829cf87b16d45190bba",
+  "reduced_root_model": {
+    "rows": 9995,
+    "columns": 4014,
+    "base_mva": 100.0
+  },
+  "native_row_scaling_audit": {
+    "power_system_per_unit_v1": {
+      "minimum_row_scale": 0.01,
+      "maximum_row_scale": 0.01,
+      "rows_below_per_unit_scale": 0
+    },
+    "power_system_equilibrated_v2": {
+      "minimum_row_scale": 0.000014554089619136124,
+      "maximum_row_scale": 1.4418796259632063,
+      "rows_below_per_unit_scale": 5522
+    },
+    "power_system_equilibrated_safe_v3": {
+      "minimum_row_scale": 0.01,
+      "maximum_row_scale": 1.4418796259632063,
+      "rows_below_per_unit_scale": 0,
+      "never_weakens_v1_row_scale": true
+    }
+  },
+  "root_refinement_policy": {
+    "maximum_attempts": 1,
+    "optimality_tolerance": 1e-10,
+    "same_master": true,
+    "prior_native_primal_warm_started": true,
+    "prior_native_row_dual_warm_started": true,
+    "inside_same_constraint_generation_round": true,
+    "screen_before_canonical_acceptance": false,
+    "fail_closed_if_refinement_does_not_pass": true
+  },
+  "model_contract": {
+    "exact_source_pmin_pmax_changed": false,
+    "mathematical_feasible_set_changed": false,
+    "cpu_commitment_or_dispatch_seeded": false,
+    "branch_and_bound_enabled": false
+  },
+  "local_verification": {
+    "pytest_passed": 206,
+    "pytest_skipped": 23,
+    "pytest_failed": 0,
+    "ruff_passed": true,
+    "shell_syntax_passed": true
+  },
+  "dgx_component_smoke": {
+    "passed": true,
+    "solver_workflow_count": 1,
+    "sequential_lp_solves_inside_workflow": 2,
+    "first_canonical_residual_pu": 0.0,
+    "refined_canonical_residual_pu": 0.0,
+    "primal_warm_start_accepted": true,
+    "dual_warm_start_accepted": true,
+    "details": "dgx-safe-residual-smoke.json"
+  },
+  "full_dgx_run": {
+    "authorized": true,
+    "authorized_at_utc": "2026-08-18T19:35:52.6288794Z",
+    "started": false,
+    "automatic_retry_of_v4": false
+  }
+}

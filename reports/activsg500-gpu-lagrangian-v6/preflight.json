@@ -1,0 +1,70 @@
+{
+  "schema_version": "1.0.0",
+  "experiment_suite_id": "activsg500-gpu-lagrangian-v6",
+  "status": "ready_to_freeze",
+  "recorded_at_utc": "2026-08-18T02:53:38.1711750Z",
+  "implementation_commit": "ea08b817156ec6a1deaf7681129af3061568daf8",
+  "configuration": {
+    "path": "configs/activsg500-gpu-lagrangian-v6.json",
+    "sha256": "f369c75ccaaaf299cc0007336e78587912194c614238369970cc3cd45af24be3",
+    "case_sha256": "8ca6d54ea5179eeb03fe29d7b645618e7a86338c172247e81687476660f6dcbe",
+    "contingency_sha256": "f6b2e7e38fd1cf5e09e877cf04233b4d0487d6d0e99903070d519eade12b76a9",
+    "mathematical_model_equal_to_v5": true,
+    "v5_runtime_preserved": true,
+    "added_precheck_phase_one_time_limit_seconds": 2.0,
+    "dgx_profile_equal_to_v5": true,
+    "exact_source_pmin_changed": false
+  },
+  "registered_delta_from_v5": {
+    "child_order": "exact_pmin_pmax_capacity_gate_then_short_gpu_phase_one_then_cost_lp",
+    "capacity_gate": "aggregate_exact_source_pmin_pmax_interval_telemetry_only",
+    "prune_authority": "positive_independently_replayable_phase_one_dual_only",
+    "feasible_child_handoff": "phase_one_source_native_primal_to_cost_lp_without_row_dual",
+    "uncertain_child_fallback": "ordinary_cost_lp_then_full_phase_one_if_cost_attempt_rejects"
+  },
+  "laptop_validation": {
+    "full_activsg500_solve_performed": false,
+    "pytest": {
+      "passed": 190,
+      "skipped_gpu_only": 17,
+      "failed": 0
+    },
+    "ruff": "passed",
+    "json_loading_and_fail_closed_registration": "passed",
+    "shell_syntax_validation": "passed"
+  },
+  "dgx_spark_validation": {
+    "full_v6_activsg500_run_count": 0,
+    "all_v6_one_shot_paths_absent": true,
+    "host_repository_commit": "ea08b817156ec6a1deaf7681129af3061568daf8",
+    "configuration_sha256_matches_laptop": true,
+    "build_script_sha256": "2ac6db5230363451c56587674ac2e1065b50a9cfee92d0d0b0dc0573ef6aab6f",
+    "run_script_sha256": "6cb772b31d545d7aecc075f2b25d120b9757e9e13afd3d44bce1771c52ca78f5",
+    "smoke_image_id": "sha256:08fcb30b90393d0323b81be2bafd45faa51652688faec04ffa9768edc83581d1",
+    "smoke_source_commit": "ea08b817156ec6a1deaf7681129af3061568daf8",
+    "pre_solver_container_launch_failures": 1,
+    "pre_solver_container_launch_failure_reason": "mounted tests package absent from Python module path",
+    "gpu_tiny_fixture_solve_runs": 1,
+    "gpu_tiny_fixture": {
+      "cuopt_version": "26.6.0",
+      "device": "NVIDIA GB10",
+      "infeasible_child_phase_one_prune_certified": true,
+      "infeasible_child_conservative_lower_bound_pu": 0.051666653216322564,
+      "feasible_child_capacity_gate_passed": true,
+      "feasible_child_phase_one_zero_violation_primal_retained": true,
+      "feasible_child_cost_lp_primal_warm_started": true,
+      "phase_one_row_dual_transferred": false,
+      "feasible_child_final_security_violation_pu": 0.0
+    }
+  },
+  "frozen_run_policy": {
+    "required_tag": "experiment-500-gpu-lagrangian-v6",
+    "full_run_count_allowed": 1,
+    "deadline_seconds": 600.0,
+    "requested_relative_gap": 0.001,
+    "integer_solver": "none",
+    "branch_and_bound": false,
+    "custom_cuda_kernel": false,
+    "automatic_retry": false
+  }
+}

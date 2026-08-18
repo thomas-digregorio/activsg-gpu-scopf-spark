@@ -1,0 +1,47 @@
+{
+  "canonical_columns": 5,
+  "canonical_start": [
+    1.0,
+    0.0,
+    0.0,
+    3.0,
+    0.0
+  ],
+  "fixed_or_unused_columns_eliminated": 2,
+  "free_columns_split": 1,
+  "mip_start_native_contract": {
+    "contract_passed": true,
+    "eliminated_submitted_canonical_columns": 2,
+    "explicit_eliminated_columns": 2,
+    "explicit_free_split_columns": 1,
+    "native_log_contract_passed": true,
+    "native_rejection_detected": false,
+    "native_translated_vector_readback": true,
+    "policy": "presolve_off_explicit_free_split_readback_v2",
+    "presolve_parameter_readback": 0,
+    "submitted": true,
+    "submitted_canonical_columns": 5,
+    "submitted_columns": 4,
+    "submitted_native_columns": 4
+  },
+  "native_columns": 4,
+  "native_log_audit": {
+    "barrier_numerical_warning_count": 0,
+    "bytes": 2406,
+    "free_variable_warning_count": 0,
+    "mip_start_rejection_count": 0,
+    "presolve_disabled_message_count": 1,
+    "sha256": "88ca3cda5f85c3bc56d61d2464cf536caac419b2f0a28ae7c50c6abdac8cb9ef"
+  },
+  "objective": 1.0,
+  "returned_values": [
+    1.0,
+    0.0,
+    0.0,
+    3.0,
+    0.0
+  ],
+  "schema_version": "1.0.0",
+  "solver_status": "Optimal",
+  "status": "passed"
+}

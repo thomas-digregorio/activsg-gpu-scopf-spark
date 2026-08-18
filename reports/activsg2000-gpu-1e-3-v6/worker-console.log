@@ -1,0 +1,925 @@
+Setting parameter time_limit to 8.993252e+02
+Setting parameter mip_relative_gap to 1.000000e-03
+Setting parameter random_seed to 0
+Setting parameter log_to_console to true
+Setting parameter method to 1
+Setting parameter pdlp_solver_mode to 4
+Setting parameter pdlp_precision to 1
+Setting parameter mip_batch_pdlp_strong_branching to 1
+Setting parameter mip_batch_pdlp_reliability_branching to 1
+Setting parameter mip_reliability_branching to 1
+cuOpt version: 26.6.0, git hash: df5fe0d1, host arch: aarch64, device archs: 75-real,80-real,86-real,90a-real,100f-real,120a-real,120
+CPU: Unknown, threads (physical/logical): 1/20, RAM: 107.69 GiB
+CUDA 13.0, device: NVIDIA GB10 (ID 0), VRAM: 121.69 GiB
+CUDA device UUID: 9041e1da-22a0-b23a-76f1-06935470d0de
+
+Solving a problem with 8788 constraints, 9220 variables (432 integers), and 26774 nonzeros
+Problem scaling:
+Objective coefficents range:          [4e+02, 9e+03]
+Constraint matrix coefficients range: [7e-04, 6e+00]
+Constraint rhs / bounds range:        [0e+00, 3e+00]
+Variable bounds range:                [1e-03, 4e+01]
+
+MIP row scaling completed
+Free variable found! Make sure the correct bounds are given.
+Free variable found! Make sure the correct bounds are given.
+Original problem: 8788 constraints, 9220 variables, 26774 nonzeros
+Calling Papilo presolver (git hash 741a2b9c)
+Presolve status: reduced the problem
+Presolve removed: 3994 constraints, 3998 variables, 8875 nonzeros
+Presolved problem: 4794 constraints, 5222 variables (430 integer), 17899 nonzeros
+Papilo presolve time: 0.23
+Objective offset 0.000000 scaling_factor 1.000000
+Model fingerprint: 0x5c76f924
+Starting cuOpt presolve
+Running probing cache with 19 tasks
+After cuOpt presolve: 4794 constraints, 5222 variables, objective offset 0.000000.
+cuOpt presolve time: 0.55
+Graph construction time 0.001342
+Automorphism group size 1.98479*10^90, 206 dejavu generators (14 move variables)
+Dejavu time 0.003940
+Projected 14 generators onto 5222 binary variables (192 skipped non-binary), 14 stored
+Binary orbits: 8 non-trivial, max size 4, 22/5222 (0.4%) binary variables in orbits
+Orbit histogram (size: count):
+ 2:4
+ 3:2
+ 4:2
+
+
+Total symmetry detection time 0.005298
+Probing implied bounds: 368 zero entries, 368 one entries
+Reduced cost strengthening enabled: 2
+27262 variable upper bounds in 0.00 seconds
+20962 variable lower bounds in 0.00 seconds
+
+Solving LP root relaxation in concurrent mode
+Skipping column scaling
+Dual Simplex Phase 1
+Dual feasible solution found.
+Dual Simplex Phase 2
+ Iter     Objective           Num Inf.  Sum Inf.     Perturb  Time
+    0 +0.0000000000000000e+00    1593 1.85542666e+05 0.00e+00 1.04
+    1 +0.0000000000000000e+00    1592 1.73650446e+05 0.00e+00 1.04
+ 1000 +2.6596746948372027e+04    1404 1.20446842e+06 0.00e+00 1.06
+ 2000 +5.6198393588905681e+04    1481 3.42901442e+07 0.00e+00 1.15
+ 3000 +1.4081012294588392e+05    2684 4.84716237e+06 0.00e+00 1.22
+ 4000 +2.4637559023888543e+05    3973 7.40770226e+15 0.00e+00 1.29
+ 5000 +2.9463046289858577e+05    2621 3.01604779e+04 0.00e+00 1.40
+ 6000 +3.9942264342128346e+05    1406 2.22097989e+03 0.00e+00 1.50
+ 7000 +4.5113785387666896e+05     385 3.45062365e+01 0.00e+00 1.60
+Removed perturbation of 2.14e-05.
+
+
+Root relaxation solution found in 7366 iterations and 0.60s by Dual Simplex
+Root relaxation objective +1.11829670e+06
+
+
+ | Explored | Unexplored |    Objective    |     Bound     | IntInf | Depth | Iter/Node | Gap    |  Time  |
+Strong branching using 19 threads and 1 fractional variables
+Cooperative batch PDLP and Dual Simplex for strong branching
+Strong branching completed in 0.22s
+Exploring the B&B tree using 19 threads
+
+ | Explored | Unexplored |    Objective    |     Bound     | IntInf | Depth | Iter/Node |   Gap    |  Time  |
+D        189          191    +1.118442e+06    +1.118297e+06        0     43   4.1e+01      0.01%      1.95
+Explored 198 nodes in 1.95s.
+Absolute Gap 1.452786e+02 Objective 1.1184423846115873e+06 Lower Bound 1.1182971059712931e+06
+Optimal solution found within relative MIP gap tolerance (1.0e-03)
+Solution objective: 1118442.384612 , relative_mip_gap 0.000130 solution_bound 1118297.105971 presolve_time 0.778819 total_solve_time 5.173057 max constraint violation 0.000000 max int violation 0.000000 max var bounds violation 0.000000 nodes 198 simplex_iterations 7733
+Setting parameter time_limit to 8.926118e+02
+Setting parameter mip_relative_gap to 1.000000e-03
+Setting parameter random_seed to 0
+Setting parameter log_to_console to true
+Setting parameter method to 1
+Setting parameter pdlp_solver_mode to 4
+Setting parameter pdlp_precision to 1
+Setting parameter mip_batch_pdlp_strong_branching to 1
+Setting parameter mip_batch_pdlp_reliability_branching to 1
+Setting parameter mip_reliability_branching to 1
+cuOpt version: 26.6.0, git hash: df5fe0d1, host arch: aarch64, device archs: 75-real,80-real,86-real,90a-real,100f-real,120a-real,120
+CPU: Unknown, threads (physical/logical): 1/20, RAM: 106.84 GiB
+CUDA 13.0, device: NVIDIA GB10 (ID 0), VRAM: 121.69 GiB
+CUDA device UUID: 9041e1da-22a0-b23a-76f1-06935470d0de
+
+Solving a problem with 8961 constraints, 9220 variables (432 integers), and 27120 nonzeros
+Problem scaling:
+Objective coefficents range:          [4e+02, 9e+03]
+Constraint matrix coefficients range: [7e-04, 6e+00]
+Constraint rhs / bounds range:        [0e+00, 2e+01]
+Variable bounds range:                [1e-03, 4e+01]
+
+MIP row scaling completed
+Presolve is disabled, skipping
+Objective offset 0.000000 scaling_factor 1.000000
+Model fingerprint: 0xec84f8ff
+Free variable found! Make sure the correct bounds are given.
+Unused variables detected, eliminating them! Unused var count 5
+Starting cuOpt presolve
+Running probing cache with 19 tasks
+Unused variables detected, eliminating them! Unused var count 303
+After cuOpt presolve: 8656 constraints, 10911 variables, objective offset 0.000000.
+cuOpt presolve time: 0.86
+Graph construction time 0.002274
+Automorphism group size 8.73535*10^220, 617 dejavu generators (0 move variables)
+Dejavu time 0.007593
+Projected 0 generators onto 10911 binary variables (617 skipped non-binary), 0 stored
+Total symmetry detection time 0.009885
+No exploitable symmetry found (0 generators, 0 non-trivial orbits, max orbit size 0)
+Probing implied bounds: 227 zero entries, 227 one entries
+Reduced cost strengthening enabled: 2
+10575 variable upper bounds in 0.00 seconds
+4275 variable lower bounds in 0.00 seconds
+
+Solving LP root relaxation in concurrent mode
+Skipping column scaling
+Dual Simplex Phase 1
+Dual feasible solution found.
+Dual Simplex Phase 2
+ Iter     Objective           Num Inf.  Sum Inf.     Perturb  Time
+    0 +0.0000000000000000e+00    4108 2.61166968e+05 0.00e+00 1.14
+    1 +0.0000000000000000e+00    4108 2.51767802e+05 0.00e+00 1.14
+ 1000 +0.0000000000000000e+00    3923 2.66129567e+05 0.00e+00 1.17
+ 2000 +0.0000000000000000e+00    3643 8.11154568e+05 0.00e+00 1.23
+ 3000 +5.8297533003368811e+05    5842 6.20392698e+04 2.00e-07 1.27
+ 4000 +7.7703431609587849e+05    5795 1.98791107e+05 3.92e-07 1.35
+Error cannot add the provided initial solution!     Assignment size 10911     initial solution size 9220
+ 5000 +7.8523648170494137e+05    5557 1.22297408e+07 3.90e-07 1.51
+ 6000 +7.9297256045406125e+05    4507 7.92584469e+05 1.03e-07 1.73
+ 7000 +8.2498411440111999e+05    3274 1.00717149e+06 0.00e+00 1.97
+ 8000 +8.6360021647796524e+05    4269 4.57931800e+09 0.00e+00 2.19
+ 9000 +8.9979131891027151e+05    1686 1.42266638e+08 1.00e-07 2.37
+10000 +9.1131390463035856e+05     229 8.14645835e+02 0.00e+00 2.70
+Removed perturbation of 8.22e-04.
+
+
+Root relaxation solution found in 10391 iterations and 1.67s by Dual Simplex
+Root relaxation objective +1.12757436e+06
+
+
+ | Explored | Unexplored |    Objective    |     Bound     | IntInf | Depth | Iter/Node | Gap    |  Time  |
+Barrier Solve status A numerical error was encountered.
+           0            0             +inf    +1.127625e+06       17      0   1.0e+04        -        2.86
+           0            0             +inf    +1.127758e+06       17      0   1.0e+04        -        2.89
+           0            0             +inf    +1.127778e+06       16      0   1.0e+04        -        2.93
+           0            0             +inf    +1.127876e+06       16      0   1.0e+04        -        2.97
+           0            0             +inf    +1.128206e+06       16      0   1.0e+04        -        3.01
+           0            0             +inf    +1.128569e+06       16      0   1.0e+04        -        3.05
+           0            0             +inf    +1.129472e+06       15      0   1.0e+04        -        3.09
+Gomory         cuts : 1
+MIR            cuts : 9
+Knapsack       cuts : 0
+Strong CG      cuts : 0
+Clique         cuts : 0
+Implied Bounds cuts : 0
+Flow Cover     cuts : 0
+Cut generation time: 0.30 seconds
+Cut pool size  : 20
+Size with cuts : 8659 constraints, 19570 variables, 41496 nonzeros
+Strong branching using 19 threads and 15 fractional variables
+Cooperative batch PDLP and Dual Simplex for strong branching
+Strong branching completed in 0.50s
+Exploring the B&B tree using 19 threads
+
+ | Explored | Unexplored |    Objective    |     Bound     | IntInf | Depth | Iter/Node |   Gap    |  Time  |
+D        277          225    +1.134287e+06    +1.130636e+06        0    154   1.7e+02       0.3%      5.68
+        1002          551    +1.134287e+06    +1.130637e+06        8     51   6.1e+01       0.3%      7.06
+D       1405          750    +1.133823e+06    +1.130637e+06        0    135   4.7e+01       0.3%      7.71
+        2022         1058    +1.133823e+06    +1.130643e+06       11     18   3.8e+01       0.3%      8.53
+        3039         1591    +1.133823e+06    +1.130645e+06        8     33   2.9e+01       0.3%      9.85
+        4041         2129    +1.133823e+06    +1.130650e+06        3     94   2.5e+01       0.3%     11.10
+        5058         2656    +1.133823e+06    +1.130650e+06        9     43   2.2e+01       0.3%     12.38
+        6129         3255    +1.133823e+06    +1.130650e+06       11     17   2.0e+01       0.3%     13.77
+        7130         3822    +1.133823e+06    +1.130718e+06        9     41   2.0e+01       0.3%     15.15
+        8140         4304    +1.133823e+06    +1.130718e+06        9     40   1.9e+01       0.3%     16.59
+D       8395         4435    +1.132941e+06    +1.130718e+06        0    188   1.9e+01       0.2%     16.94
+        9142         4765    +1.132941e+06    +1.130721e+06        8     28   1.8e+01       0.2%     18.08
+       10172         5239    +1.132941e+06    +1.130723e+06        5     54   1.8e+01       0.2%     19.56
+D      10818         5559    +1.132784e+06    +1.130763e+06        0    195   1.8e+01       0.2%     20.45
+       11175         5729    +1.132784e+06    +1.130765e+06       11     19   1.7e+01       0.2%     20.94
+D      11808         6020    +1.132095e+06    +1.130767e+06        0    187   1.7e+01       0.1%     21.84
+       12176         6155    +1.132095e+06    +1.130820e+06        8     49   1.7e+01       0.1%     22.39
+       13183         6548    +1.132095e+06    +1.130834e+06        8     46   1.7e+01       0.1%     23.98
+       14183         6952    +1.132095e+06    +1.130841e+06        9     47   1.7e+01       0.1%     25.48
+       15184         7385    +1.132095e+06    +1.130843e+06        8     58   1.7e+01       0.1%     27.03
+       16201         7796    +1.132095e+06    +1.130858e+06        9     47   1.6e+01       0.1%     28.44
+       17224         8259    +1.132095e+06    +1.130863e+06        7     70   1.6e+01       0.1%     29.90
+       18224         8659    +1.132095e+06    +1.130866e+06        7     66   1.6e+01       0.1%     31.43
+       19225         9108    +1.132095e+06    +1.130869e+06        9     51   1.6e+01       0.1%     32.82
+       20225         9546    +1.132095e+06    +1.130869e+06        8     66   1.6e+01       0.1%     34.16
+       21234         9963    +1.132095e+06    +1.130875e+06        9     39   1.5e+01       0.1%     35.65
+D      22046        10269    +1.132063e+06    +1.130875e+06        0    123   1.5e+01       0.1%     36.60
+       22235        10344    +1.132063e+06    +1.130875e+06        7     58   1.5e+01       0.1%     36.81
+       23253        10796    +1.132063e+06    +1.130875e+06        9     44   1.5e+01       0.1%     37.92
+       24285        11232    +1.132063e+06    +1.130875e+06        9     41   1.5e+01       0.1%     39.09
+       25294        11709    +1.132063e+06    +1.130875e+06        9     44   1.4e+01       0.1%     40.11
+       26313        12176    +1.132063e+06    +1.130876e+06        9     41   1.4e+01       0.1%     41.17
+       27341        12592    +1.132063e+06    +1.130876e+06        4     87   1.4e+01       0.1%     42.27
+       28344        12993    +1.132063e+06    +1.130876e+06        9     46   1.4e+01       0.1%     43.39
+       29348        13365    +1.132063e+06    +1.130876e+06        8     50   1.4e+01       0.1%     44.43
+       30366        13783    +1.132063e+06    +1.130876e+06        8     52   1.4e+01       0.1%     45.52
+       31380        14219    +1.132063e+06    +1.130876e+06        8     52   1.3e+01       0.1%     46.58
+       32386        14617    +1.132063e+06    +1.130876e+06        8     63   1.3e+01       0.1%     47.66
+       33393        15054    +1.132063e+06    +1.130880e+06        8     54   1.3e+01       0.1%     48.76
+       34404        15447    +1.132063e+06    +1.130880e+06       11     32   1.3e+01       0.1%     49.93
+       35404        15829    +1.132063e+06    +1.130880e+06       10     31   1.3e+01       0.1%     51.10
+       36409        16294    +1.132063e+06    +1.130880e+06        7     64   1.3e+01       0.1%     52.11
+       37425        16704    +1.132063e+06    +1.130880e+06       11     26   1.3e+01       0.1%     53.25
+       38443        17124    +1.132063e+06    +1.130883e+06        9     37   1.3e+01       0.1%     54.40
+       39447        17542    +1.132063e+06    +1.130884e+06        7     55   1.3e+01       0.1%     55.57
+       40462        17959    +1.132063e+06    +1.130885e+06       10     38   1.3e+01       0.1%     56.72
+       41474        18361    +1.132063e+06    +1.130886e+06       11     25   1.3e+01       0.1%     58.01
+       42485        18784    +1.132063e+06    +1.130886e+06        8     50   1.3e+01       0.1%     59.24
+       43494        19167    +1.132063e+06    +1.130886e+06       12     30   1.3e+01       0.1%     60.54
+       44508        19531    +1.132063e+06    +1.130886e+06        8     43   1.3e+01       0.1%     61.75
+       45509        19872    +1.132063e+06    +1.130886e+06        8     47   1.3e+01       0.1%     62.91
+       46520        20233    +1.132063e+06    +1.130886e+06       10     37   1.3e+01       0.1%     64.15
+       47520        20599    +1.132063e+06    +1.130886e+06        8     50   1.3e+01       0.1%     65.34
+       48522        20929    +1.132063e+06    +1.130886e+06        7     64   1.3e+01       0.1%     66.66
+D      49142        21141    +1.131917e+06    +1.130886e+06        0    140   1.3e+01      0.09%     67.47
+Explored 49151 nodes in 75.84s.
+Absolute Gap 1.030743e+03 Objective 1.1319171857697985e+06 Lower Bound 1.1308864424590988e+06
+Optimal solution found within relative MIP gap tolerance (1.0e-03)
+Solution objective: 1131917.185770 , relative_mip_gap 0.000911 solution_bound 1130886.442459 presolve_time 0.862685 total_solve_time 75.840459 max constraint violation 0.000000 max int violation 0.000000 max var bounds violation 0.000000 nodes 49151 simplex_iterations 627922
+Setting parameter time_limit to 8.165412e+02
+Setting parameter mip_relative_gap to 1.000000e-03
+Setting parameter random_seed to 0
+Setting parameter log_to_console to true
+Setting parameter method to 1
+Setting parameter pdlp_solver_mode to 4
+Setting parameter pdlp_precision to 1
+Setting parameter mip_batch_pdlp_strong_branching to 1
+Setting parameter mip_batch_pdlp_reliability_branching to 1
+Setting parameter mip_reliability_branching to 1
+cuOpt version: 26.6.0, git hash: df5fe0d1, host arch: aarch64, device archs: 75-real,80-real,86-real,90a-real,100f-real,120a-real,120
+CPU: Unknown, threads (physical/logical): 1/20, RAM: 106.13 GiB
+CUDA 13.0, device: NVIDIA GB10 (ID 0), VRAM: 121.69 GiB
+CUDA device UUID: 9041e1da-22a0-b23a-76f1-06935470d0de
+
+Solving a problem with 8979 constraints, 9220 variables (432 integers), and 27156 nonzeros
+Problem scaling:
+Objective coefficents range:          [4e+02, 9e+03]
+Constraint matrix coefficients range: [7e-04, 6e+00]
+Constraint rhs / bounds range:        [0e+00, 2e+01]
+Variable bounds range:                [1e-03, 4e+01]
+
+MIP row scaling completed
+Presolve is disabled, skipping
+Objective offset 0.000000 scaling_factor 1.000000
+Model fingerprint: 0xced070fd
+Free variable found! Make sure the correct bounds are given.
+Unused variables detected, eliminating them! Unused var count 5
+Starting cuOpt presolve
+Running probing cache with 19 tasks
+Unused variables detected, eliminating them! Unused var count 303
+After cuOpt presolve: 8674 constraints, 10911 variables, objective offset 0.000000.
+cuOpt presolve time: 0.89
+Graph construction time 0.001824
+Automorphism group size 8.73535*10^220, 617 dejavu generators (0 move variables)
+Dejavu time 0.004774
+Projected 0 generators onto 10911 binary variables (617 skipped non-binary), 0 stored
+Total symmetry detection time 0.006617
+No exploitable symmetry found (0 generators, 0 non-trivial orbits, max orbit size 0)
+Probing implied bounds: 227 zero entries, 227 one entries
+Reduced cost strengthening enabled: 2
+10575 variable upper bounds in 0.00 seconds
+4275 variable lower bounds in 0.00 seconds
+
+Solving LP root relaxation in concurrent mode
+Skipping column scaling
+Dual Simplex Phase 1
+Dual feasible solution found.
+Dual Simplex Phase 2
+ Iter     Objective           Num Inf.  Sum Inf.     Perturb  Time
+    0 +0.0000000000000000e+00    4119 2.61190592e+05 0.00e+00 1.18
+    1 +0.0000000000000000e+00    4119 2.51791426e+05 0.00e+00 1.18
+ 1000 +0.0000000000000000e+00    3933 2.66148942e+05 0.00e+00 1.23
+ 2000 +0.0000000000000000e+00    3664 1.27745587e+06 0.00e+00 1.30
+ 3000 +5.3442709368388762e+05    5852 9.69119095e+03 0.00e+00 1.34
+Error cannot add the provided initial solution!     Assignment size 10911     initial solution size 9220
+ 4000 +7.1440438119493448e+05    5763 3.32463372e+05 0.00e+00 1.43
+ 5000 +7.3254936470444885e+05    5590 2.28182485e+06 2.12e-07 1.61
+ 6000 +7.4058524099085107e+05    5086 5.37642527e+06 0.00e+00 1.82
+ 7000 +7.7672500431321771e+05    3430 5.32291821e+06 1.01e-07 2.05
+ 8000 +8.0355835598869750e+05    4858 1.26883108e+12 1.00e-07 2.26
+ 9000 +8.3319876300233661e+05    1628 2.51862832e+05 0.00e+00 2.45
+10000 +8.5208746940186445e+05     775 4.17805882e+05 0.00e+00 2.71
+Removed perturbation of 8.38e-04.
+
+
+Root relaxation solution found in 10763 iterations and 1.80s by Dual Simplex
+Root relaxation objective +1.12852923e+06
+
+
+ | Explored | Unexplored |    Objective    |     Bound     | IntInf | Depth | Iter/Node | Gap    |  Time  |
+Barrier Solve status A numerical error was encountered.
+           0            0             +inf    +1.128565e+06       22      0   1.1e+04        -        3.01
+           0            0             +inf    +1.128697e+06       22      0   1.1e+04        -        3.04
+Gomory         cuts : 1
+MIR            cuts : 1
+Knapsack       cuts : 0
+Strong CG      cuts : 0
+Clique         cuts : 0
+Implied Bounds cuts : 0
+Flow Cover     cuts : 0
+Cut generation time: 0.09 seconds
+Cut pool size  : 3
+Size with cuts : 8676 constraints, 19587 variables, 41546 nonzeros
+Strong branching using 19 threads and 22 fractional variables
+Cooperative batch PDLP and Dual Simplex for strong branching
+Strong branching completed in 0.72s
+Exploring the B&B tree using 19 threads
+
+ | Explored | Unexplored |    Objective    |     Bound     | IntInf | Depth | Iter/Node |   Gap    |  Time  |
+D        539          529    +1.161130e+06    +1.128854e+06        0    142   4.2e+01       2.8%      4.96
+D        772          732    +1.160165e+06    +1.128854e+06        0    161   3.6e+01       2.7%      5.25
+        1006          921    +1.160165e+06    +1.128867e+06        7     67   3.2e+01       2.7%      5.51
+B       1719         1510    +1.149110e+06    +1.128867e+06        0    136   2.4e+01       1.8%      6.40
+B       1910         1079    +1.149094e+06    +1.128867e+06        0    147   2.3e+01       1.8%      6.72
+        2013         1162    +1.149094e+06    +1.128867e+06       13     55   2.3e+01       1.8%      6.87
+D       2705         1710    +1.136390e+06    +1.128896e+06        0    224   2.0e+01       0.7%      7.88
+        3013         1902    +1.136390e+06    +1.128896e+06       15     34   1.9e+01       0.7%      8.37
+        4017         2610    +1.136390e+06    +1.128896e+06       14     36   1.7e+01       0.7%      9.65
+        5021         3324    +1.136390e+06    +1.128909e+06       15     19   1.6e+01       0.7%     10.94
+        6032         4033    +1.136390e+06    +1.128925e+06       13     35   1.5e+01       0.7%     12.14
+        7035         4694    +1.136390e+06    +1.129945e+06       13     43   1.4e+01       0.6%     13.34
+        8061         5398    +1.136390e+06    +1.129945e+06       19      8   1.3e+01       0.6%     14.40
+        9066         6097    +1.136390e+06    +1.129956e+06       15     34   1.3e+01       0.6%     15.49
+       10066         6787    +1.136390e+06    +1.129957e+06       14     20   1.3e+01       0.6%     16.53
+       11068         7449    +1.136390e+06    +1.129960e+06       12     43   1.2e+01       0.6%     17.60
+       12077         8142    +1.136390e+06    +1.129970e+06       16     19   1.2e+01       0.6%     18.64
+       13089         8754    +1.136390e+06    +1.129976e+06       14     36   1.2e+01       0.6%     19.81
+       14096         9385    +1.136390e+06    +1.129977e+06       14     30   1.1e+01       0.6%     20.87
+       15098        10013    +1.136390e+06    +1.129986e+06       18     34   1.1e+01       0.6%     21.93
+       16117        10640    +1.136390e+06    +1.129986e+06       11     58   1.1e+01       0.6%     23.09
+       17132        11279    +1.136390e+06    +1.129986e+06       14     35   1.1e+01       0.6%     24.20
+       18163        11906    +1.136390e+06    +1.130007e+06       15     42   1.1e+01       0.6%     25.35
+       19163        12520    +1.136390e+06    +1.130007e+06       15     37   1.1e+01       0.6%     26.50
+       20166        13139    +1.136390e+06    +1.130007e+06       14     47   1.1e+01       0.6%     27.71
+       21206        13817    +1.136390e+06    +1.130007e+06       11     76   1.1e+01       0.6%     28.88
+       22230        14513    +1.136390e+06    +1.130007e+06       10     77   1.1e+01       0.6%     29.99
+       23230        15171    +1.136390e+06    +1.130007e+06       10     86   1.1e+01       0.6%     31.03
+       24235        15800    +1.136390e+06    +1.130007e+06       11     83   1.0e+01       0.6%     32.16
+       25236        16449    +1.136390e+06    +1.130020e+06       10     77   1.0e+01       0.6%     33.22
+       26249        17144    +1.136390e+06    +1.130051e+06       11     64   1.0e+01       0.6%     34.35
+       27252        17857    +1.136390e+06    +1.130051e+06       13     54   1.0e+01       0.6%     35.44
+       28253        18578    +1.136390e+06    +1.130051e+06       10     91   1.0e+01       0.6%     36.50
+D      29017        19092    +1.136324e+06    +1.130051e+06        0    213   1.0e+01       0.6%     37.36
+       29253        19269    +1.136324e+06    +1.130051e+06       10     63   1.0e+01       0.6%     37.59
+       30263        19975    +1.136324e+06    +1.130051e+06       13     50   1.0e+01       0.6%     38.72
+       31265        20675    +1.136324e+06    +1.130051e+06       15     39   1.0e+01       0.6%     39.88
+       32265        21421    +1.136324e+06    +1.130051e+06       13     58   1.1e+01       0.6%     40.97
+       33270        22190    +1.136324e+06    +1.130051e+06       12     75   1.1e+01       0.6%     42.09
+       34297        22953    +1.136324e+06    +1.130051e+06       12     40   1.1e+01       0.6%     43.29
+       35299        23701    +1.136324e+06    +1.130075e+06        7    101   1.1e+01       0.5%     44.46
+       36306        24488    +1.136324e+06    +1.130075e+06        9     55   1.1e+01       0.5%     45.56
+       37313        25197    +1.136324e+06    +1.130075e+06       13     39   1.1e+01       0.5%     46.74
+       38321        25897    +1.136324e+06    +1.130075e+06        8     68   1.1e+01       0.5%     47.85
+       39326        26590    +1.136324e+06    +1.130075e+06        6     85   1.1e+01       0.5%     49.06
+       40340        27360    +1.136324e+06    +1.130075e+06       10     61   1.1e+01       0.5%     50.20
+       41348        28118    +1.136324e+06    +1.130126e+06       13     40   1.1e+01       0.5%     51.26
+       42351        28879    +1.136324e+06    +1.130126e+06        9     51   1.1e+01       0.5%     52.34
+       43374        29576    +1.136324e+06    +1.130126e+06       11     56   1.1e+01       0.5%     53.53
+       44389        30253    +1.136324e+06    +1.130126e+06        6    108   1.1e+01       0.5%     54.82
+       45392        30994    +1.136324e+06    +1.130155e+06        8     85   1.1e+01       0.5%     56.17
+       46394        31742    +1.136324e+06    +1.130155e+06        9     85   1.1e+01       0.5%     57.50
+       47400        32446    +1.136324e+06    +1.130164e+06       10     60   1.1e+01       0.5%     58.85
+       48409        33181    +1.136324e+06    +1.130164e+06       10     60   1.1e+01       0.5%     60.18
+       49416        33914    +1.136324e+06    +1.130164e+06       11     92   1.2e+01       0.5%     61.52
+       50422        34666    +1.136324e+06    +1.130164e+06        9     68   1.2e+01       0.5%     62.85
+       51425        35401    +1.136324e+06    +1.130164e+06        6     83   1.2e+01       0.5%     64.41
+       52426        36094    +1.136324e+06    +1.130165e+06        6    103   1.2e+01       0.5%     65.76
+D      53177        36687    +1.135147e+06    +1.130165e+06        0    155   1.2e+01       0.4%     66.87
+D      53211        36700    +1.133555e+06    +1.130242e+06        0    295   1.2e+01       0.3%     66.93
+       53436        36871    +1.133555e+06    +1.130242e+06        7    108   1.2e+01       0.3%     67.29
+       54441        37488    +1.133555e+06    +1.130245e+06       13     41   1.2e+01       0.3%     68.79
+       55453        38140    +1.133555e+06    +1.130245e+06       13     42   1.2e+01       0.3%     70.21
+       56453        38748    +1.133555e+06    +1.130245e+06        5    107   1.2e+01       0.3%     71.67
+       57455        39374    +1.133555e+06    +1.130245e+06        8     96   1.2e+01       0.3%     73.16
+D      57661        39514    +1.133443e+06    +1.130245e+06        0    258   1.2e+01       0.3%     73.45
+       58458        39930    +1.133443e+06    +1.130245e+06       11     70   1.2e+01       0.3%     74.59
+       59469        40547    +1.133443e+06    +1.130245e+06       12     49   1.2e+01       0.3%     76.13
+D      60321        41107    +1.133067e+06    +1.130252e+06        0    153   1.3e+01       0.2%     77.34
+       60470        41224    +1.133067e+06    +1.130252e+06        9     63   1.3e+01       0.2%     77.54
+D      61241        41781    +1.133067e+06    +1.130255e+06        0    153   1.3e+01       0.2%     78.69
+       61475        41905    +1.133067e+06    +1.130267e+06       10     62   1.3e+01       0.2%     79.04
+       62482        42562    +1.133067e+06    +1.130267e+06        7     79   1.3e+01       0.2%     80.45
+       63482        43144    +1.133067e+06    +1.130267e+06        9     75   1.3e+01       0.2%     81.89
+D      63625        43233    +1.133067e+06    +1.130267e+06        0    184   1.3e+01       0.2%     82.08
+       64492        43676    +1.133067e+06    +1.130267e+06        9     85   1.3e+01       0.2%     83.40
+       65496        44226    +1.133067e+06    +1.130267e+06       14     40   1.3e+01       0.2%     84.96
+       66500        44760    +1.133067e+06    +1.130275e+06       14     47   1.3e+01       0.2%     86.46
+       67507        45301    +1.133067e+06    +1.130281e+06       14     62   1.3e+01       0.2%     87.91
+       68519        45909    +1.133067e+06    +1.130286e+06       17     42   1.3e+01       0.2%     89.26
+       69528        46522    +1.133067e+06    +1.130303e+06        9     70   1.3e+01       0.2%     90.58
+       70534        47158    +1.133067e+06    +1.130303e+06       10     57   1.3e+01       0.2%     91.95
+       71561        47735    +1.133067e+06    +1.130335e+06       10     57   1.3e+01       0.2%     93.31
+       72567        48311    +1.133067e+06    +1.130335e+06       10     74   1.3e+01       0.2%     94.74
+       73567        48913    +1.133067e+06    +1.130335e+06        6     82   1.3e+01       0.2%     96.17
+       74567        49483    +1.133067e+06    +1.130335e+06        7     74   1.3e+01       0.2%     97.56
+       75567        50095    +1.133067e+06    +1.130335e+06       11     68   1.3e+01       0.2%     99.03
+       76570        50744    +1.133067e+06    +1.130335e+06       13     59   1.3e+01       0.2%    100.53
+       77579        51365    +1.133067e+06    +1.130335e+06       10     82   1.3e+01       0.2%    102.00
+       78610        52040    +1.133067e+06    +1.130343e+06       13     46   1.3e+01       0.2%    103.51
+       79629        52731    +1.133067e+06    +1.130343e+06        9     77   1.3e+01       0.2%    104.99
+       80632        53354    +1.133067e+06    +1.130343e+06        9     65   1.3e+01       0.2%    106.69
+       81647        53999    +1.133067e+06    +1.130343e+06       13     48   1.3e+01       0.2%    108.14
+       82647        54633    +1.133067e+06    +1.130343e+06       13     50   1.3e+01       0.2%    109.59
+       83647        55255    +1.133067e+06    +1.130343e+06       13     55   1.3e+01       0.2%    111.04
+       84649        55889    +1.133067e+06    +1.130343e+06       10     75   1.3e+01       0.2%    112.54
+       85673        56499    +1.133067e+06    +1.130343e+06       11     68   1.3e+01       0.2%    114.11
+       86683        57131    +1.133067e+06    +1.130343e+06       10     79   1.3e+01       0.2%    115.67
+       87693        57691    +1.133067e+06    +1.130343e+06       12     52   1.3e+01       0.2%    117.14
+       88704        58304    +1.133067e+06    +1.130343e+06       11     60   1.3e+01       0.2%    118.67
+       89718        58932    +1.133067e+06    +1.130343e+06       10     63   1.3e+01       0.2%    120.17
+       90724        59530    +1.133067e+06    +1.130343e+06       11     52   1.3e+01       0.2%    121.73
+       91751        60155    +1.133067e+06    +1.130347e+06       14     49   1.4e+01       0.2%    123.40
+       92754        60746    +1.133067e+06    +1.130347e+06        7     96   1.4e+01       0.2%    125.09
+       93754        61348    +1.133067e+06    +1.130347e+06        9     75   1.4e+01       0.2%    126.68
+       94757        61909    +1.133067e+06    +1.130348e+06       13     49   1.4e+01       0.2%    128.24
+       95766        62524    +1.133067e+06    +1.130349e+06       11     50   1.4e+01       0.2%    129.84
+       96766        63028    +1.133067e+06    +1.130349e+06       11     70   1.4e+01       0.2%    131.30
+       97769        63607    +1.133067e+06    +1.130349e+06        8     88   1.4e+01       0.2%    132.74
+       98774        64182    +1.133067e+06    +1.130349e+06       10     70   1.4e+01       0.2%    134.24
+       99777        64757    +1.133067e+06    +1.130349e+06       16     37   1.4e+01       0.2%    135.66
+      100779        65425    +1.133067e+06    +1.130354e+06        9     74   1.4e+01       0.2%    137.04
+      101799        66097    +1.133067e+06    +1.130354e+06       11     50   1.4e+01       0.2%    138.45
+      102803        66741    +1.133067e+06    +1.130354e+06        9     79   1.4e+01       0.2%    139.85
+      103805        67355    +1.133067e+06    +1.130354e+06       12     53   1.4e+01       0.2%    141.19
+      104814        67926    +1.133067e+06    +1.130354e+06        9     90   1.4e+01       0.2%    142.59
+      105818        68540    +1.133067e+06    +1.130354e+06        9     72   1.4e+01       0.2%    143.98
+      106826        69130    +1.133067e+06    +1.130355e+06       13     45   1.4e+01       0.2%    145.38
+      107827        69667    +1.133067e+06    +1.130355e+06       13     54   1.4e+01       0.2%    146.66
+      108830        70224    +1.133067e+06    +1.130355e+06       10     64   1.4e+01       0.2%    147.98
+      109835        70815    +1.133067e+06    +1.130355e+06        9     71   1.4e+01       0.2%    149.29
+      110840        71358    +1.133067e+06    +1.130355e+06        6    114   1.4e+01       0.2%    150.63
+      111840        71928    +1.133067e+06    +1.130358e+06        9     75   1.4e+01       0.2%    151.92
+      112846        72494    +1.133067e+06    +1.130358e+06       14     33   1.4e+01       0.2%    153.29
+      113847        73051    +1.133067e+06    +1.130360e+06       11     67   1.4e+01       0.2%    154.64
+      114850        73632    +1.133067e+06    +1.130360e+06        9     69   1.4e+01       0.2%    156.02
+      115856        74226    +1.133067e+06    +1.130360e+06        9     76   1.4e+01       0.2%    157.30
+      116863        74807    +1.133067e+06    +1.130360e+06       14     41   1.4e+01       0.2%    158.58
+      117867        75369    +1.133067e+06    +1.130360e+06       12     63   1.4e+01       0.2%    159.96
+      118879        75929    +1.133067e+06    +1.130360e+06        9     85   1.4e+01       0.2%    161.35
+      119884        76404    +1.133067e+06    +1.130362e+06        6    113   1.4e+01       0.2%    162.74
+      120885        77003    +1.133067e+06    +1.130365e+06       12     45   1.4e+01       0.2%    164.07
+D     121831        77533    +1.132912e+06    +1.130366e+06        0    184   1.4e+01       0.2%    165.39
+      121888        77582    +1.132912e+06    +1.130366e+06       11     43   1.4e+01       0.2%    165.45
+      122892        78176    +1.132912e+06    +1.130368e+06       10     55   1.4e+01       0.2%    166.77
+      123903        78795    +1.132912e+06    +1.130371e+06       17     30   1.4e+01       0.2%    168.19
+      124904        79434    +1.132912e+06    +1.130371e+06       13     38   1.4e+01       0.2%    169.60
+      125908        80022    +1.132912e+06    +1.130371e+06       16     48   1.4e+01       0.2%    171.04
+      126917        80573    +1.132912e+06    +1.130371e+06       11     66   1.4e+01       0.2%    172.44
+      127917        81133    +1.132912e+06    +1.130377e+06        9     67   1.4e+01       0.2%    173.80
+      128936        81756    +1.132912e+06    +1.130377e+06       14     46   1.4e+01       0.2%    175.05
+      129950        82370    +1.132912e+06    +1.130377e+06       12     63   1.4e+01       0.2%    176.37
+      130954        82904    +1.132912e+06    +1.130377e+06       15     49   1.4e+01       0.2%    177.76
+      131956        83438    +1.132912e+06    +1.130379e+06       11     76   1.4e+01       0.2%    179.14
+      132962        84068    +1.132912e+06    +1.130380e+06        7     86   1.4e+01       0.2%    180.47
+      133965        84617    +1.132912e+06    +1.130380e+06       14     36   1.4e+01       0.2%    181.81
+      134980        85220    +1.132912e+06    +1.130380e+06       11     52   1.4e+01       0.2%    183.07
+      135990        85822    +1.132912e+06    +1.130380e+06       12     59   1.4e+01       0.2%    184.43
+      136995        86377    +1.132912e+06    +1.130380e+06       10     43   1.4e+01       0.2%    185.78
+      138023        86943    +1.132912e+06    +1.130380e+06       12     67   1.4e+01       0.2%    187.17
+      139028        87496    +1.132912e+06    +1.130380e+06       12     53   1.4e+01       0.2%    188.53
+      140043        88049    +1.132912e+06    +1.130380e+06       12     46   1.4e+01       0.2%    189.85
+      141044        88630    +1.132912e+06    +1.130380e+06       11     69   1.4e+01       0.2%    191.14
+      142046        89216    +1.132912e+06    +1.130382e+06        9     76   1.4e+01       0.2%    192.33
+      143067        89841    +1.132912e+06    +1.130382e+06       11     61   1.4e+01       0.2%    193.54
+      144069        90417    +1.132912e+06    +1.130382e+06        9     76   1.4e+01       0.2%    194.83
+      145069        90989    +1.132912e+06    +1.130382e+06        8     83   1.4e+01       0.2%    196.04
+      146078        91612    +1.132912e+06    +1.130383e+06       11     58   1.4e+01       0.2%    197.31
+      147105        92253    +1.132912e+06    +1.130384e+06       14     49   1.4e+01       0.2%    198.62
+      148109        92795    +1.132912e+06    +1.130384e+06       12     49   1.4e+01       0.2%    200.00
+      149110        93308    +1.132912e+06    +1.130384e+06       11     59   1.4e+01       0.2%    201.31
+      150114        93878    +1.132912e+06    +1.130384e+06       10     71   1.4e+01       0.2%    202.62
+      151115        94415    +1.132912e+06    +1.130389e+06        9     64   1.4e+01       0.2%    203.85
+      152116        94986    +1.132912e+06    +1.130392e+06        9     79   1.4e+01       0.2%    205.11
+      153125        95519    +1.132912e+06    +1.130394e+06       10     59   1.4e+01       0.2%    206.39
+      154125        96119    +1.132912e+06    +1.130394e+06       14     49   1.4e+01       0.2%    207.78
+      155127        96671    +1.132912e+06    +1.130394e+06       11     68   1.4e+01       0.2%    209.06
+      156130        97274    +1.132912e+06    +1.130394e+06       10     60   1.4e+01       0.2%    210.32
+      157130        97792    +1.132912e+06    +1.130394e+06        9     78   1.4e+01       0.2%    211.60
+      158138        98444    +1.132912e+06    +1.130395e+06       10     58   1.4e+01       0.2%    212.90
+      159140        98972    +1.132912e+06    +1.130397e+06       14     32   1.4e+01       0.2%    214.14
+      160151        99601    +1.132912e+06    +1.130397e+06       11     43   1.4e+01       0.2%    215.37
+      161153       100233    +1.132912e+06    +1.130397e+06       11     80   1.4e+01       0.2%    216.61
+      162161       100749    +1.132912e+06    +1.130397e+06        9     75   1.4e+01       0.2%    217.95
+      163161       101269    +1.132912e+06    +1.130398e+06       11     69   1.4e+01       0.2%    219.30
+      164166       101810    +1.132912e+06    +1.130399e+06       10     69   1.4e+01       0.2%    220.66
+      165167       102333    +1.132912e+06    +1.130399e+06       14     47   1.4e+01       0.2%    222.03
+      166168       102864    +1.132912e+06    +1.130399e+06        8     78   1.4e+01       0.2%    223.34
+      167168       103422    +1.132912e+06    +1.130400e+06       12     41   1.4e+01       0.2%    224.63
+      168172       103984    +1.132912e+06    +1.130407e+06       11     44   1.4e+01       0.2%    226.06
+      169181       104595    +1.132912e+06    +1.130407e+06       10     51   1.4e+01       0.2%    227.38
+      170184       105210    +1.132912e+06    +1.130408e+06       14     46   1.4e+01       0.2%    228.68
+      171199       105761    +1.132912e+06    +1.130408e+06        8     84   1.4e+01       0.2%    230.03
+      172200       106324    +1.132912e+06    +1.130419e+06       12     50   1.4e+01       0.2%    231.33
+      173205       106861    +1.132912e+06    +1.130420e+06        8     83   1.4e+01       0.2%    232.68
+      174207       107389    +1.132912e+06    +1.130420e+06        8     87   1.4e+01       0.2%    234.06
+      175207       108013    +1.132912e+06    +1.130420e+06        8     66   1.4e+01       0.2%    235.35
+      176208       108626    +1.132912e+06    +1.130420e+06       12     49   1.4e+01       0.2%    236.58
+      177212       109196    +1.132912e+06    +1.130420e+06        9     66   1.4e+01       0.2%    237.94
+      178212       109802    +1.132912e+06    +1.130420e+06        7     84   1.4e+01       0.2%    239.34
+      179231       110403    +1.132912e+06    +1.130420e+06       15     47   1.4e+01       0.2%    240.75
+      180233       111023    +1.132912e+06    +1.130429e+06       11     84   1.4e+01       0.2%    242.04
+      181238       111644    +1.132912e+06    +1.130433e+06        8     76   1.4e+01       0.2%    243.37
+      182243       112243    +1.132912e+06    +1.130435e+06       10     56   1.4e+01       0.2%    244.67
+      183252       112830    +1.132912e+06    +1.130440e+06        9     56   1.4e+01       0.2%    246.02
+      184256       113482    +1.132912e+06    +1.130440e+06       12     48   1.4e+01       0.2%    247.25
+      185256       114136    +1.132912e+06    +1.130440e+06        9     71   1.4e+01       0.2%    248.58
+      186283       114789    +1.132912e+06    +1.130440e+06        9     58   1.4e+01       0.2%    249.88
+      187307       115397    +1.132912e+06    +1.130449e+06       11     67   1.4e+01       0.2%    251.26
+      188309       115979    +1.132912e+06    +1.130478e+06        7    106   1.4e+01       0.2%    252.63
+      189315       116517    +1.132912e+06    +1.130481e+06       11     53   1.4e+01       0.2%    254.01
+      190334       117142    +1.132912e+06    +1.130482e+06        8     69   1.4e+01       0.2%    255.36
+      191335       117739    +1.132912e+06    +1.130483e+06        8    111   1.4e+01       0.2%    256.60
+      192336       118352    +1.132912e+06    +1.130502e+06        9     83   1.4e+01       0.2%    257.90
+      193336       119006    +1.132912e+06    +1.130502e+06        7     84   1.4e+01       0.2%    259.17
+      194338       119562    +1.132912e+06    +1.130502e+06        9     57   1.4e+01       0.2%    260.55
+      195339       120143    +1.132912e+06    +1.130502e+06        7    104   1.4e+01       0.2%    261.93
+      196345       120751    +1.132912e+06    +1.130502e+06       10     77   1.4e+01       0.2%    263.26
+      197358       121318    +1.132912e+06    +1.130505e+06       11     56   1.4e+01       0.2%    264.64
+      198381       121885    +1.132912e+06    +1.130507e+06       11     50   1.4e+01       0.2%    266.10
+      199385       122405    +1.132912e+06    +1.130507e+06       11     66   1.4e+01       0.2%    267.52
+      200393       122913    +1.132912e+06    +1.130507e+06       12     62   1.4e+01       0.2%    269.08
+      201403       123581    +1.132912e+06    +1.130507e+06        8     77   1.4e+01       0.2%    270.44
+      202409       124219    +1.132912e+06    +1.130507e+06        7     82   1.4e+01       0.2%    271.83
+      203439       124869    +1.132912e+06    +1.130507e+06       12     57   1.4e+01       0.2%    273.27
+      204441       125497    +1.132912e+06    +1.130508e+06       11     62   1.4e+01       0.2%    274.77
+      205455       126049    +1.132912e+06    +1.130508e+06        8     73   1.4e+01       0.2%    276.27
+      206495       126633    +1.132912e+06    +1.130508e+06        8     74   1.4e+01       0.2%    277.68
+      207511       127227    +1.132912e+06    +1.130508e+06        9     88   1.4e+01       0.2%    279.02
+      208540       127796    +1.132912e+06    +1.130508e+06        8     88   1.4e+01       0.2%    280.45
+      209555       128327    +1.132912e+06    +1.130509e+06        5     98   1.4e+01       0.2%    281.94
+      210564       128902    +1.132912e+06    +1.130515e+06        5     99   1.4e+01       0.2%    283.33
+      211587       129467    +1.132912e+06    +1.130515e+06       12     71   1.4e+01       0.2%    284.75
+      212596       130028    +1.132912e+06    +1.130515e+06        5    101   1.4e+01       0.2%    286.19
+      213606       130590    +1.132912e+06    +1.130515e+06       12     52   1.4e+01       0.2%    287.55
+      214614       131104    +1.132912e+06    +1.130520e+06        9     72   1.4e+01       0.2%    289.11
+      215623       131675    +1.132912e+06    +1.130521e+06       10     66   1.4e+01       0.2%    290.53
+      216627       132253    +1.132912e+06    +1.130521e+06       12     51   1.4e+01       0.2%    291.83
+      217633       132817    +1.132912e+06    +1.130521e+06        9     68   1.4e+01       0.2%    293.20
+      218655       133365    +1.132912e+06    +1.130522e+06       15     55   1.4e+01       0.2%    294.66
+      219671       133913    +1.132912e+06    +1.130522e+06       15     55   1.4e+01       0.2%    296.10
+      220678       134436    +1.132912e+06    +1.130522e+06       11     61   1.4e+01       0.2%    297.46
+      221686       134972    +1.132912e+06    +1.130524e+06       11     65   1.4e+01       0.2%    298.80
+      222691       135559    +1.132912e+06    +1.130532e+06        9    101   1.4e+01       0.2%    300.15
+      223701       136133    +1.132912e+06    +1.130532e+06       10     88   1.4e+01       0.2%    301.67
+      224725       136695    +1.132912e+06    +1.130532e+06        9     70   1.4e+01       0.2%    303.06
+      225732       137272    +1.132912e+06    +1.130532e+06       10     52   1.4e+01       0.2%    304.44
+      226752       137888    +1.132912e+06    +1.130535e+06       11     68   1.4e+01       0.2%    305.73
+      227760       138422    +1.132912e+06    +1.130547e+06       10     63   1.4e+01       0.2%    307.08
+      228791       139009    +1.132912e+06    +1.130547e+06       14     56   1.4e+01       0.2%    308.51
+      229797       139557    +1.132912e+06    +1.130551e+06       14     55   1.4e+01       0.2%    309.90
+      230798       140124    +1.132912e+06    +1.130551e+06       11     55   1.4e+01       0.2%    311.31
+      231811       140641    +1.132912e+06    +1.130551e+06        7     91   1.4e+01       0.2%    312.78
+      232825       141229    +1.132912e+06    +1.130551e+06       10     56   1.4e+01       0.2%    314.15
+      233837       141869    +1.132912e+06    +1.130554e+06       10     61   1.4e+01       0.2%    315.50
+      234856       142418    +1.132912e+06    +1.130554e+06       11     65   1.4e+01       0.2%    317.05
+      235861       142913    +1.132912e+06    +1.130554e+06       11     60   1.5e+01       0.2%    318.61
+      236886       143462    +1.132912e+06    +1.130557e+06       13     62   1.5e+01       0.2%    320.18
+      237893       143951    +1.132912e+06    +1.130559e+06        9     71   1.5e+01       0.2%    321.61
+      238914       144408    +1.132912e+06    +1.130559e+06       11     68   1.5e+01       0.2%    323.13
+      239929       144925    +1.132912e+06    +1.130559e+06       11     59   1.5e+01       0.2%    324.57
+      240953       145491    +1.132912e+06    +1.130559e+06        7     83   1.5e+01       0.2%    325.93
+      241972       145980    +1.132912e+06    +1.130561e+06        6    102   1.5e+01       0.2%    327.39
+      242974       146484    +1.132912e+06    +1.130562e+06        5    133   1.5e+01       0.2%    328.77
+      243999       147035    +1.132912e+06    +1.130562e+06       11     62   1.5e+01       0.2%    330.19
+      245001       147583    +1.132912e+06    +1.130562e+06       10     60   1.5e+01       0.2%    331.58
+      246001       148165    +1.132912e+06    +1.130562e+06        8     83   1.5e+01       0.2%    333.05
+      247009       148665    +1.132912e+06    +1.130562e+06        9     70   1.5e+01       0.2%    334.47
+      248011       149181    +1.132912e+06    +1.130563e+06        9     72   1.5e+01       0.2%    335.80
+      249011       149671    +1.132912e+06    +1.130563e+06       15     42   1.5e+01       0.2%    337.09
+      250012       150192    +1.132912e+06    +1.130563e+06       12     54   1.5e+01       0.2%    338.40
+      251022       150650    +1.132912e+06    +1.130563e+06        9     68   1.5e+01       0.2%    339.83
+      252024       151188    +1.132912e+06    +1.130563e+06        6     98   1.5e+01       0.2%    341.18
+      253035       151651    +1.132912e+06    +1.130563e+06       10     69   1.5e+01       0.2%    342.43
+      254042       152092    +1.132912e+06    +1.130563e+06       14     56   1.5e+01       0.2%    343.68
+      255045       152569    +1.132912e+06    +1.130564e+06       13     56   1.5e+01       0.2%    344.93
+      256045       153113    +1.132912e+06    +1.130564e+06       10     68   1.5e+01       0.2%    346.22
+      257048       153658    +1.132912e+06    +1.130564e+06        7     86   1.5e+01       0.2%    347.53
+      258052       154280    +1.132912e+06    +1.130564e+06        7     88   1.5e+01       0.2%    348.80
+      259059       154739    +1.132912e+06    +1.130564e+06       13     57   1.5e+01       0.2%    350.08
+      260066       155250    +1.132912e+06    +1.130564e+06        9     84   1.5e+01       0.2%    351.43
+      261067       155809    +1.132912e+06    +1.130566e+06        8     82   1.5e+01       0.2%    352.65
+      262080       156326    +1.132912e+06    +1.130566e+06       14     62   1.5e+01       0.2%    354.00
+      263089       156849    +1.132912e+06    +1.130566e+06       10     77   1.5e+01       0.2%    355.41
+      264091       157353    +1.132912e+06    +1.130566e+06       13     58   1.5e+01       0.2%    356.73
+      265097       157877    +1.132912e+06    +1.130567e+06       11     69   1.5e+01       0.2%    358.02
+      266098       158408    +1.132912e+06    +1.130567e+06        8     84   1.5e+01       0.2%    359.27
+      267099       158937    +1.132912e+06    +1.130567e+06       14     55   1.5e+01       0.2%    360.52
+      268109       159497    +1.132912e+06    +1.130567e+06        6     95   1.5e+01       0.2%    361.77
+      269121       160081    +1.132912e+06    +1.130567e+06       10     61   1.5e+01       0.2%    363.08
+H                            +1.132912e+06    +1.130567e+06                                 0.2%    364.28
+      270133       160687    +1.132912e+06    +1.130567e+06        8     81   1.5e+01       0.2%    364.36
+      271141       161259    +1.132912e+06    +1.130567e+06       10     54   1.5e+01       0.2%    365.63
+      272141       161769    +1.132912e+06    +1.130569e+06        7     86   1.5e+01       0.2%    366.96
+      273166       162358    +1.132912e+06    +1.130570e+06       12     61   1.5e+01       0.2%    368.36
+      274166       162908    +1.132912e+06    +1.130570e+06        9     72   1.5e+01       0.2%    369.69
+      275173       163389    +1.132912e+06    +1.130570e+06       13     52   1.5e+01       0.2%    371.15
+      276173       163871    +1.132912e+06    +1.130570e+06       12     57   1.5e+01       0.2%    372.45
+      277175       164367    +1.132912e+06    +1.130570e+06       13     56   1.5e+01       0.2%    373.82
+      278183       164863    +1.132912e+06    +1.130570e+06       14     47   1.5e+01       0.2%    375.29
+      279195       165391    +1.132912e+06    +1.130570e+06        9     84   1.5e+01       0.2%    376.67
+      280203       165911    +1.132912e+06    +1.130570e+06       13     49   1.5e+01       0.2%    377.92
+      281205       166455    +1.132912e+06    +1.130570e+06       11     59   1.5e+01       0.2%    379.14
+      282206       167016    +1.132912e+06    +1.130574e+06       10     86   1.5e+01       0.2%    380.41
+      283208       167556    +1.132912e+06    +1.130575e+06       10     92   1.5e+01       0.2%    381.68
+      284214       168112    +1.132912e+06    +1.130576e+06       10     79   1.5e+01       0.2%    383.01
+      285219       168583    +1.132912e+06    +1.130576e+06       12     57   1.5e+01       0.2%    384.43
+      286219       169081    +1.132912e+06    +1.130576e+06       10     65   1.5e+01       0.2%    385.75
+      287221       169553    +1.132912e+06    +1.130576e+06       15     55   1.5e+01       0.2%    387.03
+      288228       170080    +1.132912e+06    +1.130576e+06        9     73   1.5e+01       0.2%    388.27
+      289229       170565    +1.132912e+06    +1.130576e+06       10     72   1.5e+01       0.2%    389.59
+      290234       171052    +1.132912e+06    +1.130576e+06        8     93   1.5e+01       0.2%    390.82
+      291242       171586    +1.132912e+06    +1.130576e+06       16     60   1.5e+01       0.2%    392.08
+      292244       172160    +1.132912e+06    +1.130576e+06        6    100   1.5e+01       0.2%    393.34
+      293269       172691    +1.132912e+06    +1.130576e+06       10     75   1.5e+01       0.2%    394.64
+      294273       173283    +1.132912e+06    +1.130577e+06       15     60   1.5e+01       0.2%    395.91
+      295280       173780    +1.132912e+06    +1.130577e+06       10     63   1.5e+01       0.2%    397.24
+      296280       174294    +1.132912e+06    +1.130577e+06       16     55   1.5e+01       0.2%    398.49
+      297290       174792    +1.132912e+06    +1.130577e+06        8     86   1.5e+01       0.2%    399.69
+      298302       175346    +1.132912e+06    +1.130577e+06        7     84   1.5e+01       0.2%    400.99
+      299310       175898    +1.132912e+06    +1.130577e+06       10     84   1.5e+01       0.2%    402.35
+      300314       176392    +1.132912e+06    +1.130577e+06       10     74   1.5e+01       0.2%    403.69
+      301314       176914    +1.132912e+06    +1.130577e+06       10     91   1.5e+01       0.2%    404.98
+      302317       177469    +1.132912e+06    +1.130577e+06        9     79   1.5e+01       0.2%    406.25
+      303322       178016    +1.132912e+06    +1.130577e+06       11     62   1.5e+01       0.2%    407.50
+      304332       178570    +1.132912e+06    +1.130577e+06        8     83   1.5e+01       0.2%    408.78
+      305333       179013    +1.132912e+06    +1.130577e+06        9     77   1.5e+01       0.2%    410.08
+      306349       179495    +1.132912e+06    +1.130577e+06        7     98   1.5e+01       0.2%    411.46
+      307360       179992    +1.132912e+06    +1.130577e+06       15     60   1.5e+01       0.2%    412.79
+      308371       180505    +1.132912e+06    +1.130577e+06        8     87   1.5e+01       0.2%    414.09
+      309372       180982    +1.132912e+06    +1.130577e+06       11     60   1.5e+01       0.2%    415.34
+      310376       181468    +1.132912e+06    +1.130577e+06        6     91   1.5e+01       0.2%    416.76
+      311387       181907    +1.132912e+06    +1.130577e+06       12     64   1.5e+01       0.2%    418.16
+      312389       182413    +1.132912e+06    +1.130579e+06       14     44   1.5e+01       0.2%    419.54
+      313401       182959    +1.132912e+06    +1.130579e+06       11     63   1.5e+01       0.2%    420.90
+      314402       183490    +1.132912e+06    +1.130580e+06       11     70   1.5e+01       0.2%    422.31
+      315402       184026    +1.132912e+06    +1.130580e+06       11     69   1.5e+01       0.2%    423.64
+      316429       184505    +1.132912e+06    +1.130580e+06       14     57   1.5e+01       0.2%    425.08
+      317429       184995    +1.132912e+06    +1.130580e+06       11     84   1.5e+01       0.2%    426.56
+      318450       185522    +1.132912e+06    +1.130580e+06       14     63   1.5e+01       0.2%    427.96
+      319463       186027    +1.132912e+06    +1.130580e+06       13     55   1.5e+01       0.2%    429.37
+      320474       186566    +1.132912e+06    +1.130581e+06        9     92   1.5e+01       0.2%    430.67
+      321478       187052    +1.132912e+06    +1.130581e+06       13     65   1.5e+01       0.2%    432.20
+      322478       187530    +1.132912e+06    +1.130581e+06       14     66   1.5e+01       0.2%    433.64
+      323484       188082    +1.132912e+06    +1.130582e+06       10     66   1.5e+01       0.2%    435.13
+      324493       188569    +1.132912e+06    +1.130582e+06       10     65   1.5e+01       0.2%    436.43
+      325509       189107    +1.132912e+06    +1.130582e+06        8     82   1.5e+01       0.2%    437.76
+      326521       189675    +1.132912e+06    +1.130583e+06       12     68   1.5e+01       0.2%    439.07
+      327525       190185    +1.132912e+06    +1.130583e+06        8     74   1.5e+01       0.2%    440.42
+      328528       190698    +1.132912e+06    +1.130583e+06       11     73   1.5e+01       0.2%    441.88
+      329529       191229    +1.132912e+06    +1.130583e+06       11     64   1.5e+01       0.2%    443.25
+      330541       191743    +1.132912e+06    +1.130584e+06       11     67   1.5e+01       0.2%    444.68
+      331549       192243    +1.132912e+06    +1.130584e+06       11     67   1.5e+01       0.2%    446.02
+      332551       192739    +1.132912e+06    +1.130584e+06       13     56   1.5e+01       0.2%    447.29
+      333555       193165    +1.132912e+06    +1.130584e+06       13     59   1.5e+01       0.2%    448.70
+      334564       193720    +1.132912e+06    +1.130584e+06        7    104   1.5e+01       0.2%    450.09
+      335570       194226    +1.132912e+06    +1.130584e+06       10     92   1.5e+01       0.2%    451.38
+      336574       194776    +1.132912e+06    +1.130585e+06       11     74   1.5e+01       0.2%    452.60
+      337591       195283    +1.132912e+06    +1.130585e+06        7     82   1.5e+01       0.2%    453.93
+      338598       195812    +1.132912e+06    +1.130585e+06       12     71   1.5e+01       0.2%    455.17
+      339600       196330    +1.132912e+06    +1.130585e+06       11     69   1.5e+01       0.2%    456.54
+      340608       196844    +1.132912e+06    +1.130585e+06        8     81   1.5e+01       0.2%    457.95
+      341609       197319    +1.132912e+06    +1.130585e+06        7     95   1.5e+01       0.2%    459.31
+      342613       197835    +1.132912e+06    +1.130585e+06       13     61   1.5e+01       0.2%    460.62
+      343643       198359    +1.132912e+06    +1.130585e+06        8     75   1.5e+01       0.2%    462.11
+      344643       198901    +1.132912e+06    +1.130585e+06       10     77   1.5e+01       0.2%    463.44
+      345666       199418    +1.132912e+06    +1.130585e+06        9     70   1.5e+01       0.2%    464.80
+      346667       199953    +1.132912e+06    +1.130586e+06        8     83   1.5e+01       0.2%    466.11
+      347667       200447    +1.132912e+06    +1.130586e+06        5     96   1.5e+01       0.2%    467.39
+      348667       200931    +1.132912e+06    +1.130586e+06       11     66   1.5e+01       0.2%    468.75
+      349672       201420    +1.132912e+06    +1.130587e+06        9     98   1.5e+01       0.2%    470.11
+      350675       201933    +1.132912e+06    +1.130587e+06       12     68   1.5e+01       0.2%    471.44
+      351675       202495    +1.132912e+06    +1.130588e+06        8     77   1.5e+01       0.2%    472.74
+      352683       203089    +1.132912e+06    +1.130588e+06       12     57   1.5e+01       0.2%    474.05
+      353725       203691    +1.132912e+06    +1.130588e+06       12     67   1.5e+01       0.2%    475.46
+      354742       204260    +1.132912e+06    +1.130588e+06       10     76   1.5e+01       0.2%    476.77
+      355747       204781    +1.132912e+06    +1.130589e+06       12     58   1.5e+01       0.2%    478.10
+      356750       205246    +1.132912e+06    +1.130589e+06        6    101   1.5e+01       0.2%    479.53
+      357750       205806    +1.132912e+06    +1.130589e+06        8     77   1.5e+01       0.2%    480.86
+      358754       206276    +1.132912e+06    +1.130589e+06       12     62   1.5e+01       0.2%    482.25
+      359764       206802    +1.132912e+06    +1.130589e+06        9     78   1.5e+01       0.2%    483.59
+      360765       207325    +1.132912e+06    +1.130589e+06       11     74   1.5e+01       0.2%    484.93
+      361770       207784    +1.132912e+06    +1.130590e+06       10     64   1.5e+01       0.2%    486.26
+      362772       208236    +1.132912e+06    +1.130590e+06        7     91   1.5e+01       0.2%    487.56
+      363779       208687    +1.132912e+06    +1.130592e+06        6    112   1.5e+01       0.2%    488.91
+      364790       209150    +1.132912e+06    +1.130592e+06        5     98   1.5e+01       0.2%    490.39
+      365792       209570    +1.132912e+06    +1.130592e+06        6     85   1.5e+01       0.2%    491.75
+      366801       210053    +1.132912e+06    +1.130592e+06        6     90   1.5e+01       0.2%    493.05
+      367801       210553    +1.132912e+06    +1.130592e+06        8     66   1.5e+01       0.2%    494.32
+      368809       211025    +1.132912e+06    +1.130592e+06       10     61   1.5e+01       0.2%    495.84
+      369815       211529    +1.132912e+06    +1.130592e+06       11     80   1.5e+01       0.2%    497.09
+      370815       212047    +1.132912e+06    +1.130592e+06        7     80   1.5e+01       0.2%    498.49
+      371819       212527    +1.132912e+06    +1.130592e+06        9     83   1.5e+01       0.2%    499.79
+      372828       213044    +1.132912e+06    +1.130592e+06        8     85   1.5e+01       0.2%    501.27
+      373832       213428    +1.132912e+06    +1.130592e+06       11     68   1.5e+01       0.2%    502.95
+      374832       213910    +1.132912e+06    +1.130593e+06       10     78   1.5e+01       0.2%    504.33
+      375868       214448    +1.132912e+06    +1.130593e+06       10     85   1.5e+01       0.2%    505.78
+      376870       214894    +1.132912e+06    +1.130593e+06        5    112   1.5e+01       0.2%    507.23
+      377871       215411    +1.132912e+06    +1.130593e+06        9     80   1.5e+01       0.2%    508.54
+      378876       215920    +1.132912e+06    +1.130593e+06        6    113   1.5e+01       0.2%    509.91
+      379888       216448    +1.132912e+06    +1.130593e+06       11     77   1.5e+01       0.2%    511.37
+      380908       216966    +1.132912e+06    +1.130593e+06       10     68   1.5e+01       0.2%    512.76
+      381918       217434    +1.132912e+06    +1.130594e+06       11     56   1.5e+01       0.2%    514.24
+      382930       217990    +1.132912e+06    +1.130594e+06        7     98   1.5e+01       0.2%    515.65
+      384032       218480    +1.132912e+06    +1.130594e+06       13     63   1.5e+01       0.2%    517.05
+      385044       219000    +1.132912e+06    +1.130594e+06        8     75   1.5e+01       0.2%    518.32
+      386049       219489    +1.132912e+06    +1.130594e+06        7     98   1.5e+01       0.2%    519.69
+      387050       219998    +1.132912e+06    +1.130594e+06        5    100   1.5e+01       0.2%    521.01
+      388060       220472    +1.132912e+06    +1.130594e+06        7     84   1.5e+01       0.2%    522.39
+      389065       220923    +1.132912e+06    +1.130594e+06        7    113   1.5e+01       0.2%    523.72
+      390076       221398    +1.132912e+06    +1.130594e+06        9     74   1.5e+01       0.2%    525.12
+      391086       221870    +1.132912e+06    +1.130594e+06        9     80   1.5e+01       0.2%    526.52
+      392088       222300    +1.132912e+06    +1.130594e+06        4    105   1.5e+01       0.2%    527.83
+      393100       222802    +1.132912e+06    +1.130595e+06        9     81   1.5e+01       0.2%    529.28
+      394103       223309    +1.132912e+06    +1.130595e+06       13     72   1.5e+01       0.2%    530.65
+      395107       223777    +1.132912e+06    +1.130595e+06        7     82   1.5e+01       0.2%    532.04
+      396114       224204    +1.132912e+06    +1.130595e+06       14     65   1.5e+01       0.2%    533.48
+      397115       224699    +1.132912e+06    +1.130595e+06       11     68   1.5e+01       0.2%    534.84
+      398120       225158    +1.132912e+06    +1.130595e+06       10     79   1.5e+01       0.2%    536.27
+      399122       225678    +1.132912e+06    +1.130596e+06        9     76   1.5e+01       0.2%    537.73
+      400140       226182    +1.132912e+06    +1.130596e+06        9     73   1.5e+01       0.2%    539.46
+      401141       226721    +1.132912e+06    +1.130596e+06        7     80   1.5e+01       0.2%    541.08
+      402149       227205    +1.132912e+06    +1.130597e+06        9     66   1.5e+01       0.2%    542.91
+      403153       227783    +1.132912e+06    +1.130597e+06       10     72   1.5e+01       0.2%    544.64
+      404154       228322    +1.132912e+06    +1.130597e+06       10     59   1.5e+01       0.2%    546.33
+      405257       228891    +1.132912e+06    +1.130597e+06       14     67   1.5e+01       0.2%    548.02
+      406263       229491    +1.132912e+06    +1.130599e+06       10     66   1.5e+01       0.2%    549.49
+      407263       229999    +1.132912e+06    +1.130599e+06       10     58   1.5e+01       0.2%    551.10
+      408276       230542    +1.132912e+06    +1.130599e+06       11     77   1.5e+01       0.2%    552.75
+      409277       231113    +1.132912e+06    +1.130599e+06        7    103   1.5e+01       0.2%    554.19
+      410314       231596    +1.132912e+06    +1.130599e+06       10     52   1.5e+01       0.2%    555.85
+      411319       232139    +1.132912e+06    +1.130599e+06       12     65   1.5e+01       0.2%    557.29
+      412335       232723    +1.132912e+06    +1.130599e+06       14     47   1.5e+01       0.2%    558.71
+      413336       233306    +1.132912e+06    +1.130600e+06        7     88   1.5e+01       0.2%    560.31
+      414366       233892    +1.132912e+06    +1.130600e+06       10     63   1.5e+01       0.2%    561.77
+      415368       234442    +1.132912e+06    +1.130600e+06       11     61   1.5e+01       0.2%    563.29
+      416378       235016    +1.132912e+06    +1.130601e+06       13     61   1.5e+01       0.2%    564.91
+      417384       235584    +1.132912e+06    +1.130601e+06       10     78   1.5e+01       0.2%    566.45
+      418385       236183    +1.132912e+06    +1.130601e+06        7     88   1.5e+01       0.2%    567.90
+      419388       236724    +1.132912e+06    +1.130601e+06       11     66   1.5e+01       0.2%    569.37
+      420392       237298    +1.132912e+06    +1.130601e+06       12     72   1.5e+01       0.2%    570.88
+      421401       237919    +1.132912e+06    +1.130601e+06       11     65   1.5e+01       0.2%    572.27
+      422433       238525    +1.132912e+06    +1.130601e+06       13     53   1.5e+01       0.2%    573.79
+      423452       239108    +1.132912e+06    +1.130601e+06       13     54   1.5e+01       0.2%    575.36
+      424462       239694    +1.132912e+06    +1.130601e+06       12     61   1.5e+01       0.2%    576.71
+      425472       240248    +1.132912e+06    +1.130601e+06       11     54   1.5e+01       0.2%    578.35
+      426478       240800    +1.132912e+06    +1.130601e+06        5    111   1.5e+01       0.2%    579.85
+      427487       241327    +1.132912e+06    +1.130601e+06        6    104   1.5e+01       0.2%    581.40
+      428492       241840    +1.132912e+06    +1.130601e+06        7     97   1.5e+01       0.2%    582.95
+      429503       242309    +1.132912e+06    +1.130602e+06       13     60   1.5e+01       0.2%    584.67
+      430516       242872    +1.132912e+06    +1.130602e+06       10     67   1.5e+01       0.2%    586.28
+      431525       243443    +1.132912e+06    +1.130602e+06        6     86   1.5e+01       0.2%    587.85
+      432539       244017    +1.132912e+06    +1.130602e+06       10     70   1.5e+01       0.2%    589.35
+      433554       244608    +1.132912e+06    +1.130602e+06        9     67   1.5e+01       0.2%    590.73
+      434557       245087    +1.132912e+06    +1.130602e+06        5    121   1.5e+01       0.2%    592.12
+      435566       245626    +1.132912e+06    +1.130603e+06       10     89   1.5e+01       0.2%    593.62
+      436568       246184    +1.132912e+06    +1.130603e+06        8    105   1.5e+01       0.2%    595.07
+      437578       246720    +1.132912e+06    +1.130603e+06       13     69   1.5e+01       0.2%    596.49
+      438592       247286    +1.132912e+06    +1.130603e+06       11     76   1.5e+01       0.2%    597.99
+      439615       247829    +1.132912e+06    +1.130604e+06        8     83   1.5e+01       0.2%    599.48
+      440617       248401    +1.132912e+06    +1.130604e+06        6     89   1.5e+01       0.2%    600.89
+      441621       248905    +1.132912e+06    +1.130604e+06        5    108   1.5e+01       0.2%    602.30
+      442627       249431    +1.132912e+06    +1.130604e+06       12     65   1.5e+01       0.2%    603.83
+      443630       249980    +1.132912e+06    +1.130604e+06       12     67   1.5e+01       0.2%    605.35
+      444635       250483    +1.132912e+06    +1.130605e+06       14     67   1.5e+01       0.2%    606.82
+      445636       251004    +1.132912e+06    +1.130605e+06       14     68   1.5e+01       0.2%    608.32
+      446660       251490    +1.132912e+06    +1.130605e+06       12     59   1.5e+01       0.2%    610.04
+      447662       252012    +1.132912e+06    +1.130606e+06       11     79   1.5e+01       0.2%    611.70
+      448680       252520    +1.132912e+06    +1.130606e+06       14     64   1.5e+01       0.2%    613.43
+      449690       252968    +1.132912e+06    +1.130606e+06       13     60   1.5e+01       0.2%    615.25
+      450695       253445    +1.132912e+06    +1.130606e+06       13     61   1.5e+01       0.2%    616.89
+      451702       253912    +1.132912e+06    +1.130606e+06       13     61   1.5e+01       0.2%    618.64
+      452704       254412    +1.132912e+06    +1.130606e+06       13     56   1.5e+01       0.2%    620.17
+      453717       254841    +1.132912e+06    +1.130606e+06       13     62   1.5e+01       0.2%    622.06
+      454723       255337    +1.132912e+06    +1.130606e+06       11     72   1.5e+01       0.2%    623.69
+      455734       255804    +1.132912e+06    +1.130606e+06       11     75   1.5e+01       0.2%    625.30
+      456742       256290    +1.132912e+06    +1.130606e+06       11     80   1.5e+01       0.2%    627.00
+      457743       256769    +1.132912e+06    +1.130607e+06        5    124   1.5e+01       0.2%    628.61
+      458766       257200    +1.132912e+06    +1.130607e+06       11     72   1.5e+01       0.2%    630.27
+      459775       257651    +1.132912e+06    +1.130607e+06       12     83   1.5e+01       0.2%    631.78
+      460780       258104    +1.132912e+06    +1.130607e+06       13     60   1.5e+01       0.2%    633.41
+      461788       258562    +1.132912e+06    +1.130607e+06       13     66   1.5e+01       0.2%    634.98
+      462800       259050    +1.132912e+06    +1.130607e+06       12     79   1.5e+01       0.2%    636.68
+      463804       259526    +1.132912e+06    +1.130607e+06       14     74   1.5e+01       0.2%    638.36
+      464811       259963    +1.132912e+06    +1.130608e+06       10     84   1.5e+01       0.2%    640.21
+      465824       260414    +1.132912e+06    +1.130608e+06       11     76   1.5e+01       0.2%    641.97
+      466828       260874    +1.132912e+06    +1.130609e+06       10     84   1.5e+01       0.2%    643.74
+      467828       261398    +1.132912e+06    +1.130609e+06        8     81   1.5e+01       0.2%    645.45
+      468835       261891    +1.132912e+06    +1.130611e+06       12     62   1.5e+01       0.2%    647.07
+      469855       262385    +1.132912e+06    +1.130611e+06        5    106   1.5e+01       0.2%    648.69
+      470857       262821    +1.132912e+06    +1.130611e+06        5    117   1.5e+01       0.2%    650.28
+      471870       263352    +1.132912e+06    +1.130611e+06       11     72   1.5e+01       0.2%    651.97
+      472877       263817    +1.132912e+06    +1.130611e+06       13     64   1.5e+01       0.2%    653.52
+      473878       264332    +1.132912e+06    +1.130611e+06       11     74   1.5e+01       0.2%    655.22
+      474880       264802    +1.132912e+06    +1.130611e+06        8     83   1.5e+01       0.2%    656.92
+      475880       265268    +1.132912e+06    +1.130611e+06       11     75   1.5e+01       0.2%    658.51
+      476884       265822    +1.132912e+06    +1.130611e+06        5    104   1.5e+01       0.2%    660.16
+      477892       266344    +1.132912e+06    +1.130611e+06       13     67   1.5e+01       0.2%    661.86
+      478894       266818    +1.132912e+06    +1.130611e+06       11     85   1.5e+01       0.2%    663.48
+      479908       267296    +1.132912e+06    +1.130611e+06        9     97   1.5e+01       0.2%    665.13
+      480910       267776    +1.132912e+06    +1.130612e+06       13     59   1.5e+01       0.2%    666.65
+      481911       268353    +1.132912e+06    +1.130612e+06       12     64   1.5e+01       0.2%    668.13
+      482912       268812    +1.132912e+06    +1.130612e+06       10     66   1.5e+01       0.2%    669.71
+      483918       269318    +1.132912e+06    +1.130612e+06       11     57   1.5e+01       0.2%    671.28
+      484921       269769    +1.132912e+06    +1.130612e+06       14     62   1.5e+01       0.2%    672.88
+      485922       270218    +1.132912e+06    +1.130612e+06       14     63   1.5e+01       0.2%    674.54
+      486928       270712    +1.132912e+06    +1.130612e+06       14     57   1.5e+01       0.2%    676.18
+      487929       271213    +1.132912e+06    +1.130612e+06       11     62   1.5e+01       0.2%    677.68
+      488930       271718    +1.132912e+06    +1.130613e+06        7     86   1.5e+01       0.2%    679.30
+      489942       272214    +1.132912e+06    +1.130613e+06        9     76   1.5e+01       0.2%    680.82
+      490943       272701    +1.132912e+06    +1.130613e+06       11     59   1.5e+01       0.2%    682.39
+      491960       273216    +1.132912e+06    +1.130613e+06       13     64   1.5e+01       0.2%    683.96
+      492974       273698    +1.132912e+06    +1.130613e+06       14     59   1.5e+01       0.2%    685.55
+      493982       274190    +1.132912e+06    +1.130613e+06       13     70   1.5e+01       0.2%    687.00
+      494984       274704    +1.132912e+06    +1.130613e+06       11     63   1.5e+01       0.2%    688.51
+      495985       275245    +1.132912e+06    +1.130613e+06        7     81   1.5e+01       0.2%    689.93
+      496989       275743    +1.132912e+06    +1.130614e+06        8     94   1.5e+01       0.2%    691.41
+      497989       276211    +1.132912e+06    +1.130614e+06        8     74   1.5e+01       0.2%    693.02
+      498992       276712    +1.132912e+06    +1.130614e+06       11     67   1.5e+01       0.2%    694.62
+      499993       277191    +1.132912e+06    +1.130614e+06       11     68   1.5e+01       0.2%    696.30
+      501013       277691    +1.132912e+06    +1.130614e+06       13     62   1.5e+01       0.2%    698.03
+      502016       278120    +1.132912e+06    +1.130614e+06       12     61   1.5e+01       0.2%    699.64
+      503023       278579    +1.132912e+06    +1.130614e+06       13     69   1.5e+01       0.2%    701.27
+      504025       279001    +1.132912e+06    +1.130614e+06        8     88   1.5e+01       0.2%    703.00
+      505039       279461    +1.132912e+06    +1.130614e+06       10     81   1.5e+01       0.2%    704.49
+      506047       279949    +1.132912e+06    +1.130614e+06       11     79   1.5e+01       0.2%    706.03
+      507048       280470    +1.132912e+06    +1.130614e+06       13     65   1.5e+01       0.2%    707.49
+      508048       280950    +1.132912e+06    +1.130614e+06       10     80   1.5e+01       0.2%    708.97
+      509052       281410    +1.132912e+06    +1.130614e+06       11     62   1.5e+01       0.2%    710.42
+      510055       281821    +1.132912e+06    +1.130614e+06       14     83   1.5e+01       0.2%    711.97
+      511064       282208    +1.132912e+06    +1.130614e+06        7    108   1.5e+01       0.2%    713.56
+      512064       282566    +1.132912e+06    +1.130614e+06       10     90   1.5e+01       0.2%    715.27
+      513066       282954    +1.132912e+06    +1.130614e+06        9     96   1.5e+01       0.2%    716.91
+      514072       283404    +1.132912e+06    +1.130614e+06       13     77   1.5e+01       0.2%    718.42
+      515072       283804    +1.132912e+06    +1.130614e+06        5    120   1.5e+01       0.2%    720.17
+      516081       284195    +1.132912e+06    +1.130614e+06        4    129   1.5e+01       0.2%    721.86
+      517088       284706    +1.132912e+06    +1.130614e+06       10     73   1.5e+01       0.2%    723.29
+      518092       285146    +1.132912e+06    +1.130614e+06       11     78   1.5e+01       0.2%    724.90
+      519092       285664    +1.132912e+06    +1.130614e+06       13     72   1.5e+01       0.2%    726.45
+      520093       286109    +1.132912e+06    +1.130614e+06       12     89   1.5e+01       0.2%    727.99
+      521096       286530    +1.132912e+06    +1.130614e+06        7     94   1.5e+01       0.2%    729.43
+      522097       286997    +1.132912e+06    +1.130614e+06       10     78   1.5e+01       0.2%    730.98
+      523110       287480    +1.132912e+06    +1.130614e+06        8     81   1.5e+01       0.2%    732.50
+      524121       287979    +1.132912e+06    +1.130614e+06       10     81   1.5e+01       0.2%    733.98
+      525124       288540    +1.132912e+06    +1.130614e+06       11     75   1.5e+01       0.2%    735.47
+      526128       289070    +1.132912e+06    +1.130614e+06       11     79   1.5e+01       0.2%    736.92
+      527134       289556    +1.132912e+06    +1.130614e+06       10     86   1.5e+01       0.2%    738.53
+      528157       290051    +1.132912e+06    +1.130614e+06       13     83   1.5e+01       0.2%    740.12
+      529175       290501    +1.132912e+06    +1.130614e+06       13     67   1.5e+01       0.2%    741.65
+      530180       290982    +1.132912e+06    +1.130614e+06       12     63   1.5e+01       0.2%    743.22
+      531194       291522    +1.132912e+06    +1.130614e+06       11     63   1.5e+01       0.2%    744.82
+      532197       292041    +1.132912e+06    +1.130614e+06       11     75   1.5e+01       0.2%    746.33
+      533214       292582    +1.132912e+06    +1.130614e+06       10     82   1.5e+01       0.2%    747.61
+      534219       293071    +1.132912e+06    +1.130614e+06       12     61   1.5e+01       0.2%    748.86
+      535233       293603    +1.132912e+06    +1.130614e+06        6     97   1.5e+01       0.2%    750.22
+      536234       294108    +1.132912e+06    +1.130614e+06        7     93   1.5e+01       0.2%    751.50
+      537245       294601    +1.132912e+06    +1.130614e+06        9     87   1.5e+01       0.2%    752.82
+      538246       295112    +1.132912e+06    +1.130614e+06        8     97   1.5e+01       0.2%    754.24
+      539258       295630    +1.132912e+06    +1.130614e+06       12     74   1.5e+01       0.2%    755.71
+      540273       296155    +1.132912e+06    +1.130614e+06       14     64   1.5e+01       0.2%    757.08
+      541285       296625    +1.132912e+06    +1.130615e+06       11     84   1.5e+01       0.2%    758.66
+      542287       297119    +1.132912e+06    +1.130615e+06       11     70   1.5e+01       0.2%    760.15
+      543290       297686    +1.132912e+06    +1.130615e+06       11     79   1.5e+01       0.2%    761.58
+      544307       298171    +1.132912e+06    +1.130615e+06       12     78   1.5e+01       0.2%    763.06
+      545307       298675    +1.132912e+06    +1.130615e+06       12     63   1.5e+01       0.2%    764.58
+      546307       299165    +1.132912e+06    +1.130615e+06       10     86   1.5e+01       0.2%    766.03
+      547309       299673    +1.132912e+06    +1.130615e+06       11     62   1.5e+01       0.2%    767.67
+      548311       300231    +1.132912e+06    +1.130615e+06        7    112   1.5e+01       0.2%    769.18
+      549314       300690    +1.132912e+06    +1.130615e+06       11     69   1.6e+01       0.2%    770.84
+      550314       301092    +1.132912e+06    +1.130615e+06       11     72   1.6e+01       0.2%    772.42
+      551322       301538    +1.132912e+06    +1.130615e+06       11     73   1.6e+01       0.2%    773.96
+      552324       301974    +1.132912e+06    +1.130615e+06       11     89   1.6e+01       0.2%    775.42
+      553339       302343    +1.132912e+06    +1.130615e+06       11     90   1.6e+01       0.2%    776.93
+      554340       302824    +1.132912e+06    +1.130615e+06       12     63   1.6e+01       0.2%    778.42
+      555341       303339    +1.132912e+06    +1.130615e+06       11     85   1.6e+01       0.2%    779.93
+      556375       303853    +1.132912e+06    +1.130615e+06       10     80   1.6e+01       0.2%    781.49
+      557386       304392    +1.132912e+06    +1.130615e+06       12     64   1.6e+01       0.2%    782.84
+      558393       304881    +1.132912e+06    +1.130615e+06       10     92   1.6e+01       0.2%    784.31
+      559400       305364    +1.132912e+06    +1.130615e+06       13     80   1.6e+01       0.2%    785.82
+      560405       305863    +1.132912e+06    +1.130615e+06       10     72   1.6e+01       0.2%    787.34
+      561413       306397    +1.132912e+06    +1.130615e+06       10     89   1.6e+01       0.2%    788.69
+      562422       306860    +1.132912e+06    +1.130615e+06       11     62   1.6e+01       0.2%    790.14
+      563423       307359    +1.132912e+06    +1.130615e+06       11     71   1.6e+01       0.2%    791.68
+      564429       307885    +1.132912e+06    +1.130615e+06       12     74   1.6e+01       0.2%    793.17
+      565431       308399    +1.132912e+06    +1.130615e+06       13     68   1.6e+01       0.2%    794.55
+      566441       308935    +1.132912e+06    +1.130615e+06       11     82   1.6e+01       0.2%    796.06
+      567455       309417    +1.132912e+06    +1.130615e+06       11     67   1.6e+01       0.2%    797.71
+      568461       309923    +1.132912e+06    +1.130615e+06       11     74   1.6e+01       0.2%    799.27
+      569465       310425    +1.132912e+06    +1.130615e+06       12     71   1.6e+01       0.2%    800.73
+      570466       310970    +1.132912e+06    +1.130615e+06       10     85   1.6e+01       0.2%    802.41
+      571468       311472    +1.132912e+06    +1.130615e+06       10     82   1.6e+01       0.2%    804.08
+      572473       311979    +1.132912e+06    +1.130615e+06       13     56   1.6e+01       0.2%    805.83
+      573475       312461    +1.132912e+06    +1.130615e+06       11     90   1.6e+01       0.2%    807.64
+      574488       313020    +1.132912e+06    +1.130615e+06       14     60   1.6e+01       0.2%    809.21
+      575502       313522    +1.132912e+06    +1.130615e+06       12     68   1.6e+01       0.2%    810.86
+      576504       314062    +1.132912e+06    +1.130615e+06       12     69   1.6e+01       0.2%    812.49
+      577511       314563    +1.132912e+06    +1.130615e+06       12     87   1.6e+01       0.2%    814.15
+      578522       315108    +1.132912e+06    +1.130615e+06       10     71   1.6e+01       0.2%    815.60
+Time limit reached. Stopping the solver...
+Explored 579140 nodes in 817.45s.
+Absolute Gap 2.296919e+03 Objective 1.1329122946259207e+06 Lower Bound 1.1306153757110643e+06
+Solution objective: 1132912.294626 , relative_mip_gap 0.002027 solution_bound 1130615.375711 presolve_time 0.890347 total_solve_time 817.447353 max constraint violation 0.000000 max int violation 0.000000 max var bounds violation 0.000000 nodes 579140 simplex_iterations 9043825
+{"output": "/workspace/results/experiments/activsg2000-gpu-gap-v6-1e-3-dgx-spark.json", "status": "incomplete_restricted_master_gap_not_certified"}

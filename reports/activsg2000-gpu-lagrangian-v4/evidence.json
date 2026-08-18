@@ -1,0 +1,102 @@
+{
+  "schema_version": "1.0.0",
+  "experiment_suite_id": "activsg2000-gpu-lagrangian-v4",
+  "case_name": "ACTIVSg2000",
+  "status": "failed_exception",
+  "scientific_success": false,
+  "one_shot_run_count": 1,
+  "automatic_retry_performed": false,
+  "failure_gate": {
+    "stage": "root_lagrangian_relaxation",
+    "error_type": "ScopfError",
+    "error": "Region r PDLP primal is unusable: status=Optimal, residual_pu=2.110661e-06",
+    "classification": "canonical_residual_acceptance_failure_not_model_infeasibility",
+    "registered_model_residual_tolerance_pu": 0.000001,
+    "observed_canonical_residual_pu": 0.000002110661,
+    "observed_canonical_residual_mw_at_100_mva_base": 0.0002110661,
+    "solver_status": "Optimal",
+    "solver_native_primal_feasible": true,
+    "contingency_screen_reached": false,
+    "requested_gap_evaluated": false
+  },
+  "frozen_identity": {
+    "commit": "57e9ebfd5afd29fbb10cc50927b4ccf1d0707ae6",
+    "tag": "experiment-2000-gpu-lagrangian-v4",
+    "config_sha256": "f7489c311d01608de172dc4a3ab57906ea1a18a3631dbf1a19ffa665618399ad",
+    "container_image_sha256": "5e79445c9fd8a103896c3fa20637f3d14e5ca5b1e64b9a612988e12550219c99"
+  },
+  "run_registry": {
+    "started_at_utc": "2026-08-18T19:16:21.556409+00:00",
+    "finished_at_utc": "2026-08-18T19:16:36.427266+00:00",
+    "controller_elapsed_seconds": 14.329132480008411,
+    "total_wall_time_seconds": 14.863761879998492,
+    "deadline_seconds": 1800.0
+  },
+  "root_pdlp": {
+    "rows": 9995,
+    "columns": 4014,
+    "integer_columns": 0,
+    "nonzeros": 2369600,
+    "status": "Optimal",
+    "primal_objective": 1118296.7052230693,
+    "dual_objective": 1118296.700186604,
+    "native_solve_time_seconds": 9.730423614,
+    "adapter_wall_time_seconds": 11.171923522997531,
+    "iterations": 35600,
+    "native_primal_absolute_residual": 3.16e-9,
+    "native_primal_relative_residual": 3.92e-11,
+    "native_dual_absolute_residual": 5.82e-9,
+    "native_gap_absolute": 0.00504,
+    "native_gap_relative": 2.25e-9,
+    "canonical_residual_pu": 0.000002110661,
+    "canonical_residual_passed": false,
+    "screen_skipped_fail_closed": true,
+    "initial_primal_warm_start_submitted": false,
+    "initial_dual_warm_start_submitted": false
+  },
+  "timings_seconds": {
+    "raw_input_loading": 0.016140394000103697,
+    "network_and_reduced_model_build": 1.400148854998406,
+    "result_serialization": 0.003505430999211967
+  },
+  "peak_memory_bytes": {
+    "process_rss": 2147766272,
+    "cuda_device_delta": 1987698688,
+    "cupy_pool_used": 70301696
+  },
+  "failure_effect": {
+    "secure_integer_primal_available": false,
+    "objective_available": false,
+    "lower_bound_available": false,
+    "relative_gap_available": false,
+    "commitment_dispatch_and_pricing_available": false,
+    "parallel_child_batches_reached": 0
+  },
+  "artifacts": {
+    "raw_result": {
+      "path": "results/experiments/activsg2000-gpu-lagrangian-v4-dgx-spark.json",
+      "sha256": "2ec67f58054338c4921d1dc1dbb3b365bca2a7ec2ca13ecff4d6773e264e48ea",
+      "bytes": 718637
+    },
+    "run_registry": {
+      "path": "results/experiments/activsg2000-gpu-lagrangian-v4-run-registry.json",
+      "sha256": "1b979bcbc03956585382de4d14c28bab523b74c6a04fb535705d06e55c5518a2",
+      "bytes": 881
+    },
+    "checkpoint": {
+      "path": "results/checkpoints/activsg2000-gpu-lagrangian-v4-dgx_spark.json",
+      "sha256": "760b15bf6137c811e7eac01f7d43c8a5ad9459906460cf922d9b04b8bde8b712",
+      "bytes": 717804
+    },
+    "worker_console_log": {
+      "path": "results/diagnostics/activsg2000-gpu-lagrangian-v4-worker-console.log",
+      "sha256": "f8bd244ea89980d3b6ba03a5650a67e1ea0cbbe207d8f90fd151086c0912d37c",
+      "bytes": 5164
+    },
+    "launcher_log": {
+      "path": "results/experiments/activsg2000-gpu-lagrangian-v4-launcher.log",
+      "sha256": "9b9690597ad0d6a0759464bfc0ec426bcd28b1ad66e52fd9d8c91a659c6bfa8e",
+      "bytes": 120
+    }
+  }
+}

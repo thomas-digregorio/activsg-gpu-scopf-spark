@@ -1,0 +1,80 @@
+{
+  "benchmark_id": "activsg2000-gpu-round2-cpu-seed-diagnostic-v3",
+  "case_name": "ACTIVSg2000",
+  "degeneracy_indicators": {
+    "equality_rows": 5638,
+    "equality_structural_rank": 5638,
+    "free_columns": 1999,
+    "zero_objective_columns": 5766
+  },
+  "interpretation": {
+    "degeneracy": "indicators_present_without_structural_equality_deficiency",
+    "factorization_or_barrier_issue": "confirmed_by_native_cuopt_console_log",
+    "near_dependent_security_rows": "confirmed_but_not_safe_to_delete",
+    "poor_scaling": "confirmed"
+  },
+  "known_secure_seed": {
+    "maximum_column_bound_violation": 0.0,
+    "maximum_column_bound_violation_name": "u_g0001",
+    "maximum_integrality_violation": 0.0,
+    "maximum_integrality_violation_name": "u_g0001",
+    "maximum_row_violation": 2.4209521143347956e-7,
+    "maximum_row_violation_name": "dc_flow_l1756",
+    "objective_difference": 4.656612873077393e-10,
+    "objective_expected": 1133479.3855011363,
+    "objective_recalculated": 1133479.3855011358
+  },
+  "model_dimensions": {
+    "columns": 9220,
+    "integer_columns": 432,
+    "nonzeros": 27120,
+    "rows": 8961
+  },
+  "scaling": {
+    "base_mva": 100.0,
+    "maximum_canonicalized_row_violation_identity_error": 1.024640978125097e-11,
+    "maximum_native_activity_identity_error": 1.737276988933445e-14,
+    "maximum_value_round_trip_error": 2.2737367544323206e-13,
+    "mode": "power_system_per_unit_v1",
+    "native_matrix_coefficients": {
+      "maximum": 5.523,
+      "minimum_nonzero": 0.0006999999999999999,
+      "ratio": 7890.000000000001
+    },
+    "native_objective_coefficients": {
+      "maximum": 9409.50736,
+      "minimum_nonzero": 357.792005,
+      "ratio": 26.29881950548336
+    },
+    "objective_identity_error": 2.3283064365386963e-10,
+    "raw_matrix_coefficients": {
+      "maximum": 142857.14285714287,
+      "minimum_nonzero": 0.0015042162836429527,
+      "ratio": 94971145.04781684
+    },
+    "raw_objective_coefficients": {
+      "maximum": 9409.50736,
+      "minimum_nonzero": 6.974999999999992,
+      "ratio": 1349.0333132616504
+    },
+    "scaled_columns": 6788,
+    "scaled_rows": 8961
+  },
+  "schema_version": "1.0.0",
+  "security_row_dependence": {
+    "largest_singular_value": 8.186024764522633,
+    "maximum_absolute_row_cosine": 0.9999924901817461,
+    "maximum_cosine_pair_ids": [
+      "c1238_m2136_lower",
+      "c3121_m2136_lower"
+    ],
+    "maximum_repeated_support_group_size": 2,
+    "numeric_rank": 162,
+    "pairs_above_absolute_cosine_0_999999": 0,
+    "rank_tolerance": 1.6758849492348444e-11,
+    "repeated_support_groups": 17,
+    "rows": 173,
+    "singular_value_ratio": 2.1804505452471836e18,
+    "smallest_singular_value": 3.754281326107599e-18
+  }
+}

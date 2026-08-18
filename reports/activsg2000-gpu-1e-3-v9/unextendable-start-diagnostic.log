@@ -1,0 +1,206 @@
+Setting parameter time_limit to 1.496623e+01
+Setting parameter mip_relative_gap to 1.000000e-03
+Setting parameter random_seed to 0
+Setting parameter log_to_console to true
+Setting parameter method to 1
+Setting parameter pdlp_solver_mode to 4
+Setting parameter pdlp_precision to 1
+Setting parameter mip_batch_pdlp_strong_branching to 1
+Setting parameter mip_batch_pdlp_reliability_branching to 1
+Setting parameter mip_reliability_branching to 1
+Setting parameter log_file to /tmp/activsg-cuopt-native-c5fqr8ll.log
+cuOpt version: 26.6.0, git hash: df5fe0d1, host arch: aarch64, device archs: 75-real,80-real,86-real,90a-real,100f-real,120a-real,120
+CPU: Unknown, threads (physical/logical): 1/20, RAM: 107.80 GiB
+CUDA 13.0, device: NVIDIA GB10 (ID 0), VRAM: 121.69 GiB
+CUDA device UUID: 9041e1da-22a0-b23a-76f1-06935470d0de
+
+Solving a problem with 8961 constraints, 9220 variables (432 integers), and 27120 nonzeros
+Problem scaling:
+Objective coefficents range:          [4e+02, 9e+03]
+Constraint matrix coefficients range: [7e-04, 6e+00]
+Constraint rhs / bounds range:        [0e+00, 2e+01]
+Variable bounds range:                [1e-03, 4e+01]
+
+MIP row scaling completed
+Free variable found! Make sure the correct bounds are given.
+Free variable found! Make sure the correct bounds are given.
+Original problem: 8961 constraints, 9220 variables, 27120 nonzeros
+Calling Papilo presolver (git hash 741a2b9c)
+Presolve status: reduced the problem
+Presolve removed: 4051 constraints, 3995 variables, 8766 nonzeros
+Presolved problem: 4910 constraints, 5225 variables (430 integer), 18354 nonzeros
+Papilo presolve time: 0.25
+Objective offset 0.000000 scaling_factor 1.000000
+Model fingerprint: 0x1d5316bb
+Starting cuOpt presolve
+Running probing cache with 19 tasks
+After cuOpt presolve: 4910 constraints, 5225 variables, objective offset 0.000000.
+cuOpt presolve time: 0.56
+Graph construction time 0.001391
+Automorphism group size 7.93916*10^90, 208 dejavu generators (14 move variables)
+Dejavu time 0.003710
+Projected 14 generators onto 5225 binary variables (194 skipped non-binary), 14 stored
+Binary orbits: 8 non-trivial, max size 4, 22/5225 (0.4%) binary variables in orbits
+Orbit histogram (size: count):
+ 2:4
+ 3:2
+ 4:2
+
+
+Total symmetry detection time 0.005137
+Probing implied bounds: 368 zero entries, 368 one entries
+Reduced cost strengthening enabled: 2
+27501 variable upper bounds in 0.00 seconds
+21196 variable lower bounds in 0.00 seconds
+
+Solving LP root relaxation in concurrent mode
+Skipping column scaling
+Dual Simplex Phase 1
+Dual feasible solution found.
+Dual Simplex Phase 2
+ Iter     Objective           Num Inf.  Sum Inf.     Perturb  Time
+    0 +0.0000000000000000e+00    1662 1.51009494e+05 0.00e+00 1.09
+    1 +0.0000000000000000e+00    1662 1.37534531e+05 0.00e+00 1.09
+ 1000 +0.0000000000000000e+00    1324 4.35525463e+06 1.08e-09 1.11
+ 2000 +1.2825041297819166e+05    2778 1.50444361e+07 0.00e+00 1.23
+ 3000 +1.9849212936021082e+05    2685 2.39212602e+06 0.00e+00 1.30
+ 4000 +2.6863817609750130e+05    1803 1.52088225e+06 0.00e+00 1.38
+ 5000 +3.5474987933610671e+05     821 7.25491848e+04 0.00e+00 1.49
+Removed perturbation of 2.17e-05.
+
+
+Root relaxation solution found in 5804 iterations and 0.51s by Dual Simplex
+Root relaxation objective +1.12757436e+06
+
+
+ | Explored | Unexplored |    Objective    |     Bound     | IntInf | Depth | Iter/Node | Gap    |  Time  |
+           0            0             +inf    +1.127637e+06       17      0   5.8e+03        -        1.61
+           0            0             +inf    +1.127652e+06       18      0   5.8e+03        -        1.63
+           0            0             +inf    +1.127778e+06       16      0   5.8e+03        -        1.65
+           0            0             +inf    +1.127876e+06       16      0   5.8e+03        -        1.68
+           0            0             +inf    +1.128206e+06       16      0   5.8e+03        -        1.71
+           0            0             +inf    +1.128569e+06       16      0   5.8e+03        -        1.74
+           0            0             +inf    +1.129472e+06       15      0   5.8e+03        -        1.76
+Gomory         cuts : 0
+MIR            cuts : 10
+Knapsack       cuts : 0
+Strong CG      cuts : 0
+Clique         cuts : 0
+Implied Bounds cuts : 0
+Flow Cover     cuts : 1
+Cut generation time: 0.19 seconds
+Cut pool size  : 24
+Size with cuts : 4914 constraints, 10139 variables, 23278 nonzeros
+Strong branching using 19 threads and 15 fractional variables
+Cooperative batch PDLP and Dual Simplex for strong branching
+Strong branching completed in 0.46s
+Exploring the B&B tree using 19 threads
+
+ | Explored | Unexplored |    Objective    |     Bound     | IntInf | Depth | Iter/Node |   Gap    |  Time  |
+B        809          685    +1.172465e+06    +1.130699e+06        0    138   1.1e+02       3.6%      4.60
+        1003          844    +1.172465e+06    +1.130712e+06       12     20   8.8e+01       3.6%      4.73
+B       1505         1292    +1.163392e+06    +1.130712e+06        0    108   6.2e+01       2.8%      5.09
+B       1516         1287    +1.163392e+06    +1.130712e+06        0    109   6.2e+01       2.8%      5.11
+B       1845         1546    +1.162226e+06    +1.130712e+06        0    137   5.2e+01       2.7%      5.35
+        2380         1922    +1.162226e+06    +1.130817e+06        6     78   4.2e+01       2.7%      5.75
+B       2508         1992    +1.162053e+06    +1.130817e+06        0    130   4.1e+01       2.7%      5.84
+B       2547         2010    +1.162030e+06    +1.130817e+06        0    164   4.0e+01       2.7%      5.88
+B       2669         2108    +1.161930e+06    +1.130817e+06        0    135   3.9e+01       2.7%      5.98
+B       3330         2611    +1.160934e+06    +1.130817e+06        0    120   3.3e+01       2.6%      6.43
+        3791         2941    +1.160934e+06    +1.130817e+06        2    120   3.0e+01       2.6%      6.77
+B       3886         2998    +1.160623e+06    +1.130817e+06        0    161   2.9e+01       2.6%      6.84
+        5225         3943    +1.160623e+06    +1.130817e+06        8     63   2.4e+01       2.6%      7.77
+B       5424         4082    +1.160567e+06    +1.130817e+06        0    148   2.3e+01       2.6%      7.91
+        6585         4835    +1.160567e+06    +1.130817e+06        9     60   2.0e+01       2.6%      8.78
+B       6965         5109    +1.160554e+06    +1.130817e+06        0    179   2.0e+01       2.6%      9.06
+B       7499         5527    +1.160233e+06    +1.130817e+06        0    139   1.9e+01       2.5%      9.46
+        7954         5819    +1.160233e+06    +1.130817e+06        6     77   1.8e+01       2.5%      9.79
+B       7960         5821    +1.160018e+06    +1.130817e+06        0    132   1.8e+01       2.5%      9.80
+B       8656         6385    +1.159209e+06    +1.130822e+06        0    134   1.7e+01       2.4%     10.25
+B       8873         6551    +1.158223e+06    +1.130822e+06        0    125   1.7e+01       2.4%     10.41
+        9432         7018    +1.158223e+06    +1.130822e+06       12     10   1.7e+01       2.4%     10.80
+       10896         8044    +1.158223e+06    +1.130832e+06       11     11   1.5e+01       2.4%     11.80
+B      11015         8121    +1.158094e+06    +1.130832e+06        0    184   1.5e+01       2.4%     11.88
+B      11337         8387    +1.157960e+06    +1.130832e+06        0    129   1.5e+01       2.3%     12.10
+B      11598         8585    +1.157282e+06    +1.130832e+06        0    116   1.5e+01       2.3%     12.27
+       12383         9182    +1.157282e+06    +1.130832e+06        6     85   1.5e+01       2.3%     12.80
+B      12411         9198    +1.157266e+06    +1.130832e+06        0    124   1.5e+01       2.3%     12.82
+B      12757         9452    +1.157245e+06    +1.130832e+06        0    133   1.4e+01       2.3%     13.07
+       13823        10214    +1.157245e+06    +1.130832e+06        9     56   1.4e+01       2.3%     13.82
+B      14307        10558    +1.155026e+06    +1.130832e+06        0    124   1.4e+01       2.1%     14.18
+       15196        11166    +1.155026e+06    +1.130832e+06       10     34   1.3e+01       2.1%     14.84
+Time limit reached. Stopping the solver...
+Explored 15386 nodes in 15.49s.
+Orbital fixing applied at 550 nodes, 1643 total variable fixings, 0 nodes with conflicting orbits
+Absolute Gap 2.419357e+04 Objective 1.1550255014033325e+06 Lower Bound 1.1308319300897196e+06
+Solution objective: 1155025.501403 , relative_mip_gap 0.020946 solution_bound 1130831.930090 presolve_time 0.806040 total_solve_time 15.487494 max constraint violation 0.000000 max int violation 0.000000 max var bounds violation 0.000000 nodes 15386 simplex_iterations 205031
+{
+  "canonical_dimensions": {
+    "columns": 9220,
+    "equality_rows": 5638,
+    "fixed_or_unused_columns_requiring_native_elimination": 5,
+    "free_columns_requiring_native_split": 1999,
+    "native_columns_expected_if_start_submitted": 11214,
+    "nonzeros": 27120,
+    "rows": 8961
+  },
+  "checkpoint": "/workspace/results/checkpoints/activsg2000-gpu-gap-v8-1e-3-dgx_spark.json",
+  "diagnostic": "exact_v8_round2_prior_gpu_integer_start",
+  "passed": true,
+  "prior_round_solution_on_round2_master": {
+    "maximum_column_bound_violation": 1.5347723092418164e-12,
+    "maximum_column_bound_violation_name": "pg_g0277",
+    "maximum_integrality_violation": 7.993605777301127e-15,
+    "maximum_integrality_violation_name": "u_g0493",
+    "maximum_row_violation": 204.59100279296126,
+    "maximum_row_violation_name": "c2440_m2453_lower",
+    "objective_difference": 2.3283064365386963e-09,
+    "objective_expected": 1118442.384611587,
+    "objective_recalculated": 1118442.3846115847
+  },
+  "schema_version": "1.0.0",
+  "solve": {
+    "bound": 1130831.9300897196,
+    "has_incumbent": true,
+    "mip_gap": 0.020946352512749105,
+    "mip_start_feasibility_precheck": {
+      "decision": "solve_cold",
+      "has_incumbent": false,
+      "maximum_canonical_column_violation": null,
+      "maximum_canonical_row_violation": null,
+      "maximum_prior_commitment_difference": null,
+      "policy": "highs_fixed_commitment_lp_v1",
+      "prior_commitment_extendable": false,
+      "solver_status": "Infeasible",
+      "time_limit_seconds": 10.0,
+      "wall_time_seconds": 0.03377132798777893
+    },
+    "mip_start_native_contract": {
+      "contract_passed": null,
+      "eliminated_submitted_canonical_columns": 0,
+      "explicit_eliminated_columns": 0,
+      "explicit_free_split_columns": 0,
+      "original_space_vector_readback": false,
+      "policy": "presolve_off_explicit_free_split_readback_v2",
+      "presolve_parameter_readback": null,
+      "submitted": false,
+      "submitted_canonical_columns": 0,
+      "submitted_native_columns": 0
+    },
+    "native_columns_translated": 9220,
+    "native_explicit_free_variable_split": false,
+    "native_fixed_or_unused_columns_eliminated": 0,
+    "native_free_variable_split_columns": 0,
+    "native_log_audit": {
+      "barrier_numerical_warning_count": 0,
+      "bytes": 8701,
+      "free_variable_warning_count": 2,
+      "mip_start_rejection_count": 0,
+      "presolve_disabled_message_count": 0,
+      "sha256": "054178628c7f5afae9831e48e14b1e608e5b3903b02fce0f1b414e0593a0002d"
+    },
+    "objective": 1155025.5014033325,
+    "solve_time_seconds": 15.487493829,
+    "status": "FeasibleFound"
+  }
+}

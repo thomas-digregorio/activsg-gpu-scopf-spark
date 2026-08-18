@@ -1,0 +1,256 @@
+{
+  "schema_version": "1.0.0",
+  "experiment_suite_id": "activsg2000-gpu-lagrangian-v5",
+  "case_name": "ACTIVSg2000",
+  "status": "deadline_budget_exhausted",
+  "scientific_success": false,
+  "one_shot_run_count": 1,
+  "automatic_retry_performed": false,
+  "failure_gates": {
+    "secure_integer_primal_available": false,
+    "objective_available": false,
+    "commitment_dispatch_and_pricing_available": false,
+    "requested_gap_certified": false,
+    "final_exhaustive_primal_screen_available": false
+  },
+  "frozen_identity": {
+    "commit": "8afe50f884d7e092dcdfbb11c6f389b447800499",
+    "tag": "experiment-2000-gpu-lagrangian-v5",
+    "config_sha256": "085e4c919da395b71e2496d5ae6d4bb8ab8c84b63f95898ba2cc498cedb8f298",
+    "container_image_sha256": "19686764843633e1782c3441508865122bbbe59e19838ea74869aff313a9019b",
+    "container_revision_label": "8afe50f884d7e092dcdfbb11c6f389b447800499"
+  },
+  "run_registry": {
+    "started_at_utc": "2026-08-18T19:37:42.422123+00:00",
+    "finished_at_utc": "2026-08-18T20:05:18.749532+00:00",
+    "controller_elapsed_seconds": 1654.4709854590037,
+    "total_wall_time_seconds": 1656.0172212729958,
+    "deadline_seconds": 1800.0,
+    "verification_reserve_seconds": 120.0,
+    "serialization_reserve_seconds": 30.0,
+    "termination_error_type": "DeadlineExceeded",
+    "termination_message": "No solver budget remains before verification reserve"
+  },
+  "model_and_policy": {
+    "requested_relative_gap": 0.001,
+    "model_residual_tolerance_pu": 0.000001,
+    "security_violation_tolerance_pu": 0.00001,
+    "exact_tamu_source_pmin_pmax_retained": true,
+    "cpu_commitment_or_dispatch_seeded": false,
+    "integer_solver_used": false,
+    "branch_and_bound_performed": false,
+    "custom_cuda_kernel_used": false,
+    "source_online_generators": 432,
+    "source_offline_generators": 112,
+    "valid_branch_outages": 2740,
+    "excluded_branch_outages": 450,
+    "deferred_generator_outages": 544,
+    "screened_sides_per_exhaustive_screen": 17563400,
+    "pwl_segment_count": 10,
+    "maximum_pwl_approximation_error_dollars": 2.489356800000678
+  },
+  "numerical_corrections_and_observations": {
+    "v4_failure_fixed": true,
+    "safe_native_scaling": "power_system_equilibrated_safe_v3",
+    "safe_scaling_never_reduces_v1_per_unit_row_scale": true,
+    "root_same_master_refinement_available": true,
+    "root_same_master_refinement_used": false,
+    "root_passed_canonical_gate_without_refinement": true,
+    "root_round_canonical_residuals_pu": [
+      1.4827630366198718e-7,
+      1.8796981748891995e-11,
+      1.914486347232014e-12
+    ],
+    "maximum_final_accepted_child_residual_pu": 3.068759710345148e-7,
+    "continued_intermediate_child_residual_pu": 1.7653998146016647e-6,
+    "continued_child_final_residual_pu": 2.9103830456733704e-13,
+    "canonical_residual_gate_bypassed": false,
+    "uncertain_child_accepted_as_infeasible": false,
+    "warm_start_dimension_rejection_count": 0,
+    "mip_start_rejection_count": 0,
+    "continuous_primal_and_dual_warm_starts_used": true,
+    "native_pdlp_invocation_count_from_console_log": 124,
+    "large_coefficient_range_warning_count": 124,
+    "root_constraint_coefficient_range": [
+      1e-8,
+      6.0
+    ],
+    "root_objective_coefficient_range": [
+      400.0,
+      9000.0
+    ],
+    "remaining_warning_classification": "performance_and_convergence_risk_not_certificate_failure"
+  },
+  "root_relaxation": {
+    "objective": 1128529.2334322517,
+    "fractional_commitments": 53,
+    "logical_security_pairs": 104,
+    "rounds": [
+      {
+        "round": 1,
+        "gpu_native_solve_seconds": 8.040659871,
+        "adapter_wall_seconds": 9.470685655003763,
+        "new_logical_pairs": 84,
+        "canonical_residual_pu": 1.4827630366198718e-7,
+        "worst_canonical_row": "lag_balance",
+        "maximum_exhaustive_violation_pu": 1.5669193722479213
+      },
+      {
+        "round": 2,
+        "gpu_native_solve_seconds": 47.105489766,
+        "adapter_wall_seconds": 48.17486334699788,
+        "new_logical_pairs": 20,
+        "canonical_residual_pu": 1.8796981748891995e-11,
+        "worst_canonical_row": "c1371_m0940_lower",
+        "maximum_exhaustive_violation_pu": 0.23488301629969327,
+        "initial_primal_submitted": true,
+        "initial_dual_submitted": true
+      },
+      {
+        "round": 3,
+        "gpu_native_solve_seconds": 37.246077299,
+        "adapter_wall_seconds": 38.307575755010475,
+        "new_logical_pairs": 0,
+        "canonical_residual_pu": 1.914486347232014e-12,
+        "worst_canonical_row": "c1371_m0940_lower",
+        "maximum_exhaustive_violation_pu": 2.128217602148652e-12,
+        "initial_primal_submitted": true,
+        "initial_dual_submitted": true
+      }
+    ],
+    "final_exhaustive_screen_passed": true,
+    "conservative_lagrangian_bound": 1128529.2234321937,
+    "same_platform_replay_passed": true,
+    "same_platform_replay_difference_dollars": 0.0
+  },
+  "initial_commitment_search": {
+    "attempt_count": 12,
+    "attempt_limit": 12,
+    "commitment_counts": [
+      333,
+      332,
+      332,
+      332,
+      331,
+      324,
+      323,
+      323,
+      323,
+      322,
+      338,
+      337
+    ],
+    "constant_row_rejection_count": 3,
+    "phase_one_positive_optimum_rejection_count": 9,
+    "minimum_positive_phase_one_residual_pu": 0.05293739,
+    "maximum_positive_phase_one_residual_pu": 0.7879921,
+    "total_wall_time_seconds": 27.225702258001547,
+    "secure_candidate_count": 0,
+    "network_aware_repair_used": true
+  },
+  "disjunctive_search": {
+    "completed_transaction_attempts": 14,
+    "committed_splits": 3,
+    "failed_rolled_back_splits": 11,
+    "committed_generator_source_rows": [
+      16,
+      491,
+      492
+    ],
+    "pending_split_at_deadline": {
+      "transaction_attempt": 15,
+      "generator_source_row": 459,
+      "status": "solving_children_parent_certificate_retained"
+    },
+    "final_frontier_region_count": 4,
+    "final_frontier_fractional_commitment_counts": [
+      52,
+      51,
+      50,
+      53
+    ],
+    "phase_one_precheck_count": 30,
+    "phase_one_precheck_total_wall_seconds": 126.77413289493416,
+    "phase_one_precheck_certified_prune_count": 0,
+    "phase_one_precheck_uncertain_count": 30,
+    "phase_one_fallback_count": 11,
+    "phase_one_fallback_total_wall_seconds": 46.32106210697384,
+    "parallel_completed_batch_count": 10,
+    "parallel_batch_wall_sum_seconds": 847.1918532569689,
+    "secure_incumbent_checkpoint_count": 0,
+    "pruned_region_count": 0
+  },
+  "final_lower_bound": {
+    "recorded_dollars": 1128528.5967427262,
+    "raw_result_bound_status": "gpu_generated_pending_independent_replay",
+    "independent_laptop_replay_passed": true,
+    "replayed_dollars": 1128528.5967427352,
+    "replay_difference_dollars": 9.080395102500916e-9,
+    "maximum_region_replay_difference_dollars": 9.546056389808655e-9,
+    "maximum_lodf_replay_difference": 3.3084646133829665e-14,
+    "maximum_cleanup_audit_fp64_difference": 6.108553561085939e-10,
+    "maximum_cleanup_audit_integer_count_difference": 222,
+    "disjunctive_cover_passed": true,
+    "root_minus_final_bound_dollars": 0.6266894675791264
+  },
+  "cpu_comparison": {
+    "source_suite": "activsg2000-gap-sensitivity-v1",
+    "status": "optimal_verified",
+    "objective": 1133479.3855011363,
+    "bound": 1132599.3522354912,
+    "relative_gap": 0.0007763998859633739,
+    "commitment_count": 327,
+    "total_wall_time_seconds": 1007.3702709000063,
+    "cpu_bound_minus_gpu_bound_dollars": 4070.755492764991,
+    "cpu_incumbent_vs_gpu_bound_external_gap": 0.004367780148221476,
+    "comparison_kind": "system_to_system_not_pure_gpu_speedup"
+  },
+  "timing_attribution": {
+    "raw_input_loading_seconds": 0.016221259007579647,
+    "network_and_reduced_model_build_seconds": 1.386879661004059,
+    "root_round_adapter_wall_sum_seconds": 95.95312475701212,
+    "accepted_region_round_adapter_wall_sum_seconds": 319.04371682002966,
+    "accepted_region_native_solve_sum_seconds": 302.83734746700003,
+    "gpu_lagrangian_evaluation_sum_seconds": 15.114100527993287,
+    "initial_commitment_attempt_sum_seconds": 27.225702258001547,
+    "parallel_completed_batch_wall_sum_seconds": 847.1918532569689,
+    "result_serialization_seconds": 0.10485872800927609
+  },
+  "platform": {
+    "name": "DGX Spark",
+    "gpu": "NVIDIA GB10",
+    "compute_capability": "12.1",
+    "cuopt_version": "26.06.00",
+    "cupy_version": "14.1.1",
+    "peak_process_rss_bytes": 6050250752,
+    "cuda_device_memory_delta_bytes": 6570422272,
+    "cupy_pool_used_bytes": 70301696
+  },
+  "artifacts": {
+    "raw_result": {
+      "path": "results/experiments/activsg2000-gpu-lagrangian-v5-dgx-spark.json",
+      "sha256": "17962980825ae7920588f8658068d6014c3a44fc61510f28531923d4e32342d9",
+      "bytes": 43343066
+    },
+    "run_registry": {
+      "path": "results/experiments/activsg2000-gpu-lagrangian-v5-run-registry.json",
+      "sha256": "9873059e73c844e20be9bfc73288dbbf36236010f7939086ae85d42a2e8b6281",
+      "bytes": 904
+    },
+    "checkpoint": {
+      "path": "results/checkpoints/activsg2000-gpu-lagrangian-v5-dgx_spark.json",
+      "sha256": "33b7747b8c372b7c1dd5d449b0635cfeb453d969bc49cc06df0ec8d56fc5b94e",
+      "bytes": 43342240
+    },
+    "worker_console_log": {
+      "path": "results/diagnostics/activsg2000-gpu-lagrangian-v5-worker-console.log",
+      "sha256": "64e12a1910e197882dc508fccbefb04928f3eb74c78e884de8309a06d7bf56c2",
+      "bytes": 641267
+    },
+    "launcher_log": {
+      "path": "results/experiments/activsg2000-gpu-lagrangian-v5-launcher.log",
+      "sha256": "f64f5dcf5078464e679812cc07ebc39f24ea9cd2ca8c1e1a7b654e9f676c8da9",
+      "bytes": 129
+    }
+  }
+}
