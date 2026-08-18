@@ -51,6 +51,16 @@
     "ruff_passed": true,
     "shell_syntax_passed": true
   },
+  "dgx_component_smoke": {
+    "passed": true,
+    "solver_workflow_count": 1,
+    "sequential_lp_solves_inside_workflow": 2,
+    "first_canonical_residual_pu": 0.0,
+    "refined_canonical_residual_pu": 0.0,
+    "primal_warm_start_accepted": true,
+    "dual_warm_start_accepted": true,
+    "details": "dgx-safe-residual-smoke.json"
+  },
   "full_dgx_run": {
     "authorized": false,
     "started": false,
