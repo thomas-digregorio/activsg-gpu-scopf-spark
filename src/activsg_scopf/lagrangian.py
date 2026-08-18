@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 from math import fsum
 from typing import Any
@@ -9,6 +10,7 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 
+from .commitment_cuts import CommitmentFeasibilityCut
 from .errors import ScopfError
 from .reduced import ReducedMaster
 
@@ -68,11 +70,21 @@ class LagrangianEvaluation:
     effective_dispatch_coefficients: FloatArray
     on_subproblem_values: FloatArray
     minimizing_commitment: npt.NDArray[np.int8]
+    commitment_cut_duals: tuple[tuple[str, float], ...] = ()
 
-    def as_dict(self, generator_source_rows: npt.ArrayLike) -> dict[str, Any]:
+    def as_dict(
+        self,
+        generator_source_rows: npt.ArrayLike,
+        *,
+        compact: bool = False,
+    ) -> dict[str, Any]:
         rows = np.asarray(generator_source_rows, dtype=np.int64)
-        return {
-            "certificate_kind": "separable_binary_generator_lagrangian_v1",
+        certificate: dict[str, Any] = {
+            "certificate_kind": (
+                "separable_binary_generator_lagrangian_with_feasibility_cuts_v2"
+                if self.commitment_cut_duals
+                else "separable_binary_generator_lagrangian_v1"
+            ),
             "raw_lower_bound": self.raw_lower_bound,
             "conservative_lower_bound": self.conservative_lower_bound,
             "safety_margin_dollars": self.safety_margin_dollars,
@@ -81,7 +93,13 @@ class LagrangianEvaluation:
                 {"row_name": name, "canonical_row_dual": value}
                 for name, value in self.coupling_duals
             ],
-            "generator_subproblems": [
+            "commitment_feasibility_cut_duals": [
+                {"cut_id": cut_id, "canonical_row_dual": value}
+                for cut_id, value in self.commitment_cut_duals
+            ],
+        }
+        if not compact:
+            certificate["generator_subproblems"] = [
                 {
                     "source_row": int(row),
                     "effective_dispatch_coefficient_per_mwh": float(coefficient),
@@ -95,14 +113,50 @@ class LagrangianEvaluation:
                     self.minimizing_commitment,
                     strict=True,
                 )
-            ],
-        }
+            ]
+            return certificate
+
+        coupling_names = [name for name, _value in self.coupling_duals]
+        certificate.update(
+            {
+                "serialization": "sparse_nonzero_dual_identity_hashed_v2",
+                "coupling_row_count": len(coupling_names),
+                "coupling_row_name_sha256": hashlib.sha256(
+                    "\n".join(coupling_names).encode("utf-8")
+                ).hexdigest(),
+                "coupling_row_duals": [
+                    {"row_name": name, "canonical_row_dual": value}
+                    for name, value in self.coupling_duals
+                    if value != 0.0
+                ],
+                "generator_subproblem_count": int(rows.size),
+                "generator_source_row_sha256": hashlib.sha256(
+                    rows.tobytes()
+                ).hexdigest(),
+                "effective_dispatch_coefficient_sha256": hashlib.sha256(
+                    self.effective_dispatch_coefficients.tobytes()
+                ).hexdigest(),
+                "on_subproblem_value_sha256": hashlib.sha256(
+                    self.on_subproblem_values.tobytes()
+                ).hexdigest(),
+                "minimizing_commitment_sha256": hashlib.sha256(
+                    self.minimizing_commitment.tobytes()
+                ).hexdigest(),
+                "minimizing_committed_generator_source_rows": rows[
+                    self.minimizing_commitment == 1
+                ].tolist(),
+            }
+        )
+        return certificate
 
 
 def evaluate_lagrangian_bound_cupy(
     master: ReducedMaster,
     row_dual: npt.ArrayLike,
     region: RegionMasks,
+    *,
+    commitment_cuts: tuple[CommitmentFeasibilityCut, ...] = (),
+    commitment_cut_dual: npt.ArrayLike | None = None,
 ) -> dict[str, Any]:
     """Evaluate all exact generator subproblems with CuPy FP64 primitives."""
 
@@ -112,6 +166,8 @@ def evaluate_lagrangian_bound_cupy(
         raise ScopfError("GPU Lagrangian evaluation requires CuPy") from exc
     generator_count = master.index.generator_source_rows.size
     region.validate(generator_count)
+    for cut in commitment_cuts:
+        cut.validate(generator_count)
     dual_host = np.asarray(row_dual, dtype=np.float64)
     if dual_host.shape != (master.canonical.num_rows,):
         raise ScopfError("GPU Lagrangian row dual has the wrong shape")
@@ -144,11 +200,32 @@ def evaluate_lagrangian_bound_cupy(
     on_value = base_cost + effective * pmin + cp.sum(
         cp.minimum(0.0, (slopes + effective[:, None]) * widths), axis=1
     )
+    if commitment_cuts:
+        cut_coefficients = cp.asarray(
+            np.stack([cut.coefficients for cut in commitment_cuts]),
+            dtype=cp.float64,
+        )
+        cut_rhs = cp.asarray([cut.rhs for cut in commitment_cuts], dtype=cp.float64)
+        supplied_cut_dual = (
+            np.zeros(len(commitment_cuts), dtype=np.float64)
+            if commitment_cut_dual is None
+            else np.asarray(commitment_cut_dual, dtype=np.float64)
+        )
+        if supplied_cut_dual.shape != (len(commitment_cuts),) or not np.all(
+            np.isfinite(supplied_cut_dual)
+        ):
+            raise ScopfError("GPU Lagrangian commitment-cut dual has invalid values")
+        cut_dual = cp.minimum(cp.asarray(supplied_cut_dual), 0.0)
+        on_value = on_value - cut_dual @ cut_coefficients
+        cut_constant = cut_dual @ cut_rhs
+    else:
+        cut_dual = cp.empty(0, dtype=cp.float64)
+        cut_constant = cp.asarray(0.0, dtype=cp.float64)
     fixed_off = cp.asarray(region.fixed_off)
     fixed_on = cp.asarray(region.fixed_on)
     commitment = cp.where(fixed_off, 0, cp.where(fixed_on | (on_value < 0.0), 1, 0))
     local_value = cp.where(commitment > 0, on_value, 0.0)
-    raw_bound = cp.sum(coupling_dual * rhs) + cp.sum(local_value)
+    raw_bound = cp.sum(coupling_dual * rhs) + cut_constant + cp.sum(local_value)
     cp.cuda.get_current_stream().synchronize()
     return {
         "backend": "cupy_fp64",
@@ -156,6 +233,8 @@ def evaluate_lagrangian_bound_cupy(
         "minimizing_commitment": cp.asnumpy(commitment).astype(np.int8),
         "effective_dispatch_coefficients": cp.asnumpy(effective),
         "on_subproblem_values": cp.asnumpy(on_value),
+        "projected_commitment_cut_dual": cp.asnumpy(cut_dual),
+        "commitment_feasibility_cut_count": len(commitment_cuts),
         "device_id": int(cp.cuda.Device().id),
     }
 
@@ -168,6 +247,8 @@ def optimize_lagrangian_bound_cupy(
     relaxation_primal_objective: float,
     iterations: int,
     polyak_fraction: float,
+    commitment_cuts: tuple[CommitmentFeasibilityCut, ...] = (),
+    initial_commitment_cut_dual: npt.ArrayLike | None = None,
 ) -> tuple[FloatArray, dict[str, Any]]:
     """Polish coupling multipliers while all numerical state remains on GPU.
 
@@ -190,6 +271,8 @@ def optimize_lagrangian_bound_cupy(
 
     generator_count = master.index.generator_source_rows.size
     region.validate(generator_count)
+    for cut in commitment_cuts:
+        cut.validate(generator_count)
     full_dual = np.asarray(row_dual, dtype=np.float64)
     if full_dual.shape != (master.canonical.num_rows,) or not np.all(
         np.isfinite(full_dual)
@@ -222,9 +305,30 @@ def optimize_lagrangian_bound_cupy(
     )
     fixed_off = cp.asarray(region.fixed_off)
     fixed_on = cp.asarray(region.fixed_on)
+    if commitment_cuts:
+        cut_coefficients = cp.asarray(
+            np.stack([cut.coefficients for cut in commitment_cuts]),
+            dtype=cp.float64,
+        )
+        cut_rhs = cp.asarray([cut.rhs for cut in commitment_cuts], dtype=cp.float64)
+        supplied_cut_dual = (
+            np.zeros(len(commitment_cuts), dtype=np.float64)
+            if initial_commitment_cut_dual is None
+            else np.asarray(initial_commitment_cut_dual, dtype=np.float64)
+        )
+        if supplied_cut_dual.shape != (len(commitment_cuts),) or not np.all(
+            np.isfinite(supplied_cut_dual)
+        ):
+            raise ScopfError("GPU Lagrangian initial commitment-cut dual is invalid")
+        z = cp.minimum(cp.asarray(supplied_cut_dual), 0.0)
+    else:
+        cut_coefficients = cp.empty((0, generator_count), dtype=cp.float64)
+        cut_rhs = cp.empty(0, dtype=cp.float64)
+        z = cp.empty(0, dtype=cp.float64)
     target = cp.asarray(float(relaxation_primal_objective), dtype=cp.float64)
     best_q = cp.asarray(-cp.inf, dtype=cp.float64)
     best_y = y.copy()
+    best_z = z.copy()
     best_commitment = cp.zeros(generator_count, dtype=cp.int8)
     zero_denominator_iterations = cp.asarray(0, dtype=cp.int64)
     for _ in range(iterations + 1):
@@ -233,6 +337,7 @@ def optimize_lagrangian_bound_cupy(
         on_value = base_cost + effective * pmin + cp.sum(
             cp.minimum(0.0, adjusted_slopes * widths), axis=1
         )
+        on_value = on_value - z @ cut_coefficients
         commitment = cp.where(
             fixed_off, 0, cp.where(fixed_on | (on_value < 0.0), 1, 0)
         ).astype(cp.int8)
@@ -241,14 +346,19 @@ def optimize_lagrangian_bound_cupy(
         )
         dispatch = commitment * pmin + cp.sum(segment_dispatch, axis=1)
         local_value = cp.where(commitment > 0, on_value, 0.0)
-        q = y @ rhs + cp.sum(local_value)
+        q = y @ rhs + z @ cut_rhs + cp.sum(local_value)
         better = q > best_q
         best_q = cp.where(better, q, best_q)
         best_y = cp.where(better, y, best_y)
+        best_z = cp.where(better, z, best_z)
         best_commitment = cp.where(better, commitment, best_commitment)
         residual = rhs - coefficients @ dispatch
+        cut_residual = cut_rhs - cut_coefficients @ commitment
         projected_active = (~upper) | (y < 0.0) | (residual < 0.0)
-        denominator = cp.sum(cp.where(projected_active, residual * residual, 0.0))
+        cut_projected_active = (z < 0.0) | (cut_residual < 0.0)
+        denominator = cp.sum(
+            cp.where(projected_active, residual * residual, 0.0)
+        ) + cp.sum(cp.where(cut_projected_active, cut_residual * cut_residual, 0.0))
         zero_denominator_iterations += denominator <= 0.0
         step = cp.where(
             denominator > 0.0,
@@ -257,12 +367,23 @@ def optimize_lagrangian_bound_cupy(
         )
         y = y + step * residual
         y = cp.where(upper, cp.minimum(y, 0.0), y)
+        z = cp.minimum(z + step * cut_residual, 0.0)
 
     cp.cuda.get_current_stream().synchronize()
     best_y_host = cp.asnumpy(best_y)
     polished = np.zeros_like(full_dual)
     polished[coupling_indices_host] = best_y_host
-    initial_gpu = evaluate_lagrangian_bound_cupy(master, full_dual, region)
+    initial_gpu = evaluate_lagrangian_bound_cupy(
+        master,
+        full_dual,
+        region,
+        commitment_cuts=commitment_cuts,
+        commitment_cut_dual=(
+            np.zeros(len(commitment_cuts), dtype=np.float64)
+            if initial_commitment_cut_dual is None
+            else initial_commitment_cut_dual
+        ),
+    )
     return polished, {
         "backend": "cupy_fp64_projected_polyak_supergradient",
         "iterations": iterations,
@@ -274,6 +395,8 @@ def optimize_lagrangian_bound_cupy(
             best_q.item() - float(initial_gpu["raw_lower_bound"])
         ),
         "best_minimizing_commitment": cp.asnumpy(best_commitment),
+        "best_commitment_cut_dual": cp.asnumpy(best_z),
+        "commitment_feasibility_cut_count": len(commitment_cuts),
         "zero_projected_subgradient_iterations": int(
             zero_denominator_iterations.item()
         ),
@@ -313,6 +436,8 @@ def evaluate_lagrangian_bound(
     region: RegionMasks,
     *,
     safety_margin_dollars: float,
+    commitment_cuts: tuple[CommitmentFeasibilityCut, ...] = (),
+    commitment_cut_dual: npt.ArrayLike | None = None,
 ) -> LagrangianEvaluation:
     """Evaluate a valid lower bound over the exact binary generator sets.
 
@@ -326,6 +451,8 @@ def evaluate_lagrangian_bound(
         raise ScopfError("Lagrangian certificate safety margin must be nonnegative")
     generator_count = master.index.generator_source_rows.size
     region.validate(generator_count)
+    for cut in commitment_cuts:
+        cut.validate(generator_count)
     dual = np.asarray(row_dual, dtype=np.float64)
     if dual.shape != (master.canonical.num_rows,) or not np.all(np.isfinite(dual)):
         raise ScopfError("Lagrangian row dual has invalid shape or values")
@@ -345,6 +472,29 @@ def evaluate_lagrangian_bound(
         constant_terms.append(projected * coupling.rhs)
         effective -= projected * coupling.generator_coefficients
 
+    supplied_cut_dual = (
+        np.zeros(len(commitment_cuts), dtype=np.float64)
+        if commitment_cut_dual is None
+        else np.asarray(commitment_cut_dual, dtype=np.float64)
+    )
+    if supplied_cut_dual.shape != (len(commitment_cuts),) or not np.all(
+        np.isfinite(supplied_cut_dual)
+    ):
+        raise ScopfError("Lagrangian commitment-cut dual has invalid shape or values")
+    projected_cut_dual = np.minimum(supplied_cut_dual, 0.0)
+    commitment_cut_duals: list[tuple[str, float]] = []
+    commitment_adjustment = np.zeros(generator_count, dtype=np.float64)
+    for cut, observed, projected in zip(
+        commitment_cuts,
+        supplied_cut_dual,
+        projected_cut_dual,
+        strict=True,
+    ):
+        maximum_sign_violation = max(maximum_sign_violation, max(float(observed), 0.0))
+        commitment_cut_duals.append((cut.cut_id, float(projected)))
+        constant_terms.append(float(projected) * float(cut.rhs))
+        commitment_adjustment -= float(projected) * cut.coefficients
+
     on_values = np.empty(generator_count, dtype=np.float64)
     minimizing = np.empty(generator_count, dtype=np.int8)
     local_terms: list[float] = []
@@ -361,7 +511,7 @@ def evaluate_lagrangian_bound(
                     strict=True,
                 )
             ]
-        )
+        ) + float(commitment_adjustment[position])
         on_values[position] = on_value
         if region.fixed_off[position]:
             commitment = 0
@@ -385,6 +535,7 @@ def evaluate_lagrangian_bound(
         effective_dispatch_coefficients=effective,
         on_subproblem_values=on_values,
         minimizing_commitment=minimizing,
+        commitment_cut_duals=tuple(commitment_cut_duals),
     )
 
 
@@ -392,6 +543,8 @@ def replay_lagrangian_certificate(
     master: ReducedMaster,
     certificate: dict[str, Any],
     region: RegionMasks,
+    *,
+    commitment_cuts_by_id: dict[str, CommitmentFeasibilityCut] | None = None,
 ) -> LagrangianEvaluation:
     by_name = {
         str(record["row_name"]): float(record["canonical_row_dual"])
@@ -399,18 +552,66 @@ def replay_lagrangian_certificate(
     }
     if len(by_name) != len(certificate["coupling_row_duals"]):
         raise ScopfError("Lagrangian certificate contains duplicate coupling rows")
-    expected_names = {row.row_name for row in master.coupling_rows}
-    if set(by_name) != expected_names:
+    expected_ordered_names = [row.row_name for row in master.coupling_rows]
+    expected_names = set(expected_ordered_names)
+    compact = certificate.get("serialization") == (
+        "sparse_nonzero_dual_identity_hashed_v2"
+    )
+    if compact:
+        if (
+            int(certificate.get("coupling_row_count", -1))
+            != len(expected_ordered_names)
+            or str(certificate.get("coupling_row_name_sha256"))
+            != hashlib.sha256(
+                "\n".join(expected_ordered_names).encode("utf-8")
+            ).hexdigest()
+            or not set(by_name).issubset(expected_names)
+        ):
+            raise ScopfError("Compact Lagrangian certificate row identity mismatch")
+    elif set(by_name) != expected_names:
         raise ScopfError("Lagrangian certificate coupling-row identity mismatch")
     row_dual = np.zeros(master.canonical.num_rows, dtype=np.float64)
     for row in master.coupling_rows:
-        row_dual[row.row_index] = by_name[row.row_name]
-    return evaluate_lagrangian_bound(
+        row_dual[row.row_index] = by_name.get(row.row_name, 0.0)
+    cut_records = certificate.get("commitment_feasibility_cut_duals", [])
+    available = commitment_cuts_by_id or {}
+    if len({str(record["cut_id"]) for record in cut_records}) != len(cut_records):
+        raise ScopfError("Lagrangian certificate contains duplicate feasibility cuts")
+    if any(str(record["cut_id"]) not in available for record in cut_records):
+        raise ScopfError("Lagrangian certificate references an unknown feasibility cut")
+    cuts = tuple(available[str(record["cut_id"])] for record in cut_records)
+    cut_dual = np.asarray(
+        [float(record["canonical_row_dual"]) for record in cut_records],
+        dtype=np.float64,
+    )
+    replayed = evaluate_lagrangian_bound(
         master,
         row_dual,
         region,
         safety_margin_dollars=float(certificate["safety_margin_dollars"]),
+        commitment_cuts=cuts,
+        commitment_cut_dual=cut_dual,
     )
+    if compact:
+        source_rows = np.asarray(master.index.generator_source_rows, dtype=np.int64) + 1
+        committed_rows = source_rows[replayed.minimizing_commitment == 1].tolist()
+        compact_checks = {
+            "generator_subproblem_count": int(source_rows.size),
+            "generator_source_row_sha256": hashlib.sha256(source_rows.tobytes()).hexdigest(),
+            "effective_dispatch_coefficient_sha256": hashlib.sha256(
+                replayed.effective_dispatch_coefficients.tobytes()
+            ).hexdigest(),
+            "on_subproblem_value_sha256": hashlib.sha256(
+                replayed.on_subproblem_values.tobytes()
+            ).hexdigest(),
+            "minimizing_commitment_sha256": hashlib.sha256(
+                replayed.minimizing_commitment.tobytes()
+            ).hexdigest(),
+            "minimizing_committed_generator_source_rows": committed_rows,
+        }
+        if any(certificate.get(key) != value for key, value in compact_checks.items()):
+            raise ScopfError("Compact Lagrangian generator-subproblem replay mismatch")
+    return replayed
 
 
 def bus_prices_from_coupling_duals(

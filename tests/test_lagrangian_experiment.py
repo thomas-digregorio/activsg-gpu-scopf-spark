@@ -15,6 +15,7 @@ from activsg_scopf.lagrangian_experiment import (
     ACTIVSG2000_V5_EXPERIMENT_ID,
     ACTIVSG2000_V6_EXPERIMENT_ID,
     ACTIVSG2000_V7_EXPERIMENT_ID,
+    ACTIVSG2000_V8_EXPERIMENT_ID,
     EXPERIMENT_ID,
     EXPERIMENT_TAG,
     PrimalCandidatePolicy,
@@ -304,6 +305,34 @@ def test_registered_activsg2000_v7_numerical_robustness_is_fail_closed() -> None
     v7.raw["benchmark"]["numerical_robustness_fix"]["failed_v6_run_preserved"] = False
     with pytest.raises(ScopfError, match="numerical-robustness identity changed"):
         validate_lagrangian_experiment_config(v7)
+
+
+def test_registered_activsg2000_v8_certificate_controller_is_fail_closed() -> None:
+    v7 = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v7.json")
+    v8 = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v8.json")
+    registration = validate_lagrangian_experiment_config(v8)
+
+    assert v8.benchmark_id == ACTIVSG2000_V8_EXPERIMENT_ID
+    assert registration["benchmark"]["required_git_tag"] == (
+        "experiment-2000-gpu-lagrangian-v8"
+    )
+    assert v8.raw["raw_inputs"] == v7.raw["raw_inputs"]
+    assert v8.model == v7.model
+    assert v8.runtime["maximum_primal_repairs"] == 64
+    assert v8.runtime["maximum_frontier_regions"] == 192
+    assert v8.runtime["frontier_replay_after_every_split"] is False
+    assert v8.runtime["compact_lagrangian_certificates"] is True
+    assert v8.runtime["fixed_commitment_secure_seed_tolerance_fraction"] == 0.25
+    fix = registration["benchmark"]["certificate_controller_fix"]
+    assert fix["exact_source_pmin_changed"] is False
+    assert fix["gpu_cut_lower_bound_used"] is False
+    assert fix["secure_seed_numerical_margin"] == (
+        "quarter_tolerance_phase_one_then_expanded_row_reprojection_v2"
+    )
+    assert fix["cpu_commitment_dispatch_objective_or_bound_seeded"] is False
+    v8.raw["runtime"]["maximum_primal_repairs"] = 63
+    with pytest.raises(ScopfError, match="runtime policy changed"):
+        validate_lagrangian_experiment_config(v8)
 
 
 def test_phase_one_native_dual_maps_lower_upper_and_equality_rows() -> None:

@@ -398,6 +398,67 @@ def test_v4_projected_phase_one_maps_dual_into_exact_cost_model(
     assert mapping["projection_to_source"]["mapped_native_constraint_count"] > 0
 
 
+def test_v8_projected_phase_one_builds_internal_secure_seed_margin(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v8.json")
+    case, table = triangle_case()
+    network = build_network(case)
+    catalog = build_contingency_catalog(case, network, table)
+    observed_tolerances: list[float] = []
+
+    def fake_solve(model, **kwargs):
+        observed_tolerances.append(float(kwargs["primal_feasibility_tolerance"]))
+        values = np.asarray([62.0, 0.0])
+        column_scale, _ = native_scaling_vectors(
+            model,
+            mode=str(kwargs["native_scaling_mode"]),
+            base_mva=case.base_mva,
+        )
+        return ContinuousSolveResult(
+            status="Optimal",
+            optimal=True,
+            primal_objective=0.0,
+            dual_objective=0.0,
+            values=values,
+            native_primal=values / column_scale,
+            native_row_dual=np.zeros(model.num_rows),
+            solve_time_seconds=0.001,
+            statistics={
+                "error_status": "Success",
+                "solved_by": "PDLP",
+                "solved_by_pdlp": True,
+                "native_integer_columns": 0,
+                "dual_certificate": {"passed": True, "primal_feasible": True},
+            },
+        )
+
+    monkeypatch.setattr(experiment_module, "solve_cuopt_continuous_pdlp", fake_solve)
+    result = _solve_fixed_commitment_feasibility(
+        region_id="v8_secure_seed_fixture",
+        commitment=np.asarray([1], dtype=np.int8),
+        case=case,
+        network=network,
+        catalog=catalog,
+        config=config,
+        deadline=Deadline(10.0, 0.0, 0.0),
+        initial_pairs=(),
+        screener=ContingencyScreener(network, catalog, backend="numpy"),
+        checkpoint=lambda: None,
+        progress=None,
+        policy=PrimalCandidatePolicy.from_config(config),
+    )
+
+    assert observed_tolerances == [pytest.approx(2.5e-7)]
+    tolerances = result.rounds[0]["solve_attempts"][0]["numerical_tolerances"]
+    assert tolerances == {
+        "official_model_residual_tolerance_pu": 1e-6,
+        "secure_seed_fraction": 0.25,
+        "requested_solver_and_lift_tolerance_pu": 2.5e-7,
+        "mathematical_feasible_set_changed": False,
+    }
+
+
 def test_v7_projected_cost_polish_lifts_exact_pwl_and_maps_prices(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -456,6 +517,7 @@ def test_v7_projected_cost_polish_lifts_exact_pwl_and_maps_prices(
         commitment=np.asarray([1], dtype=np.int8),
         case=case,
         network=network,
+        catalog=catalog,
         config=config,
         deadline=Deadline(10.0, 0.0, 0.0),
         prepared_master=master,

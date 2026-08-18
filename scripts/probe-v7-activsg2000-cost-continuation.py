@@ -122,6 +122,7 @@ def main() -> None:
             commitment=commitment,
             case=case,
             network=network,
+            catalog=catalog,
             config=config,
             deadline=Deadline(45.0, 5.0, 1.0),
             prepared_master=master,
