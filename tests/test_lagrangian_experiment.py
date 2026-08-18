@@ -192,6 +192,7 @@ def test_registered_activsg2000_lagrangian_config_is_fail_closed() -> None:
     assert config.runtime["deadline_seconds"] == 1800.0
     assert config.runtime["precheck_phase_one_time_limit_seconds"] == 10.0
     assert config.model["mip_relative_gap_tolerance"] == 1e-3
+    assert config.model["reduced_coefficient_zero_tolerance"] == 1e-9
     assert registration["profile"]["integer_solver"] == "none"
     assert registration["profile"]["branch_and_bound"] is False
     comparison = _load_cpu_comparison(config, registration)

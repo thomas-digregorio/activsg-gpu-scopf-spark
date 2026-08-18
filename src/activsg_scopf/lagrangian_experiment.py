@@ -174,6 +174,8 @@ ACTIVSG2000_V1_SCALE_CHANGE = {
     "bounded_candidate_and_region_seconds": 90.0,
     "short_phase_one_seconds_per_child": 10.0,
     "full_phase_one_seconds": 60.0,
+    "coefficient_cleanup_zero_tolerance": 1e-9,
+    "coefficient_cleanup_proof": "box_rhs_outward_relaxation_v1",
     "mathematical_model_changed": False,
     "exact_source_pmin_changed": False,
 }
@@ -321,15 +323,14 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
         raise ScopfError("GPU Lagrangian experiment kind changed")
     if benchmark.get("required_git_tag") != experiment["tag"]:
         raise ScopfError("GPU Lagrangian frozen tag changed")
-    if (
-        (
-            config.benchmark_id.endswith(
-                ("-v2", "-v3", "-v4", "-v5", "-v6", "-v7")
-            )
-            or is_activsg2000_v1
-        )
-        and float(config.model.get("reduced_coefficient_zero_tolerance", -1.0)) != 1e-14
-    ):
+    coefficient_cleanup_experiment = (
+        config.benchmark_id.endswith(("-v2", "-v3", "-v4", "-v5", "-v6", "-v7"))
+        or is_activsg2000_v1
+    )
+    expected_coefficient_tolerance = 1e-9 if is_activsg2000_v1 else 1e-14
+    if coefficient_cleanup_experiment and float(
+        config.model.get("reduced_coefficient_zero_tolerance", -1.0)
+    ) != expected_coefficient_tolerance:
         raise ScopfError("GPU Lagrangian coefficient threshold changed")
     if config.benchmark_id.endswith("-v2"):
         observed_change = benchmark.get("bugfix_change")

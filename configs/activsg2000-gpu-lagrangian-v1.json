@@ -18,7 +18,7 @@
     "lodf_validation_columns": 3,
     "lodf_build_chunk_columns": 256,
     "screen_chunk_columns": 256,
-    "reduced_coefficient_zero_tolerance": 1e-14,
+    "reduced_coefficient_zero_tolerance": 1e-9,
     "serialized_lodf_replay_tolerance": 1e-12,
     "security_equivalence_replay_tolerance": 1e-12,
     "phase_one_replay_tolerance_pu": 1e-10
@@ -90,6 +90,8 @@
       "bounded_candidate_and_region_seconds": 90.0,
       "short_phase_one_seconds_per_child": 10.0,
       "full_phase_one_seconds": 60.0,
+      "coefficient_cleanup_zero_tolerance": 1e-9,
+      "coefficient_cleanup_proof": "box_rhs_outward_relaxation_v1",
       "mathematical_model_changed": false,
       "exact_source_pmin_changed": false
     },
