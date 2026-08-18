@@ -474,8 +474,11 @@ ACTIVSG2000_V10_CARDINALITY_REFINEMENT = {
         "fresh_root_gpu_lp_exact_pmin_pmax_pwl_type_count_rounding_v1"
     ),
     "disjunction": (
-        "integer_cardinality_sums_over_exact_cost_types_and_laminar_subsets_v1"
+        "multi_unit_integer_cardinality_sums_exact_types_then_laminar_"
+        "with_binary_completeness_fallback_v2"
     ),
+    "minimum_cardinality_subset_size": 2,
+    "binary_fallback": "only_after_no_fractional_multi_unit_sum_remains",
     "child_phase_one": "disabled_after_zero_of_83_v9_prunes",
     "child_warm_start": (
         "row_name_mapped_parent_dual_only_because_parent_primal_violates_"
@@ -4256,6 +4259,8 @@ def run_gpu_lagrangian_experiment(
                     subset.family == "exact_type" for subset in cardinality_subsets
                 ),
                 "all_branch_coefficients_are_integer_unit_cardinalities": True,
+                "minimum_cardinality_subset_size": 2,
+                "binary_completeness_fallback_enabled": True,
                 "original_binary_cover_preserved": True,
                 "phase_one_precheck_enabled": False,
                 "cpu_solution_data_used": False,
@@ -5557,17 +5562,29 @@ def run_gpu_lagrangian_experiment(
             ):
                 try:
                     if config.benchmark_id == ACTIVSG2000_V10_EXPERIMENT_ID:
-                        candidate_cardinality_split = choose_cardinality_split(
-                            master=candidate_parent.master,
-                            commitments=candidate_parent.commitment,
-                            subsets=cardinality_subsets,
-                            existing_cut_ids={
-                                cut.cut_id for cut in candidate_parent.commitment_cuts
-                            }
-                            | failed_cardinality_cut_ids.get(
-                                candidate_parent.region_id, set()
-                            ),
-                        )
+                        candidate_cardinality_split: CardinalitySplit | None = None
+                        candidate_position: int | None = None
+                        try:
+                            candidate_cardinality_split = choose_cardinality_split(
+                                master=candidate_parent.master,
+                                commitments=candidate_parent.commitment,
+                                subsets=cardinality_subsets,
+                                existing_cut_ids={
+                                    cut.cut_id for cut in candidate_parent.commitment_cuts
+                                }
+                                | failed_cardinality_cut_ids.get(
+                                    candidate_parent.region_id, set()
+                                ),
+                            )
+                        except ScopfError:
+                            candidate_position = choose_split_generator(
+                                candidate_parent.commitment,
+                                candidate_parent.lagrangian.on_subproblem_values,
+                                candidate_parent.masks,
+                                excluded_positions=failed_split_positions.get(
+                                    candidate_parent.region_id, set()
+                                ),
+                            )
                     else:
                         candidate_position = choose_split_generator(
                             candidate_parent.commitment,
@@ -5580,7 +5597,10 @@ def run_gpu_lagrangian_experiment(
                 except ScopfError:
                     continue
                 parent = candidate_parent
-                if config.benchmark_id == ACTIVSG2000_V10_EXPERIMENT_ID:
+                if (
+                    config.benchmark_id == ACTIVSG2000_V10_EXPERIMENT_ID
+                    and candidate_cardinality_split is not None
+                ):
                     cardinality_split = candidate_cardinality_split
                 else:
                     split_position = candidate_position

@@ -380,6 +380,12 @@ def test_registered_activsg2000_v10_cardinality_refinement_is_fail_closed() -> N
     assert registration["benchmark"]["cardinality_refinement"]["child_phase_one"] == (
         "disabled_after_zero_of_83_v9_prunes"
     )
+    assert registration["benchmark"]["cardinality_refinement"][
+        "minimum_cardinality_subset_size"
+    ] == 2
+    assert registration["benchmark"]["cardinality_refinement"]["binary_fallback"] == (
+        "only_after_no_fractional_multi_unit_sum_remains"
+    )
     assert registration["benchmark"]["cardinality_refinement"]["child_warm_start"] == (
         "row_name_mapped_parent_dual_only_because_parent_primal_violates_"
         "the_new_cardinality_branch_v2"

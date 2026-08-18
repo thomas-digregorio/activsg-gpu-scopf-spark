@@ -122,7 +122,12 @@ def commitment_branch_subsets(master: ReducedMaster) -> tuple[CommitmentSubset, 
 
     def add(positions: npt.ArrayLike, *, family: str, depth: int) -> None:
         selected = np.unique(np.asarray(positions, dtype=np.int64))
-        if selected.size == 0:
+        # A one-element cardinality disjunction is just ordinary binary
+        # branching.  Keeping those leaves in this family made the most-
+        # fractional rule silently collapse back to unit-at-a-time branching.
+        # Binary branching remains an explicit completeness fallback in the
+        # experiment controller after all genuine multi-unit sums are integral.
+        if selected.size < 2:
             return
         rows = tuple(int(row) for row in source_rows[selected])
         key = tuple(int(position) for position in selected)
@@ -229,8 +234,8 @@ def choose_cardinality_split(
             at_least_cut=at_least,
         )
         rank = (
-            fractionality,
             family_priority[subset.family],
+            fractionality,
             int(subset.positions.size),
             subset.subset_id,
         )

@@ -190,6 +190,8 @@ def main() -> None:
         subsets=subsets,
         existing_cut_ids=set(),
     )
+    if len(split.subset.source_rows) < 2:
+        raise RuntimeError("Cardinality probe selected a singleton subset")
     child_records: list[dict[str, Any]] = []
     for side, cut in (
         ("at_most", split.at_most_cut),

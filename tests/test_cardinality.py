@@ -49,6 +49,7 @@ def test_cardinality_cut_roundtrip_rows_and_exhaustive_cover() -> None:
         for subset in commitment_branch_subsets(master)
         if subset.family == "exact_type"
     )
+    assert all(subset.positions.size >= 2 for subset in commitment_branch_subsets(master))
     split = choose_cardinality_split(
         master=master,
         commitments=np.asarray([0.70, 0.60]),
@@ -57,6 +58,8 @@ def test_cardinality_cut_roundtrip_rows_and_exhaustive_cover() -> None:
     )
     assert split.floor_value == 1
     assert split.ceil_value == 2
+    assert split.subset.family == "exact_type"
+    assert split.subset.positions.size == 2
     assert split.at_most_cut.rhs == 1.0
     assert split.at_least_cut.rhs == -2.0
 
