@@ -12,6 +12,7 @@ from activsg_scopf.lagrangian import RegionMasks
 from activsg_scopf.lagrangian_experiment import (
     ACTIVSG2000_EXPERIMENT_ID,
     ACTIVSG2000_V4_EXPERIMENT_ID,
+    ACTIVSG2000_V5_EXPERIMENT_ID,
     EXPERIMENT_ID,
     EXPERIMENT_TAG,
     PrimalCandidatePolicy,
@@ -211,6 +212,28 @@ def test_registered_activsg2000_v4_utilization_config_is_fail_closed() -> None:
     config.raw["runtime"]["network_repair_pair_search_limit"] = 31
     with pytest.raises(ScopfError, match="runtime policy changed"):
         validate_lagrangian_experiment_config(config)
+
+
+def test_registered_activsg2000_v5_numerical_fix_is_fail_closed() -> None:
+    v4 = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v4.json")
+    v5 = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v5.json")
+    registration = validate_lagrangian_experiment_config(v5)
+
+    assert v5.benchmark_id == ACTIVSG2000_V5_EXPERIMENT_ID
+    assert registration["benchmark"]["required_git_tag"] == (
+        "experiment-2000-gpu-lagrangian-v5"
+    )
+    assert v5.raw["raw_inputs"] == v4.raw["raw_inputs"]
+    assert v5.model == v4.model
+    assert v5.runtime["root_canonical_residual_refinement_attempts"] == 1
+    assert v5.runtime["root_canonical_residual_refinement_optimality_tolerance"] == 1e-10
+    assert v5.raw["platforms"]["dgx_spark"]["native_scaling_mode"] == (
+        "power_system_equilibrated_safe_v3"
+    )
+    assert registration["benchmark"]["numerical_fix"]["failed_v4_run_preserved"] is True
+    v5.raw["runtime"]["root_canonical_residual_refinement_attempts"] = 2
+    with pytest.raises(ScopfError, match="runtime policy changed"):
+        validate_lagrangian_experiment_config(v5)
 
 
 def test_phase_one_native_dual_maps_lower_upper_and_equality_rows() -> None:
@@ -503,6 +526,119 @@ def test_tiny_region_flow_reaches_exhaustive_screen_without_integer_solver(
     assert solved.solve.statistics["native_integer_columns"] == 0
     assert solved.final_screen["new_violated_pairs"] == 0
     assert solved.lagrangian.conservative_lower_bound == -0.01
+
+
+def test_v5_root_refines_optimal_solution_that_misses_canonical_residual(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v5.json")
+    case, table = triangle_case()
+    network = build_network(case)
+    catalog = build_contingency_catalog(case, network, table)
+    template = build_reduced_master(case, network)
+    solve_calls: list[dict[str, object]] = []
+
+    def feasible_values(model) -> np.ndarray:
+        values = np.zeros(model.num_columns)
+        values[template.index.commitment_by_generator[0]] = 1.0
+        values[template.index.dispatch_by_generator[0]] = 62.0
+        remaining = 37.0
+        for column, width in zip(
+            template.index.segments_by_generator[0],
+            template.costs[0].segment_widths_mw,
+            strict=True,
+        ):
+            if column is not None:
+                values[column] = min(remaining, width)
+                remaining -= values[column]
+        return values
+
+    def fake_solve(model, **kwargs):
+        solve_calls.append(kwargs)
+        values = (
+            np.zeros(model.num_columns)
+            if len(solve_calls) == 1
+            else feasible_values(model)
+        )
+        return ContinuousSolveResult(
+            status="Optimal",
+            optimal=True,
+            primal_objective=float(np.asarray(model.objective) @ values),
+            dual_objective=0.0,
+            values=values,
+            native_primal=values.copy(),
+            native_row_dual=np.zeros(model.num_rows),
+            solve_time_seconds=0.001,
+            statistics={
+                "error_status": "Success",
+                "solved_by": "PDLP",
+                "solved_by_pdlp": True,
+                "native_integer_columns": 0,
+                "dual_certificate": {"passed": True, "primal_feasible": True},
+            },
+        )
+
+    class CountingScreener:
+        def __init__(self) -> None:
+            self.calls = 0
+            self.delegate = ContingencyScreener(network, catalog, backend="numpy")
+
+        def screen(self, *args, **kwargs):
+            self.calls += 1
+            return self.delegate.screen(*args, **kwargs)
+
+    screener = CountingScreener()
+    monkeypatch.setattr(experiment_module, "solve_cuopt_continuous_pdlp", fake_solve)
+    monkeypatch.setattr(
+        experiment_module,
+        "canonical_row_duals",
+        lambda master, native_row_dual, **_kwargs: np.asarray(native_row_dual),
+    )
+    monkeypatch.setattr(
+        experiment_module,
+        "optimize_lagrangian_bound_cupy",
+        lambda master, row_dual, region, **_kwargs: (
+            np.asarray(row_dual),
+            {
+                "backend": "fixture",
+                "best_raw_lower_bound": 0.0,
+                "best_minimizing_commitment": np.asarray([0], dtype=np.int8),
+            },
+        ),
+    )
+
+    solved = _solve_region(
+        region_id="r",
+        masks=RegionMasks.root(1),
+        case=case,
+        network=network,
+        catalog=catalog,
+        config=config,
+        deadline=Deadline(10.0, 0.0, 0.0),
+        initial_pairs=(),
+        screener=screener,  # type: ignore[arg-type]
+        checkpoint=lambda: None,
+    )
+
+    assert len(solve_calls) == 2
+    assert solve_calls[0]["optimality_tolerance"] == 1e-8
+    assert solve_calls[1]["optimality_tolerance"] == 1e-10
+    assert solve_calls[1]["initial_native_primal"] is not None
+    assert solve_calls[1]["initial_native_row_dual"] is not None
+    assert screener.calls == 1
+    assert len(solved.rounds) == 1
+    refinement = solved.rounds[0]["canonical_residual_refinement"]
+    assert refinement["accepted"] is True
+    assert len(refinement["attempts"]) == 1
+    assert solved.rounds[0]["pre_refinement_primal_acceptance"][
+        "canonical_model_residual_passed"
+    ] is False
+    assert solved.rounds[0]["primal_acceptance"][
+        "canonical_model_residual_passed"
+    ] is True
+    assert solved.rounds[0]["pre_refinement_primal_acceptance"][
+        "worst_canonical_row"
+    ]["row_name"] == "lag_balance"
 
 
 def test_region_continues_without_screening_a_primal_infeasible_pdlp_iterate(

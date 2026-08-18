@@ -11,6 +11,7 @@ from activsg_scopf.solvers.cuopt import (
     NO_NATIVE_SCALING,
     POWER_SYSTEM_EQUILIBRATED_SCALING,
     POWER_SYSTEM_PER_UNIT_SCALING,
+    POWER_SYSTEM_SAFE_EQUILIBRATED_SCALING,
     IncumbentCommitmentTrace,
     _callback_metric,
     audit_cuopt_native_log,
@@ -413,6 +414,49 @@ def test_equilibrated_power_system_scaling_normalizes_each_native_row() -> None:
     )
     assert audit["maximum_native_activity_identity_error"] < 1e-12
     assert audit["maximum_canonicalized_row_violation_identity_error"] < 1e-12
+
+
+def test_safe_equilibrated_scaling_never_weakens_per_unit_row_scale() -> None:
+    model = _scaling_model()
+    column_scale, baseline_row_scale = native_scaling_vectors(
+        model,
+        mode=POWER_SYSTEM_PER_UNIT_SCALING,
+        base_mva=100.0,
+    )
+    safe_columns, safe_row_scale = native_scaling_vectors(
+        model,
+        mode=POWER_SYSTEM_SAFE_EQUILIBRATED_SCALING,
+        base_mva=100.0,
+    )
+
+    np.testing.assert_array_equal(safe_columns, column_scale)
+    assert np.all(safe_row_scale >= baseline_row_scale)
+    baseline_matrix = model.matrix_csr().multiply(column_scale).multiply(
+        baseline_row_scale[:, None]
+    )
+    safe_matrix = model.matrix_csr().multiply(safe_columns).multiply(
+        safe_row_scale[:, None]
+    )
+    lower, upper = model.row_bound_arrays()
+    for row in range(model.num_rows):
+        baseline_magnitudes = np.abs(baseline_matrix.getrow(row).data).tolist()
+        baseline_magnitudes.extend(
+            abs(float(bound) * baseline_row_scale[row])
+            for bound in (lower[row], upper[row])
+            if np.isfinite(bound)
+        )
+        safe_magnitudes = np.abs(safe_matrix.getrow(row).data).tolist()
+        safe_magnitudes.extend(
+            abs(float(bound) * safe_row_scale[row])
+            for bound in (lower[row], upper[row])
+            if np.isfinite(bound)
+        )
+        baseline_maximum = max(baseline_magnitudes)
+        safe_maximum = max(safe_magnitudes)
+        if baseline_maximum < 1.0:
+            assert safe_maximum == pytest.approx(1.0)
+        else:
+            assert safe_maximum == pytest.approx(baseline_maximum)
 
 
 def test_power_system_native_scaling_rejects_nonpositive_base_mva() -> None:

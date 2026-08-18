@@ -90,6 +90,10 @@ ACTIVSG2000_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v1"
 ACTIVSG2000_V2_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v2"
 ACTIVSG2000_V3_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v3"
 ACTIVSG2000_V4_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v4"
+ACTIVSG2000_V5_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v5"
+ACTIVSG2000_V4_PLUS_EXPERIMENT_IDS = frozenset(
+    {ACTIVSG2000_V4_EXPERIMENT_ID, ACTIVSG2000_V5_EXPERIMENT_ID}
+)
 REGISTERED_EXPERIMENTS = {
     EXPERIMENT_ID: {
         "tag": EXPERIMENT_TAG,
@@ -142,6 +146,14 @@ REGISTERED_EXPERIMENTS = {
         "policy": (
             "gpu_network_aware_commitment_repair_plus_phase_one_first_"
             "lagrangian_cover_activsg2000_v4"
+        ),
+    },
+    ACTIVSG2000_V5_EXPERIMENT_ID: {
+        "case_name": "ACTIVSg2000",
+        "tag": "experiment-2000-gpu-lagrangian-v5",
+        "policy": (
+            "gpu_network_aware_commitment_repair_plus_phase_one_first_"
+            "safe_residual_refinement_lagrangian_cover_activsg2000_v5"
         ),
     },
 }
@@ -254,6 +266,23 @@ ACTIVSG2000_V4_UTILIZATION_CHANGE = {
     "mathematical_feasible_set_changed": False,
     "cpu_commitment_or_dispatch_seeded": False,
 }
+ACTIVSG2000_V5_NUMERICAL_FIX = {
+    "comparison_baseline": "activsg2000-gpu-lagrangian-v4",
+    "failed_v4_run_preserved": True,
+    "native_scaling": (
+        "power_system_equilibrated_safe_v3_never_weakens_per_unit_row_scale"
+    ),
+    "root_canonical_residual_refinement": (
+        "one_warm_pdlp_resolve_at_1e-10_before_fail_closed_rejection"
+    ),
+    "canonical_residual_attribution": (
+        "worst_row_name_side_activity_bound_violation_and_native_scale_v1"
+    ),
+    "inherited_v4_utilization_changes": True,
+    "exact_source_pmin_changed": False,
+    "mathematical_feasible_set_changed": False,
+    "cpu_commitment_or_dispatch_seeded": False,
+}
 ACTIVSG2000_V1_RUNTIME = {
     "deadline_seconds": 1800.0,
     "verification_reserve_seconds": 120.0,
@@ -290,6 +319,11 @@ ACTIVSG2000_V4_RUNTIME = {
     "network_repair_pair_search_limit": 32,
     "parallel_child_solver_contexts": 2,
     "parallel_child_minimum_frontier_regions": 2,
+}
+ACTIVSG2000_V5_RUNTIME = {
+    **ACTIVSG2000_V4_RUNTIME,
+    "root_canonical_residual_refinement_attempts": 1,
+    "root_canonical_residual_refinement_optimality_tolerance": 1e-10,
 }
 
 
@@ -424,8 +458,13 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
     is_activsg2000_v2 = config.benchmark_id == ACTIVSG2000_V2_EXPERIMENT_ID
     is_activsg2000_v3 = config.benchmark_id == ACTIVSG2000_V3_EXPERIMENT_ID
     is_activsg2000_v4 = config.benchmark_id == ACTIVSG2000_V4_EXPERIMENT_ID
+    is_activsg2000_v5 = config.benchmark_id == ACTIVSG2000_V5_EXPERIMENT_ID
     is_activsg2000 = (
-        is_activsg2000_v1 or is_activsg2000_v2 or is_activsg2000_v3 or is_activsg2000_v4
+        is_activsg2000_v1
+        or is_activsg2000_v2
+        or is_activsg2000_v3
+        or is_activsg2000_v4
+        or is_activsg2000_v5
     )
     if benchmark.get("kind") != "gpu_lagrangian_disjunctive_experiment":
         raise ScopfError("GPU Lagrangian experiment kind changed")
@@ -462,7 +501,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
                 "GPU Lagrangian v4 controller identity changed: "
                 f"expected={V4_CONTROLLER_CHANGE}, observed={observed_change}"
             )
-    if config.benchmark_id.endswith("-v5"):
+    if config.benchmark_id.endswith("-v5") and not is_activsg2000_v5:
         observed_change = benchmark.get("bugfix_change")
         if observed_change != V5_BUGFIX_CHANGE:
             raise ScopfError(
@@ -514,6 +553,14 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
                 f"expected={ACTIVSG2000_V4_UTILIZATION_CHANGE}, "
                 f"observed={observed_change}"
             )
+    if is_activsg2000_v5:
+        observed_change = benchmark.get("numerical_fix")
+        if observed_change != ACTIVSG2000_V5_NUMERICAL_FIX:
+            raise ScopfError(
+                "ACTIVSg2000 GPU Lagrangian v5 numerical-fix identity changed: "
+                f"expected={ACTIVSG2000_V5_NUMERICAL_FIX}, "
+                f"observed={observed_change}"
+            )
     profile = config.raw["platforms"].get("dgx_spark", {})
     required_profile = {
         "solver": "cuopt",
@@ -521,7 +568,13 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
         "lp_method": "pdlp",
         "pdlp_precision": "fp64",
         "native_scaling_mode": (
-            "power_system_equilibrated_v2" if is_activsg2000_v4 else "power_system_per_unit_v1"
+            "power_system_equilibrated_safe_v3"
+            if is_activsg2000_v5
+            else (
+                "power_system_equilibrated_v2"
+                if is_activsg2000_v4
+                else "power_system_per_unit_v1"
+            )
         ),
         "presolve": 0,
         "lagrangian_gpu_iterations": 512,
@@ -544,7 +597,13 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
             f"expected={expected_deadline}, observed={runtime.get('deadline_seconds')}"
         )
     expected_activsg2000_runtime = (
-        ACTIVSG2000_V4_RUNTIME if is_activsg2000_v4 else ACTIVSG2000_V1_RUNTIME
+        ACTIVSG2000_V5_RUNTIME
+        if is_activsg2000_v5
+        else (
+            ACTIVSG2000_V4_RUNTIME
+            if is_activsg2000_v4
+            else ACTIVSG2000_V1_RUNTIME
+        )
     )
     if is_activsg2000 and runtime != expected_activsg2000_runtime:
         raise ScopfError(
@@ -639,6 +698,66 @@ def _solve_summary(result: ContinuousSolveResult) -> dict[str, Any]:
         "native_lp_stats": result.statistics.get("lp_stats"),
         "termination_reason": result.statistics.get("termination_reason"),
         "warm_start": result.statistics.get("warm_start"),
+    }
+
+
+def _worst_canonical_row_violation(
+    model: Any,
+    values: np.ndarray,
+    *,
+    base_mva: float,
+    native_scaling_mode: str,
+) -> dict[str, Any]:
+    """Attribute the exact canonical row residual and its native scaling."""
+
+    candidate = np.asarray(values, dtype=np.float64)
+    if candidate.shape != (model.num_columns,):
+        raise ScopfError("Canonical residual attribution received the wrong vector shape")
+    activity = np.asarray(model.matrix_csr() @ candidate, dtype=np.float64)
+    lower, upper = model.row_bound_arrays()
+    lower_violation = np.where(np.isfinite(lower), lower - activity, -np.inf)
+    upper_violation = np.where(np.isfinite(upper), activity - upper, -np.inf)
+    lower_row = int(np.argmax(lower_violation)) if lower_violation.size else -1
+    upper_row = int(np.argmax(upper_violation)) if upper_violation.size else -1
+    lower_maximum = float(lower_violation[lower_row]) if lower_row >= 0 else -np.inf
+    upper_maximum = float(upper_violation[upper_row]) if upper_row >= 0 else -np.inf
+    if lower_maximum >= upper_maximum:
+        row = lower_row
+        side = "lower"
+        bound = float(lower[row])
+        violation = max(0.0, lower_maximum)
+    else:
+        row = upper_row
+        side = "upper"
+        bound = float(upper[row])
+        violation = max(0.0, upper_maximum)
+    if row < 0:
+        return {
+            "row_index": None,
+            "row_name": None,
+            "side": None,
+            "activity": None,
+            "bound": None,
+            "violation": 0.0,
+            "violation_pu": 0.0,
+            "native_row_scale": None,
+            "native_scaled_violation": 0.0,
+        }
+    _column_scale, row_scale = native_scaling_vectors(
+        model,
+        mode=native_scaling_mode,
+        base_mva=base_mva,
+    )
+    return {
+        "row_index": row,
+        "row_name": model.row_names[row],
+        "side": side,
+        "activity": float(activity[row]),
+        "bound": bound,
+        "violation": violation,
+        "violation_pu": violation / float(base_mva),
+        "native_row_scale": float(row_scale[row]),
+        "native_scaled_violation": violation * float(row_scale[row]),
     }
 
 
@@ -860,6 +979,7 @@ def _solve_region(
             "rows_before_solve": master.canonical.num_rows,
             "security_pairs_before_solve": len(pairs_by_id),
             "solver_budget_seconds": solver_budget,
+            "optimality_tolerance": float(profile["pdlp_optimality_tolerance"]),
             "adapter_wall_time_seconds": adapter_wall,
             "solve": _solve_summary(last_solve),
             "cold_restart": cold_restart_active,
@@ -923,11 +1043,128 @@ def _solve_region(
         canonical_primal_feasible = canonical_residual_pu <= float(
             config.model["model_residual_tolerance_pu"]
         )
+        worst_row = _worst_canonical_row_violation(
+            master.canonical,
+            last_solve.values,
+            base_mva=float(case.base_mva),
+            native_scaling_mode=str(profile["native_scaling_mode"]),
+        )
         round_record["primal_acceptance"] = {
             "numeric_certificate_primal_feasible": certificate_primal_feasible,
             "canonical_model_residual_pu": canonical_residual_pu,
             "canonical_model_residual_passed": canonical_primal_feasible,
+            "worst_canonical_row": worst_row,
         }
+        refinement_attempts = int(
+            config.runtime.get("root_canonical_residual_refinement_attempts", 0)
+        )
+        if (
+            candidate_policy is None
+            and last_solve.status == "Optimal"
+            and not canonical_primal_feasible
+            and refinement_attempts > 0
+        ):
+            refinement_tolerance = float(
+                config.runtime[
+                    "root_canonical_residual_refinement_optimality_tolerance"
+                ]
+            )
+            refinement_records: list[dict[str, Any]] = []
+            refinement_payload: dict[str, Any] = {
+                "configured_attempts": refinement_attempts,
+                "target_optimality_tolerance": refinement_tolerance,
+                "attempts": refinement_records,
+                "accepted": False,
+            }
+            round_record["canonical_residual_refinement"] = refinement_payload
+            round_record["pre_refinement_solve"] = round_record["solve"]
+            round_record["pre_refinement_primal_acceptance"] = round_record[
+                "primal_acceptance"
+            ]
+            for refinement_attempt in range(1, refinement_attempts + 1):
+                deadline.require(
+                    f"PDLP region {region_id} round {round_number} canonical refinement"
+                )
+                refinement_budget = min(
+                    deadline.solver_budget(),
+                    float(config.runtime["maximum_pdlp_round_seconds"]),
+                )
+                refinement_started = time.perf_counter()
+                refined = solve_cuopt_continuous_pdlp(
+                    master.canonical,
+                    time_limit_seconds=refinement_budget,
+                    optimality_tolerance=refinement_tolerance,
+                    primal_feasibility_tolerance=float(
+                        config.model["model_residual_tolerance_pu"]
+                    ),
+                    certificate_residual_tolerance=float(
+                        profile["dual_certificate_residual_tolerance"]
+                    ),
+                    native_scaling_mode=str(profile["native_scaling_mode"]),
+                    native_base_mva=float(case.base_mva),
+                    log_to_console=True,
+                    per_constraint_residual=bool(profile["per_constraint_residual"]),
+                    presolve=int(profile["presolve"]),
+                    initial_native_primal=native_primal,
+                    initial_native_row_dual=native_dual,
+                    concurrent_solver_context=concurrent_solver_context,
+                )
+                refinement_wall = time.perf_counter() - refinement_started
+                refinement_record: dict[str, Any] = {
+                    "attempt": refinement_attempt,
+                    "solver_budget_seconds": refinement_budget,
+                    "optimality_tolerance": refinement_tolerance,
+                    "adapter_wall_time_seconds": refinement_wall,
+                    "warm_start_origin": "same_master_prior_pdlp_primal_and_dual",
+                    "solve": _solve_summary(refined),
+                }
+                refinement_records.append(refinement_record)
+                round_record["adapter_wall_time_seconds"] += refinement_wall
+                refined_error_status = str(refined.statistics.get("error_status", ""))
+                if (
+                    refined_error_status != "Success"
+                    or refined.values is None
+                    or refined.native_row_dual is None
+                ):
+                    refinement_record["accepted"] = False
+                    refinement_record["rejection_reason"] = "solver_returned_no_usable_vectors"
+                    break
+                last_solve = refined
+                native_primal = refined.native_primal
+                native_dual = refined.native_row_dual
+                dual_certificate = refined.statistics.get("dual_certificate", {})
+                certificate_primal_feasible = bool(
+                    dual_certificate.get("primal_feasible", False)
+                )
+                canonical_residual_pu = (
+                    master.canonical.max_row_violation(refined.values) / case.base_mva
+                )
+                canonical_primal_feasible = canonical_residual_pu <= float(
+                    config.model["model_residual_tolerance_pu"]
+                )
+                worst_row = _worst_canonical_row_violation(
+                    master.canonical,
+                    refined.values,
+                    base_mva=float(case.base_mva),
+                    native_scaling_mode=str(profile["native_scaling_mode"]),
+                )
+                refinement_record["primal_acceptance"] = {
+                    "numeric_certificate_primal_feasible": certificate_primal_feasible,
+                    "canonical_model_residual_pu": canonical_residual_pu,
+                    "canonical_model_residual_passed": canonical_primal_feasible,
+                    "worst_canonical_row": worst_row,
+                }
+                refinement_record["accepted"] = bool(
+                    certificate_primal_feasible and canonical_primal_feasible
+                )
+                refinement_payload["accepted"] = refinement_record["accepted"]
+                round_record["solve"] = _solve_summary(last_solve)
+                round_record["primal_acceptance"] = refinement_record[
+                    "primal_acceptance"
+                ]
+                emit_progress()
+                if refinement_record["accepted"]:
+                    break
         if not certificate_primal_feasible or not canonical_primal_feasible:
             infeasible_residuals.append(canonical_residual_pu)
             round_record["screen"] = {
@@ -1377,7 +1614,10 @@ def _solve_fixed_commitment_feasibility(
 
         assert projected_values is not None and source_values is not None
         source_native_row_dual: np.ndarray | None = None
-        if config.benchmark_id == ACTIVSG2000_V4_EXPERIMENT_ID and native_phase_dual is not None:
+        if (
+            config.benchmark_id in ACTIVSG2000_V4_PLUS_EXPERIMENT_IDS
+            and native_phase_dual is not None
+        ):
             projected_native_dual, phase_mapping = _map_phase_one_dual_to_source_native(
                 phase_model,
                 projection.canonical,
@@ -2065,7 +2305,7 @@ def _run_phase_one_attempt(
     }
     source_native_row_dual: np.ndarray | None = None
     if (
-        config.benchmark_id == ACTIVSG2000_V4_EXPERIMENT_ID
+        config.benchmark_id in ACTIVSG2000_V4_PLUS_EXPERIMENT_IDS
         and source_native_primal is not None
         and solve.native_row_dual is not None
         and solve.native_row_dual.shape == (phase_model.num_rows,)
@@ -2637,6 +2877,7 @@ def run_gpu_lagrangian_experiment(
                     ACTIVSG2000_V2_EXPERIMENT_ID,
                     ACTIVSG2000_V3_EXPERIMENT_ID,
                     ACTIVSG2000_V4_EXPERIMENT_ID,
+                    ACTIVSG2000_V5_EXPERIMENT_ID,
                 }
             )
             else None
@@ -2651,6 +2892,7 @@ def run_gpu_lagrangian_experiment(
                     ACTIVSG2000_V2_EXPERIMENT_ID,
                     ACTIVSG2000_V3_EXPERIMENT_ID,
                     ACTIVSG2000_V4_EXPERIMENT_ID,
+                    ACTIVSG2000_V5_EXPERIMENT_ID,
                 }
             )
             else None
@@ -2660,6 +2902,7 @@ def run_gpu_lagrangian_experiment(
             ACTIVSG2000_V2_EXPERIMENT_ID,
             ACTIVSG2000_V3_EXPERIMENT_ID,
             ACTIVSG2000_V4_EXPERIMENT_ID,
+            ACTIVSG2000_V5_EXPERIMENT_ID,
         }
         payload["primal_candidate_policy"] = (
             candidate_policy.as_dict() if candidate_policy is not None else None
@@ -2679,7 +2922,7 @@ def run_gpu_lagrangian_experiment(
                 "candidate_generation_is_not_feasibility_proof": True,
                 "exact_source_pmin_pmax_retained": True,
             }
-            if config.benchmark_id == ACTIVSG2000_V4_EXPERIMENT_ID
+            if config.benchmark_id in ACTIVSG2000_V4_PLUS_EXPERIMENT_IDS
             else {"enabled": False}
         )
         payload["parallel_child_policy"] = (
@@ -2694,7 +2937,7 @@ def run_gpu_lagrangian_experiment(
                     "console_only_for_concurrent_contexts_file_backed_for_sequential_contexts"
                 ),
             }
-            if config.benchmark_id == ACTIVSG2000_V4_EXPERIMENT_ID
+            if config.benchmark_id in ACTIVSG2000_V4_PLUS_EXPERIMENT_IDS
             else {"enabled": False}
         )
         payload["disjunctive_region_attempt_policy"] = (
@@ -2711,7 +2954,7 @@ def run_gpu_lagrangian_experiment(
                 "zero_or_uncertain_phase_one_proceeds_to_cost_lp": True,
                 "phase_one_source_primal_warm_starts_cost_lp": True,
                 "phase_one_row_dual_transferred": (
-                    config.benchmark_id == ACTIVSG2000_V4_EXPERIMENT_ID
+                    config.benchmark_id in ACTIVSG2000_V4_PLUS_EXPERIMENT_IDS
                 ),
             }
             if phase_one_first
@@ -2728,7 +2971,7 @@ def run_gpu_lagrangian_experiment(
                 "secure_dispatch_checkpointed_before_cost_polish": True,
                 "cost_polish_uses_lifted_source_space_primal_start": True,
                 "cost_polish_uses_mapped_native_row_dual_start": (
-                    config.benchmark_id == ACTIVSG2000_V4_EXPERIMENT_ID
+                    config.benchmark_id in ACTIVSG2000_V4_PLUS_EXPERIMENT_IDS
                 ),
                 "cpu_commitment_or_dispatch_seeded": False,
             }
@@ -2737,6 +2980,7 @@ def run_gpu_lagrangian_experiment(
                 ACTIVSG2000_V2_EXPERIMENT_ID,
                 ACTIVSG2000_V3_EXPERIMENT_ID,
                 ACTIVSG2000_V4_EXPERIMENT_ID,
+                ACTIVSG2000_V5_EXPERIMENT_ID,
             }
             else {"enabled": False}
         )
@@ -2924,6 +3168,7 @@ def run_gpu_lagrangian_experiment(
                     ACTIVSG2000_V2_EXPERIMENT_ID,
                     ACTIVSG2000_V3_EXPERIMENT_ID,
                     ACTIVSG2000_V4_EXPERIMENT_ID,
+                    ACTIVSG2000_V5_EXPERIMENT_ID,
                 }:
                     if candidate_policy is None:
                         raise ScopfError("ACTIVSg2000 v2 requires a bounded candidate policy")
@@ -3069,7 +3314,7 @@ def run_gpu_lagrangian_experiment(
                     return True
                 queued_repairs: list[NetworkCommitmentRepair] = []
                 if (
-                    config.benchmark_id == ACTIVSG2000_V4_EXPERIMENT_ID
+                    config.benchmark_id in ACTIVSG2000_V4_PLUS_EXPERIMENT_IDS
                     and isinstance(exc, RegionAttemptRejected)
                     and exc.reason == "projected_constant_coupling_row_violation"
                     and exc.rounds
@@ -3353,7 +3598,7 @@ def run_gpu_lagrangian_experiment(
                 config.runtime.get("parallel_child_minimum_frontier_regions", 10**9)
             )
             use_parallel_children = bool(
-                config.benchmark_id == ACTIVSG2000_V4_EXPERIMENT_ID
+                config.benchmark_id in ACTIVSG2000_V4_PLUS_EXPERIMENT_IDS
                 and parallel_contexts == 2
                 and len(frontier) >= parallel_minimum_frontier
                 and len(child_specs) == 2
