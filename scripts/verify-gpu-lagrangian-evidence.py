@@ -21,7 +21,17 @@ def main() -> int:
     config = load_config(args.config)
     result_path = guard_input_path(args.result)
     payload = json.loads(result_path.read_text(encoding="utf-8"))
-    primal = verify_serialized_solution(config, payload).as_dict()
+    if "solution" in payload:
+        primal = {
+            "available": True,
+            **verify_serialized_solution(config, payload).as_dict(),
+        }
+    else:
+        primal = {
+            "available": False,
+            "passed": False,
+            "reason": "serialized_result_has_no_secure_primal",
+        }
     lower_bound = verify_lagrangian_certificate_payload(config, payload)
     passed = bool(primal["passed"] and lower_bound["passed"])
     print(
