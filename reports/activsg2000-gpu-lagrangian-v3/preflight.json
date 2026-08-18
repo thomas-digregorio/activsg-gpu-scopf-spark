@@ -1,8 +1,9 @@
 {
   "schema_version": "1.0.0",
   "experiment_suite_id": "activsg2000-gpu-lagrangian-v3",
-  "status": "ready_for_replacement_run_approval",
+  "status": "ready_to_freeze_user_authorized",
   "recorded_at_utc": "2026-08-18T17:41:27.3430096Z",
+  "replacement_approval_recorded_at_utc": "2026-08-18T17:47:00Z",
   "implementation_commit": "0e5dcbd47a1b9fc0fed248ebfd35e06e0bcef980",
   "configuration": {
     "path": "configs/activsg2000-gpu-lagrangian-v3.json",
@@ -72,7 +73,7 @@
   },
   "replacement_run_gate": {
     "required_tag": "experiment-2000-gpu-lagrangian-v3",
-    "explicit_replacement_approval_received": false,
+    "explicit_replacement_approval_received": true,
     "full_run_count_allowed_after_approval": 1,
     "deadline_seconds": 1800.0,
     "automatic_retry": false,
