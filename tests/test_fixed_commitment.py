@@ -253,3 +253,59 @@ def test_projected_phase_one_returns_lifted_secure_fixture_dispatch(
     assert result.rounds[0]["projection"]["projected_column_count"] == 1
     assert result.source_values[result.master.index.commitment_by_generator[0]] == 1.0
     assert result.source_values[result.master.index.dispatch_by_generator[0]] == 62.0
+
+
+def test_v4_projected_phase_one_maps_dual_into_exact_cost_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v4.json")
+    case, table = triangle_case()
+    network = build_network(case)
+    catalog = build_contingency_catalog(case, network, table)
+
+    def fake_solve(model, **kwargs):
+        values = np.asarray([62.0, 0.0])
+        column_scale, _ = native_scaling_vectors(
+            model,
+            mode=str(kwargs["native_scaling_mode"]),
+            base_mva=case.base_mva,
+        )
+        return ContinuousSolveResult(
+            status="Optimal",
+            optimal=True,
+            primal_objective=0.0,
+            dual_objective=0.0,
+            values=values,
+            native_primal=values / column_scale,
+            native_row_dual=np.zeros(model.num_rows),
+            solve_time_seconds=0.001,
+            statistics={
+                "error_status": "Success",
+                "solved_by": "PDLP",
+                "solved_by_pdlp": True,
+                "native_integer_columns": 0,
+                "dual_certificate": {"passed": True, "primal_feasible": True},
+            },
+        )
+
+    monkeypatch.setattr(experiment_module, "solve_cuopt_continuous_pdlp", fake_solve)
+    result = _solve_fixed_commitment_feasibility(
+        region_id="v4_fixture",
+        commitment=np.asarray([1], dtype=np.int8),
+        case=case,
+        network=network,
+        catalog=catalog,
+        config=config,
+        deadline=Deadline(10.0, 0.0, 0.0),
+        initial_pairs=(),
+        screener=ContingencyScreener(network, catalog, backend="numpy"),
+        checkpoint=lambda: None,
+        progress=None,
+        policy=PrimalCandidatePolicy.from_config(config),
+    )
+
+    assert result.source_native_row_dual is not None
+    assert result.source_native_row_dual.shape == (result.master.canonical.num_rows,)
+    mapping = result.rounds[0]["cost_lp_dual_warm_start"]
+    assert mapping["eligible"] is True
+    assert mapping["projection_to_source"]["mapped_native_constraint_count"] > 0

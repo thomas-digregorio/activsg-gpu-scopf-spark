@@ -772,7 +772,7 @@ def _solve_region(
     if native_primal is not None and native_primal.shape != (master.canonical.num_columns,):
         raise ScopfError("Prepared region native-primal warm start has the wrong shape")
     if native_dual is not None and (
-        native_dual.ndim != 1 or native_dual.size > master.canonical.num_rows
+        native_dual.ndim != 1 or native_dual.size > len(_native_constraint_layout(master.canonical))
     ):
         raise ScopfError("Prepared region native-dual warm start has the wrong shape")
     if (native_primal is not None or native_dual is not None) and not initial_warm_start_origin:
