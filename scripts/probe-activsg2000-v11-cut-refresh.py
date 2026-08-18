@@ -23,7 +23,7 @@ from activsg_scopf.lagrangian import (
     optimize_lagrangian_bound_cupy,
     replay_lagrangian_certificate,
 )
-from activsg_scopf.matpower import read_matpower_case, read_contingency_table
+from activsg_scopf.matpower import read_contingency_table, read_matpower_case
 from activsg_scopf.network import build_contingency_catalog, build_network
 from activsg_scopf.reduced import (
     add_reduced_security_pairs,
