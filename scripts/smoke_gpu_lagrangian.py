@@ -22,6 +22,7 @@ from activsg_scopf.lagrangian_experiment import (
     _region_pmin_pmax_capacity_gate,
     _run_phase_one_attempt,
     _solve_region,
+    _validate_prepared_region_master,
     validate_lagrangian_experiment_config,
 )
 from activsg_scopf.matpower import read_matpower_case
@@ -47,7 +48,7 @@ def main() -> None:
     parser.add_argument(
         "--config",
         type=Path,
-        default=Path("/workspace/configs/activsg500-gpu-lagrangian-v6.json"),
+        default=Path("/workspace/configs/activsg500-gpu-lagrangian-v7.json"),
     )
     args = parser.parse_args()
     config = load_config(args.config)
@@ -63,6 +64,11 @@ def main() -> None:
         coefficient_zero_tolerance=float(
             config.model["reduced_coefficient_zero_tolerance"]
         ),
+    )
+    _validate_prepared_region_master(
+        real_master,
+        RegionMasks.root(real_master.index.generator_source_rows.size),
+        (),
     )
     column_scale, row_scale = native_scaling_vectors(
         real_master.canonical,
@@ -285,6 +291,7 @@ def main() -> None:
             "cpu_comparison_canonical_hash": comparison["canonical_json_sha256"],
             "activsg500_native_minimum_nonzero": real_minimum_nonzero,
             "activsg500_cleanup": cleanup,
+            "activsg500_prepared_region_source_row_mapping_validated": True,
             "exact_duplicate_security_rows_removed": 1,
             "phase_one_conservative_lower_bound_pu": phase_replay[
                 "conservative_lower_bound_pu"

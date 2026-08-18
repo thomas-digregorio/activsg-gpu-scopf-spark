@@ -103,6 +103,10 @@ REGISTERED_EXPERIMENTS = {
         "tag": "experiment-500-gpu-lagrangian-v6",
         "policy": "gpu_pdlp_phase_one_first_plus_lagrangian_cover_v6",
     },
+    "activsg500-gpu-lagrangian-v7": {
+        "tag": "experiment-500-gpu-lagrangian-v7",
+        "policy": "gpu_pdlp_phase_one_first_plus_lagrangian_cover_v7",
+    },
 }
 V2_BUGFIX_CHANGE = {
     "comparison_baseline": "activsg500-gpu-lagrangian-v1",
@@ -148,6 +152,13 @@ V6_CONTROLLER_CHANGE = {
     "prune_authority": "positive_independently_replayable_phase_one_dual_only",
     "feasible_child_handoff": "phase_one_source_native_primal_to_cost_lp_without_row_dual",
     "uncertain_child_fallback": "ordinary_cost_lp_then_full_phase_one_if_cost_attempt_rejects",
+}
+V7_BUGFIX_CHANGE = {
+    "comparison_baseline": "activsg500-gpu-lagrangian-v6",
+    "prepared_region_commitment_column_mapping": (
+        "generator_source_row_key_to_canonical_commitment_column_v1"
+    ),
+    "failed_v6_run_preserved": True,
 }
 
 
@@ -260,7 +271,9 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
     if benchmark.get("required_git_tag") != experiment["tag"]:
         raise ScopfError("GPU Lagrangian frozen tag changed")
     if (
-        config.benchmark_id.endswith(("-v2", "-v3", "-v4", "-v5", "-v6"))
+        config.benchmark_id.endswith(
+            ("-v2", "-v3", "-v4", "-v5", "-v6", "-v7")
+        )
         and float(config.model.get("reduced_coefficient_zero_tolerance", -1.0)) != 1e-14
     ):
         raise ScopfError("GPU Lagrangian coefficient threshold changed")
@@ -298,6 +311,13 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
             raise ScopfError(
                 "GPU Lagrangian v6 controller identity changed: "
                 f"expected={V6_CONTROLLER_CHANGE}, observed={observed_change}"
+            )
+    if config.benchmark_id.endswith("-v7"):
+        observed_change = benchmark.get("bugfix_change")
+        if observed_change != V7_BUGFIX_CHANGE:
+            raise ScopfError(
+                "GPU Lagrangian v7 bugfix identity changed: "
+                f"expected={V7_BUGFIX_CHANGE}, observed={observed_change}"
             )
     profile = config.raw["platforms"].get("dgx_spark", {})
     required_profile = {
@@ -341,7 +361,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
                 "GPU Lagrangian v3 candidate policy changed: "
                 f"expected={required_runtime}, observed={observed_runtime}"
             )
-    if config.benchmark_id.endswith(("-v4", "-v5", "-v6")):
+    if config.benchmark_id.endswith(("-v4", "-v5", "-v6", "-v7")):
         required_runtime = {
             "maximum_primal_candidate_seconds": 15.0,
             "maximum_primal_candidate_round_seconds": 5.0,
@@ -366,24 +386,24 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
         observed_runtime = {key: runtime.get(key) for key in required_runtime}
         if observed_runtime != required_runtime:
             raise ScopfError(
-                "GPU Lagrangian v4/v5/v6 bounded-region policy changed: "
+                "GPU Lagrangian v4/v5/v6/v7 bounded-region policy changed: "
                 f"expected={required_runtime}, observed={observed_runtime}"
             )
-        if config.benchmark_id.endswith("-v6") and float(
+        if config.benchmark_id.endswith(("-v6", "-v7")) and float(
             runtime.get("precheck_phase_one_time_limit_seconds", -1.0)
         ) != 2.0:
-            raise ScopfError("GPU Lagrangian v6 short Phase-I budget changed")
+            raise ScopfError("GPU Lagrangian v6/v7 short Phase-I budget changed")
         if float(config.model.get("serialized_lodf_replay_tolerance", -1.0)) != 1e-12:
-            raise ScopfError("GPU Lagrangian v4/v5/v6 LODF replay tolerance changed")
+            raise ScopfError("GPU Lagrangian v4/v5/v6/v7 LODF replay tolerance changed")
         if (
             float(config.model.get("security_equivalence_replay_tolerance", -1.0))
             != 1e-12
         ):
             raise ScopfError(
-                "GPU Lagrangian v4/v5/v6 security-row replay tolerance changed"
+                "GPU Lagrangian v4/v5/v6/v7 security-row replay tolerance changed"
             )
         if float(config.model.get("phase_one_replay_tolerance_pu", -1.0)) != 1e-10:
-            raise ScopfError("GPU Lagrangian v4/v5/v6 Phase-I replay tolerance changed")
+            raise ScopfError("GPU Lagrangian v4/v5/v6/v7 Phase-I replay tolerance changed")
     return {
         "benchmark": benchmark,
         "profile": profile,
@@ -443,7 +463,10 @@ def _validate_prepared_region_master(
     if set(master.security_pair_ids) != expected_pair_ids:
         raise ScopfError("Prepared region master security-pair identity changed")
     masks.validate(master.index.generator_source_rows.size)
-    for position, column in enumerate(master.index.commitment_by_generator):
+    for position, generator_source_row in enumerate(
+        master.index.generator_source_rows
+    ):
+        column = master.index.commitment_by_generator[int(generator_source_row)]
         expected_lower = 1.0 if masks.fixed_on[position] else 0.0
         expected_upper = 0.0 if masks.fixed_off[position] else 1.0
         if (
@@ -1762,15 +1785,17 @@ def run_gpu_lagrangian_experiment(
         last_tried_commitment: np.ndarray | None = None
         candidate_policy = (
             PrimalCandidatePolicy.from_config(config)
-            if config.benchmark_id.endswith(("-v3", "-v4", "-v5", "-v6"))
+            if config.benchmark_id.endswith(
+                ("-v3", "-v4", "-v5", "-v6", "-v7")
+            )
             else None
         )
         region_attempt_policy = (
             PrimalCandidatePolicy.from_config(config, scope="disjunctive_region")
-            if config.benchmark_id.endswith(("-v4", "-v5", "-v6"))
+            if config.benchmark_id.endswith(("-v4", "-v5", "-v6", "-v7"))
             else None
         )
-        phase_one_first = config.benchmark_id.endswith("-v6")
+        phase_one_first = config.benchmark_id.endswith(("-v6", "-v7"))
         payload["primal_candidate_policy"] = (
             candidate_policy.as_dict() if candidate_policy is not None else None
         )

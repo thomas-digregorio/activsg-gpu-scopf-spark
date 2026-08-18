@@ -98,6 +98,12 @@ bash scripts/spark-build-500-gpu-lagrangian-v6.sh
 bash scripts/spark-run-500-gpu-lagrangian-v6.sh
 ```
 
+The frozen v6 run failed before its root LP because a validator confused
+generator source-row keys with canonical commitment-column indices. That run
+is preserved in the [v6 result report](reports/activsg500-gpu-lagrangian-v6/README.md).
+The corrected, not-yet-run v7 identity is documented in the
+[v7 bugfix contract](docs/gpu-lagrangian-500-v7.md).
+
 `solve` is a bounded nonofficial end-to-end run. `benchmark` is the registered
 one-shot run. Do not invoke `benchmark` casually: before starting work it writes
 an ignored, durable registry entry, and it refuses an automatic retry or

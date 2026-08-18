@@ -20,8 +20,10 @@ from activsg_scopf.lagrangian_experiment import (
     _replay_cleanup_audit_comparison,
     _run_phase_one_attempt,
     _solve_region,
+    _validate_prepared_region_master,
     validate_lagrangian_experiment_config,
 )
+from activsg_scopf.matpower import GEN_STATUS
 from activsg_scopf.network import build_contingency_catalog, build_network
 from activsg_scopf.reduced import build_reduced_master
 from activsg_scopf.screening import (
@@ -152,6 +154,31 @@ def test_registered_v6_phase_one_first_config_is_fail_closed() -> None:
         validate_lagrangian_experiment_config(v6)
 
 
+def test_registered_v7_source_row_mapping_bugfix_is_fail_closed() -> None:
+    v6 = load_config(ROOT / "configs" / "activsg500-gpu-lagrangian-v6.json")
+    v7 = load_config(ROOT / "configs" / "activsg500-gpu-lagrangian-v7.json")
+    registration = validate_lagrangian_experiment_config(v7)
+
+    assert v7.benchmark_id == "activsg500-gpu-lagrangian-v7"
+    assert registration["benchmark"]["required_git_tag"] == (
+        "experiment-500-gpu-lagrangian-v7"
+    )
+    assert v7.raw["raw_inputs"] == v6.raw["raw_inputs"]
+    assert v7.model == v6.model
+    assert v7.runtime == v6.runtime
+    assert v7.raw["platforms"] == v6.raw["platforms"]
+    assert registration["benchmark"]["bugfix_change"] == {
+        "comparison_baseline": "activsg500-gpu-lagrangian-v6",
+        "prepared_region_commitment_column_mapping": (
+            "generator_source_row_key_to_canonical_commitment_column_v1"
+        ),
+        "failed_v6_run_preserved": True,
+    }
+    v7.raw["benchmark"]["bugfix_change"]["failed_v6_run_preserved"] = False
+    with pytest.raises(ScopfError, match="v7 bugfix identity changed"):
+        validate_lagrangian_experiment_config(v7)
+
+
 def test_v6_exact_pmin_pmax_capacity_gate_precedes_phase_one() -> None:
     config = load_config(ROOT / "configs" / "activsg500-gpu-lagrangian-v6.json")
     case, _ = triangle_case()
@@ -192,6 +219,26 @@ def test_v6_exact_pmin_pmax_capacity_gate_precedes_phase_one() -> None:
     assert off_gate["passes"] is False
     assert off_gate["capacity_shortfall_mw"] == pytest.approx(62.0)
     assert off_gate["exact_source_pmin_changed"] is False
+
+
+def test_prepared_region_validation_maps_nonzero_source_row_to_commitment_column() -> None:
+    config = load_config(ROOT / "configs" / "activsg500-gpu-lagrangian-v6.json")
+    case, _ = triangle_case()
+    case.gen[0, GEN_STATUS] = 0.0
+    case.gen[1, GEN_STATUS] = 1.0
+    network = build_network(case)
+    masks = RegionMasks.root(1)
+    master = _prepare_region_master(
+        case=case,
+        network=network,
+        config=config,
+        masks=masks,
+        initial_pairs=(),
+    )
+
+    assert master.index.generator_source_rows.tolist() == [1]
+    assert master.index.commitment_by_generator[1] == 0
+    _validate_prepared_region_master(master, masks, ())
 
 
 def test_v6_zero_phase_one_primal_warm_starts_cost_lp_without_dual(
