@@ -17,6 +17,19 @@ FloatArray = npt.NDArray[np.float64]
 IntArray = npt.NDArray[np.int64]
 
 
+class FixedCommitmentProjectionInfeasible(ScopfError):
+    """A fixed candidate violates a coupling row with no free dispatch support."""
+
+    def __init__(self, row_name: str, *, lower: float, upper: float) -> None:
+        super().__init__(
+            "Fixed-commitment projection found a violated constant coupling row: "
+            f"{row_name}"
+        )
+        self.row_name = row_name
+        self.shifted_lower = float(lower)
+        self.shifted_upper = float(upper)
+
+
 def _maximum_column_violation(model: CanonicalMILP, values: FloatArray) -> float:
     lower = np.asarray(model.column_lower, dtype=np.float64)
     upper = np.asarray(model.column_upper, dtype=np.float64)
@@ -181,9 +194,10 @@ def build_fixed_commitment_projection(
             if lower <= 0.0 <= upper:
                 dropped_constant_rows.append(coupling.row_name)
                 continue
-            raise ScopfError(
-                "Fixed-commitment projection found a violated constant coupling row: "
-                f"{coupling.row_name}"
+            raise FixedCommitmentProjectionInfeasible(
+                coupling.row_name,
+                lower=lower,
+                upper=upper,
             )
 
         minimum_terms: list[float] = []

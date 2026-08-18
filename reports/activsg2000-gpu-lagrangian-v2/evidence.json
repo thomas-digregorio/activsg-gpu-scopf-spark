@@ -1,0 +1,73 @@
+{
+  "schema_version": "1.0.0",
+  "experiment_suite_id": "activsg2000-gpu-lagrangian-v2",
+  "status": "failed_exception",
+  "frozen_commit": "2e5a722556bfeeb9446440576fbd72a4c6dc0377",
+  "frozen_tag": "experiment-2000-gpu-lagrangian-v2",
+  "case_sha256": "8d00618de8fd10bf35a599f59d2deebfecd0d86e28fcff73219ad7c4ebab860b",
+  "contingency_sha256": "198b39f0381925a4ddacbe2148973cb1d93ddfe220303829cf87b16d45190bba",
+  "raw_artifacts": {
+    "result_sha256": "5502462740192e66ae05c1ff1cc564c0b4427efeddb5f3a701a04815f09d2861",
+    "registry_sha256": "865e80f5386bca97dfd95d8d37da216df62c874a4f8661eb5208a35bfd45f36d",
+    "checkpoint_sha256": "fc30f64b6bc917dd6f54070ae2fe43e10521996a6f0d902003c6374c0a7663c8",
+    "worker_console_sha256": "64baabcd82cf48eaa850e27a67247d4384cd4b5124eba80501df775013d15145",
+    "launcher_console_sha256": "4a6c3c4130dba743dcc1a92d89f3df78738108bdea196176c385630241e89f52"
+  },
+  "elapsed_seconds": 109.50455867899291,
+  "total_wall_time_seconds": 110.19304445599846,
+  "error": {
+    "type": "ScopfError",
+    "message": "Fixed-commitment projection found a violated constant coupling row: c0603_m0609_lower",
+    "scope_after_diagnosis": "first_fixed_commitment_candidate_only",
+    "full_model_infeasibility_claimed": false
+  },
+  "root_relaxation": {
+    "constraint_generation_rounds": 3,
+    "logical_security_pairs": 104,
+    "lp_objective": 1128529.233432291,
+    "fractional_commitment_count": 53,
+    "final_exhaustive_violation_pu": 1.41994860314298e-12,
+    "lagrangian_conservative_lower_bound": 1128529.2234322468,
+    "bound_status": "independently_replayed_current_frontier",
+    "independent_replay_passed": true,
+    "rounds": [
+      {
+        "round": 1,
+        "adapter_wall_time_seconds": 10.550938364001922,
+        "new_violated_pairs": 84,
+        "maximum_violation_pu": 1.5669193892931026,
+        "screen_wall_time_seconds": 1.060079199000029
+      },
+      {
+        "round": 2,
+        "adapter_wall_time_seconds": 50.964617727004224,
+        "new_violated_pairs": 20,
+        "maximum_violation_pu": 0.23488301627999192,
+        "screen_wall_time_seconds": 0.044430410998757
+      },
+      {
+        "round": 3,
+        "adapter_wall_time_seconds": 37.9292043400055,
+        "new_violated_pairs": 0,
+        "maximum_violation_pu": 1.41994860314298e-12,
+        "screen_wall_time_seconds": 0.0436767130013322
+      }
+    ]
+  },
+  "first_candidate": {
+    "origin": "root_pdlp_rounding",
+    "committed_generator_count": 333,
+    "secure_primal_produced": false,
+    "projected_phase_one_started": false,
+    "violated_constant_row": "c0603_m0609_lower",
+    "shifted_row_lower": "-Infinity",
+    "shifted_row_upper_mw": -0.3799999999934869,
+    "constant_activity_mw": 0.0,
+    "violation_mw": 0.3799999999934869
+  },
+  "peak_memory": {
+    "process_rss_bytes": 2668699648,
+    "cuda_device_memory_delta_bytes": 2416594944,
+    "cupy_pool_used_bytes": 70301696
+  }
+}

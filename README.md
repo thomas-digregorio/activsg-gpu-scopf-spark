@@ -159,6 +159,15 @@ bash scripts/spark-build-2000-gpu-lagrangian-v2.sh
 bash scripts/spark-run-2000-gpu-lagrangian-v2.sh
 ```
 
+The frozen v2 run preserved a valid, independently replayed root lower bound
+but stopped before its first projected Phase-I solve: a contingency row became
+a violated constant after fixed dispatch substitution, and that candidate-level
+infeasibility was incorrectly raised as an experiment-level exception. The
+[v2 result report](reports/activsg2000-gpu-lagrangian-v2/README.md) preserves
+the failure. The v3 correction rejects only that binary candidate and continues
+the deterministic candidate queue; it does not call the full model infeasible.
+See the [v3 correction contract](docs/gpu-lagrangian-2000-v3.md).
+
 ## MIP-gap sensitivity experiments
 
 The separately registered `activsg10k-gap-sensitivity-v2` experiment runs the

@@ -28,6 +28,7 @@ from .errors import (
 )
 from .fixed_commitment import (
     FixedCommitmentProjection,
+    FixedCommitmentProjectionInfeasible,
     build_fixed_commitment_projection,
 )
 from .lagrangian import (
@@ -84,6 +85,7 @@ EXPERIMENT_ID = "activsg500-gpu-lagrangian-v1"
 EXPERIMENT_TAG = "experiment-500-gpu-lagrangian-v1"
 ACTIVSG2000_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v1"
 ACTIVSG2000_V2_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v2"
+ACTIVSG2000_V3_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v3"
 REGISTERED_EXPERIMENTS = {
     EXPERIMENT_ID: {
         "tag": EXPERIMENT_TAG,
@@ -124,6 +126,14 @@ REGISTERED_EXPERIMENTS = {
         "policy": (
             "gpu_dispatch_projection_phase_one_primal_plus_"
             "lagrangian_cover_activsg2000_v2"
+        ),
+    },
+    ACTIVSG2000_V3_EXPERIMENT_ID: {
+        "case_name": "ACTIVSg2000",
+        "tag": "experiment-2000-gpu-lagrangian-v3",
+        "policy": (
+            "gpu_dispatch_projection_candidate_rejection_plus_"
+            "lagrangian_cover_activsg2000_v3"
         ),
     },
 }
@@ -207,6 +217,19 @@ ACTIVSG2000_V2_FEASIBILITY_FIX = {
     "cost_polish_warm_start": "verified_phase_one_dispatch_in_exact_source_column_space",
     "cost_polish_failure_policy": "retain_verified_feasibility_incumbent",
     "mathematical_feasible_set_changed": False,
+    "cpu_commitment_or_dispatch_seeded": False,
+}
+ACTIVSG2000_V3_CANDIDATE_REJECTION_FIX = {
+    "comparison_baseline": "activsg2000-gpu-lagrangian-v2",
+    "failed_v2_run_preserved": True,
+    "constant_coupling_row_result": (
+        "reject_only_the_fixed_commitment_candidate_before_pdlp"
+    ),
+    "full_model_infeasibility_claimed": False,
+    "continue_candidate_queue": True,
+    "mathematical_model_changed": False,
+    "exact_source_pmin_changed": False,
+    "runtime_policy_changed": False,
     "cpu_commitment_or_dispatch_seeded": False,
 }
 ACTIVSG2000_V1_RUNTIME = {
@@ -359,7 +382,10 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
         )
     is_activsg2000_v1 = config.benchmark_id == ACTIVSG2000_EXPERIMENT_ID
     is_activsg2000_v2 = config.benchmark_id == ACTIVSG2000_V2_EXPERIMENT_ID
-    is_activsg2000 = is_activsg2000_v1 or is_activsg2000_v2
+    is_activsg2000_v3 = config.benchmark_id == ACTIVSG2000_V3_EXPERIMENT_ID
+    is_activsg2000 = (
+        is_activsg2000_v1 or is_activsg2000_v2 or is_activsg2000_v3
+    )
     if benchmark.get("kind") != "gpu_lagrangian_disjunctive_experiment":
         raise ScopfError("GPU Lagrangian experiment kind changed")
     if benchmark.get("required_git_tag") != experiment["tag"]:
@@ -380,7 +406,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
                 "GPU Lagrangian v2 bugfix identity changed: "
                 f"expected={V2_BUGFIX_CHANGE}, observed={observed_change}"
             )
-    if config.benchmark_id.endswith("-v3"):
+    if config.benchmark_id.endswith("-v3") and not is_activsg2000_v3:
         observed_change = benchmark.get("controller_change")
         if observed_change != V3_CONTROLLER_CHANGE:
             raise ScopfError(
@@ -430,6 +456,14 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
                 f"expected={ACTIVSG2000_V2_FEASIBILITY_FIX}, "
                 f"observed={observed_change}"
             )
+    if is_activsg2000_v3:
+        observed_change = benchmark.get("candidate_rejection_fix")
+        if observed_change != ACTIVSG2000_V3_CANDIDATE_REJECTION_FIX:
+            raise ScopfError(
+                "ACTIVSg2000 GPU Lagrangian v3 candidate-rejection identity changed: "
+                f"expected={ACTIVSG2000_V3_CANDIDATE_REJECTION_FIX}, "
+                f"observed={observed_change}"
+            )
     profile = config.raw["platforms"].get("dgx_spark", {})
     required_profile = {
         "solver": "cuopt",
@@ -466,7 +500,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
         raise ScopfError("maximum_frontier_regions must be positive")
     if float(config.model["mip_relative_gap_tolerance"]) != 1e-3:
         raise ScopfError("The registered Lagrangian target is exactly 1e-3")
-    if config.benchmark_id.endswith("-v3"):
+    if config.benchmark_id.endswith("-v3") and not is_activsg2000_v3:
         required_runtime = {
             "maximum_primal_candidate_seconds": 15.0,
             "maximum_primal_candidate_round_seconds": 5.0,
@@ -1114,9 +1148,31 @@ def _solve_fixed_commitment_feasibility(
         deadline.require(
             f"fixed-commitment projected Phase I {region_id} round {constraint_round}"
         )
-        projection: FixedCommitmentProjection = build_fixed_commitment_projection(
-            master, binary
-        )
+        try:
+            projection: FixedCommitmentProjection = build_fixed_commitment_projection(
+                master, binary
+            )
+        except FixedCommitmentProjectionInfeasible as exc:
+            rounds.append(
+                {
+                    "round": constraint_round,
+                    "security_pairs_before_solve": len(pairs_by_id),
+                    "projection_precheck": {
+                        "status": "candidate_infeasible_constant_coupling_row",
+                        "row_name": exc.row_name,
+                        "shifted_row_lower": exc.shifted_lower,
+                        "shifted_row_upper": exc.shifted_upper,
+                        "pruning_scope": "fixed_commitment_candidate_only",
+                        "full_model_infeasibility_claimed": False,
+                    },
+                }
+            )
+            emit_progress()
+            reject(
+                "projected_constant_coupling_row_violation",
+                f"Candidate {region_id} is infeasible because fixed dispatch "
+                f"violates constant coupling row {exc.row_name}",
+            )
         phase_model = build_phase_one_model(
             projection.canonical,
             base_mva=float(case.base_mva),
@@ -2229,7 +2285,11 @@ def run_gpu_lagrangian_experiment(
                     ("-v3", "-v4", "-v5", "-v6", "-v7")
                 )
                 or config.benchmark_id
-                in {ACTIVSG2000_EXPERIMENT_ID, ACTIVSG2000_V2_EXPERIMENT_ID}
+                in {
+                    ACTIVSG2000_EXPERIMENT_ID,
+                    ACTIVSG2000_V2_EXPERIMENT_ID,
+                    ACTIVSG2000_V3_EXPERIMENT_ID,
+                }
             )
             else None
         )
@@ -2238,14 +2298,22 @@ def run_gpu_lagrangian_experiment(
             if (
                 config.benchmark_id.endswith(("-v4", "-v5", "-v6", "-v7"))
                 or config.benchmark_id
-                in {ACTIVSG2000_EXPERIMENT_ID, ACTIVSG2000_V2_EXPERIMENT_ID}
+                in {
+                    ACTIVSG2000_EXPERIMENT_ID,
+                    ACTIVSG2000_V2_EXPERIMENT_ID,
+                    ACTIVSG2000_V3_EXPERIMENT_ID,
+                }
             )
             else None
         )
         phase_one_first = (
             config.benchmark_id.endswith(("-v6", "-v7"))
             or config.benchmark_id
-            in {ACTIVSG2000_EXPERIMENT_ID, ACTIVSG2000_V2_EXPERIMENT_ID}
+            in {
+                ACTIVSG2000_EXPERIMENT_ID,
+                ACTIVSG2000_V2_EXPERIMENT_ID,
+                ACTIVSG2000_V3_EXPERIMENT_ID,
+            }
         )
         payload["primal_candidate_policy"] = (
             candidate_policy.as_dict() if candidate_policy is not None else None
@@ -2283,7 +2351,8 @@ def run_gpu_lagrangian_experiment(
                 "cost_polish_uses_lifted_source_space_primal_start": True,
                 "cpu_commitment_or_dispatch_seeded": False,
             }
-            if config.benchmark_id == ACTIVSG2000_V2_EXPERIMENT_ID
+            if config.benchmark_id
+            in {ACTIVSG2000_V2_EXPERIMENT_ID, ACTIVSG2000_V3_EXPERIMENT_ID}
             else {"enabled": False}
         )
 
@@ -2465,7 +2534,10 @@ def run_gpu_lagrangian_experiment(
             feasibility: FixedCommitmentFeasibilityResult | None = None
             solved: SolvedRegion | None = None
             try:
-                if config.benchmark_id == ACTIVSG2000_V2_EXPERIMENT_ID:
+                if config.benchmark_id in {
+                    ACTIVSG2000_V2_EXPERIMENT_ID,
+                    ACTIVSG2000_V3_EXPERIMENT_ID,
+                }:
                     if candidate_policy is None:
                         raise ScopfError(
                             "ACTIVSg2000 v2 requires a bounded candidate policy"

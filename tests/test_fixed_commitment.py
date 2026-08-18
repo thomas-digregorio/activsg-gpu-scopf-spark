@@ -1,15 +1,22 @@
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from activsg_scopf import lagrangian_experiment as experiment_module
 from activsg_scopf.config import load_config
 from activsg_scopf.deadline import Deadline
-from activsg_scopf.fixed_commitment import build_fixed_commitment_projection
+from activsg_scopf.errors import ScopfError
+from activsg_scopf.fixed_commitment import (
+    FixedCommitmentProjectionInfeasible,
+    build_fixed_commitment_projection,
+)
 from activsg_scopf.lagrangian import RegionMasks
 from activsg_scopf.lagrangian_experiment import (
     ACTIVSG2000_V2_EXPERIMENT_ID,
+    ACTIVSG2000_V3_EXPERIMENT_ID,
     PrimalCandidatePolicy,
+    RegionAttemptRejected,
     _prepare_region_master,
     _solve_fixed_commitment_feasibility,
     validate_lagrangian_experiment_config,
@@ -77,6 +84,75 @@ def test_registered_activsg2000_v2_feasibility_fix_is_fail_closed() -> None:
     )
     assert fix["cpu_commitment_or_dispatch_seeded"] is False
     assert config.runtime["deadline_seconds"] == 1800.0
+
+
+def test_constant_coupling_violation_rejects_only_fixed_candidate(
+    monkeypatch,
+) -> None:
+    config = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v2.json")
+    case, table = triangle_case()
+    network = build_network(case)
+    masks = RegionMasks(np.asarray([True]), np.asarray([False]))
+    master = _prepare_region_master(
+        case=case,
+        network=network,
+        config=config,
+        masks=masks,
+        initial_pairs=(),
+    )
+    with pytest.raises(FixedCommitmentProjectionInfeasible, match="balance"):
+        build_fixed_commitment_projection(master, np.asarray([0]))
+
+    monkeypatch.setattr(
+        experiment_module,
+        "solve_cuopt_continuous_pdlp",
+        lambda *_args, **_kwargs: pytest.fail(
+            "constant-row candidate rejection must precede PDLP"
+        ),
+    )
+    catalog = build_contingency_catalog(case, network, table)
+    with pytest.raises(RegionAttemptRejected) as rejected:
+        _solve_fixed_commitment_feasibility(
+            region_id="constant_row_candidate",
+            commitment=np.asarray([0], dtype=np.int8),
+            case=case,
+            network=network,
+            catalog=catalog,
+            config=config,
+            deadline=Deadline(10.0, 0.0, 0.0),
+            initial_pairs=(),
+            screener=ContingencyScreener(network, catalog, backend="numpy"),
+            checkpoint=lambda: None,
+            progress=None,
+            policy=PrimalCandidatePolicy.from_config(config),
+        )
+    assert rejected.value.reason == "projected_constant_coupling_row_violation"
+    precheck = rejected.value.rounds[0]["projection_precheck"]
+    assert precheck["pruning_scope"] == "fixed_commitment_candidate_only"
+    assert precheck["full_model_infeasibility_claimed"] is False
+
+
+def test_registered_activsg2000_v3_candidate_rejection_fix_is_fail_closed() -> None:
+    config = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v3.json")
+    registration = validate_lagrangian_experiment_config(config)
+
+    assert config.benchmark_id == ACTIVSG2000_V3_EXPERIMENT_ID
+    assert registration["benchmark"]["required_git_tag"] == (
+        "experiment-2000-gpu-lagrangian-v3"
+    )
+    fix = registration["benchmark"]["candidate_rejection_fix"]
+    assert fix["constant_coupling_row_result"] == (
+        "reject_only_the_fixed_commitment_candidate_before_pdlp"
+    )
+    assert fix["full_model_infeasibility_claimed"] is False
+    assert fix["continue_candidate_queue"] is True
+    assert config.runtime["deadline_seconds"] == 1800.0
+
+    config.raw["benchmark"]["candidate_rejection_fix"][
+        "continue_candidate_queue"
+    ] = False
+    with pytest.raises(ScopfError, match="candidate-rejection identity changed"):
+        validate_lagrangian_experiment_config(config)
 
 
 def test_projected_phase_one_returns_lifted_secure_fixture_dispatch(
