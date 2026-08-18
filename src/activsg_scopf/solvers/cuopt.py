@@ -39,7 +39,7 @@ SUPPORTED_NATIVE_SCALING_MODES = frozenset(
         POWER_SYSTEM_SAFE_EQUILIBRATED_SCALING,
     }
 )
-MIP_START_NATIVE_POLICY = "presolve_off_explicit_free_split_readback_v2"
+MIP_START_NATIVE_POLICY = "presolve_off_full_feasible_assignment_readback_v3"
 MIP_START_REJECTION_TEXT = "Error cannot add the provided initial solution!"
 BARRIER_NUMERICAL_WARNING = (
     "Barrier Solve status A numerical error was encountered."
@@ -469,6 +469,98 @@ def prepare_mip_start(
     return columns, values
 
 
+def validate_full_mip_start_feasibility(
+    model: CanonicalMILP,
+    values: np.ndarray,
+    *,
+    column_scale: np.ndarray,
+    row_scale: np.ndarray,
+    tolerance: float,
+) -> dict[str, object]:
+    """Fail closed before cuOpt sees a full native MIP assignment.
+
+    The pinned cuOpt 26.6 expression API assembles variable-level starts into a
+    complete assignment and rejects incomplete or infeasible assignments.  The
+    check is performed in the exact diagonally scaled native coordinates used
+    by the adapter, so the tolerance has the same interpretation as the native
+    solver residual tolerance.
+    """
+
+    candidate = np.asarray(values, dtype=np.float64)
+    if candidate.shape != (model.num_columns,) or not np.all(np.isfinite(candidate)):
+        raise ScopfError("cuOpt full MIP start has invalid shape or values")
+    if tolerance < 0.0 or not np.isfinite(tolerance):
+        raise ScopfError("cuOpt full MIP-start tolerance must be finite and nonnegative")
+    columns = np.asarray(column_scale, dtype=np.float64)
+    rows = np.asarray(row_scale, dtype=np.float64)
+    if columns.shape != candidate.shape or rows.shape != (model.num_rows,):
+        raise ScopfError("cuOpt full MIP-start scaling vectors have invalid shapes")
+    if (
+        not np.all(np.isfinite(columns))
+        or not np.all(columns > 0.0)
+        or not np.all(np.isfinite(rows))
+        or not np.all(rows > 0.0)
+    ):
+        raise ScopfError("cuOpt full MIP-start scaling vectors are invalid")
+
+    _objective, lower, upper, integrality = model.column_arrays()
+    native_values = candidate / columns
+    native_lower = lower / columns
+    native_upper = upper / columns
+    column_violation = float(
+        max(
+            np.max(native_lower - native_values),
+            np.max(native_values - native_upper),
+            0.0,
+        )
+    )
+    integer_columns = np.flatnonzero(integrality)
+    integrality_violation = (
+        0.0
+        if not integer_columns.size
+        else float(
+            np.max(
+                np.abs(
+                    candidate[integer_columns]
+                    - np.rint(candidate[integer_columns])
+                )
+            )
+        )
+    )
+    activity = np.asarray(model.matrix_csr() @ candidate, dtype=np.float64)
+    row_lower, row_upper = model.row_bound_arrays()
+    native_activity = activity * rows
+    native_row_lower = row_lower * rows
+    native_row_upper = row_upper * rows
+    row_violation = float(
+        max(
+            np.max(native_row_lower - native_activity),
+            np.max(native_activity - native_row_upper),
+            0.0,
+        )
+    )
+    passed = bool(
+        column_violation <= tolerance
+        and integrality_violation <= tolerance
+        and row_violation <= tolerance
+    )
+    audit = {
+        "policy": "complete_native_feasible_assignment_required_v1",
+        "passed": passed,
+        "tolerance": float(tolerance),
+        "maximum_native_column_bound_violation": column_violation,
+        "maximum_integrality_violation": integrality_violation,
+        "maximum_native_row_violation": row_violation,
+        "canonical_values_sha256": hashlib.sha256(candidate.tobytes()).hexdigest(),
+    }
+    if not passed:
+        raise ScopfError(
+            "cuOpt 26.6 full MIP start is not a complete feasible native "
+            f"assignment: {audit}"
+        )
+    return audit
+
+
 def audit_cuopt_native_log(native_log: str) -> dict[str, object]:
     """Fail closed on native cuOpt errors and retain known warning counts."""
 
@@ -780,6 +872,7 @@ def solve_cuopt(
     track_incumbent_commitments: bool = False,
     mip_acceptance_policy: str = NATIVE_OPTIMAL_ONLY,
     mip_certificate_residual_tolerance: float = 1e-6,
+    mip_heuristics_only: bool = False,
 ) -> SolveResult:
     if mip_acceptance_policy not in {
         NATIVE_OPTIMAL_ONLY,
@@ -787,6 +880,12 @@ def solve_cuopt(
     }:
         raise ScopfError(
             f"Unknown cuOpt MIP acceptance policy: {mip_acceptance_policy!r}"
+        )
+    if mip_start_values is not None and mip_start_mode != FULL_MIP_START:
+        raise ScopfError(
+            "cuOpt 26.6 does not reliably accept an unextended partial MIP "
+            "start; first obtain a complete feasible continuous extension "
+            "and submit it with mip_start_mode='all_columns'"
         )
     try:
         import cuopt
@@ -814,6 +913,7 @@ def solve_cuopt(
     mip_start_selected_values = np.empty(0, dtype=np.float64)
     mip_start_bound_projection_count = 0
     mip_start_bound_projection_maximum_delta = 0.0
+    mip_start_feasibility_audit: dict[str, object] | None = None
     if mip_start_values is not None:
         mip_start_columns, mip_start_selected_values = prepare_mip_start(
             mip_start_values,
@@ -835,6 +935,13 @@ def solve_cuopt(
             mip_start_bound_projection_maximum_delta = float(
                 np.max(projection_delta)
             )
+        mip_start_feasibility_audit = validate_full_mip_start_feasibility(
+            model,
+            mip_start_selected_values,
+            column_scale=column_scale,
+            row_scale=row_scale,
+            tolerance=float(mip_certificate_residual_tolerance),
+        )
     explicit_free_split = bool(mip_start_columns.size)
     split_columns = (
         free_continuous_columns(native_lower, native_upper, integrality)
@@ -1003,6 +1110,16 @@ def solve_cuopt(
     settings.set_parameter("mip_relative_gap", float(mip_relative_gap))
     settings.set_parameter("random_seed", 0)
     settings.set_parameter("log_to_console", bool(log_to_console))
+    settings.set_parameter("mip_heuristics_only", bool(mip_heuristics_only))
+    mip_heuristics_only_readback = bool(
+        _native(settings.get_parameter("mip_heuristics_only"))
+    )
+    if mip_heuristics_only_readback != bool(mip_heuristics_only):
+        raise ScopfError(
+            "cuOpt MIP heuristics-only parameter readback mismatch: "
+            f"requested={bool(mip_heuristics_only)}, "
+            f"observed={mip_heuristics_only_readback}"
+        )
     mip_start_presolve_readback: int | None = None
     if mip_start_columns.size:
         settings.set_parameter("presolve", 0)
@@ -1053,6 +1170,9 @@ def solve_cuopt(
     )
     mip_start_contract["explicit_eliminated_columns"] = int(
         eliminated_columns.size
+    )
+    mip_start_contract["full_feasibility_precheck"] = (
+        mip_start_feasibility_audit
     )
     mip_start_contract["eliminated_submitted_canonical_columns"] = int(
         sum(
@@ -1302,5 +1422,8 @@ def solve_cuopt(
             "cuopt_pdlp_parameters_requested": pdlp_settings,
             "cuopt_pdlp_parameters_readback": pdlp_settings_readback,
             "incumbent_commitment_trace": incumbent_trace_payload,
+            "mip_heuristics_only_requested": bool(mip_heuristics_only),
+            "mip_heuristics_only_readback": mip_heuristics_only_readback,
+            "dual_bound_authority_disabled_by_policy": bool(mip_heuristics_only),
         },
     )

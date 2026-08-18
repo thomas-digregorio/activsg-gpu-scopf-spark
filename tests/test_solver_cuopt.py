@@ -23,6 +23,8 @@ from activsg_scopf.solvers.cuopt import (
     native_scaling_vectors,
     normalize_cuopt_pdlp_profile,
     prepare_mip_start,
+    solve_cuopt,
+    validate_full_mip_start_feasibility,
 )
 
 PDLP_PROFILE = {
@@ -253,6 +255,49 @@ def test_full_mip_start_can_project_numerical_excess_to_exact_bounds() -> None:
 
     np.testing.assert_array_equal(columns, np.asarray([0, 1, 2]))
     np.testing.assert_array_equal(values, np.asarray([1.0, 10.0, -2.0]))
+
+
+def test_full_mip_start_feasibility_is_checked_in_native_scaling() -> None:
+    model = CanonicalMILP()
+    commitment = model.add_variable("u_g0001", lower=0.0, upper=1.0, integer=True)
+    dispatch = model.add_variable("pg_g0001", lower=0.0, upper=100.0)
+    model.add_row(
+        "exact_pmin_dispatch_g0001",
+        {dispatch: 1.0, commitment: -50.0},
+        lower=0.0,
+        upper=0.0,
+    )
+    audit = validate_full_mip_start_feasibility(
+        model,
+        np.asarray([1.0, 50.0]),
+        column_scale=np.asarray([1.0, 100.0]),
+        row_scale=np.asarray([0.01]),
+        tolerance=1e-6,
+    )
+
+    assert audit["passed"] is True
+    with pytest.raises(ScopfError, match="complete feasible native assignment"):
+        validate_full_mip_start_feasibility(
+            model,
+            np.asarray([1.0, 49.0]),
+            column_scale=np.asarray([1.0, 100.0]),
+            row_scale=np.asarray([0.01]),
+            tolerance=1e-6,
+        )
+
+
+def test_cuopt_adapter_rejects_partial_start_before_native_translation() -> None:
+    model = CanonicalMILP()
+    model.add_variable("u_g0001", lower=0.0, upper=1.0, integer=True)
+
+    with pytest.raises(ScopfError, match="complete feasible continuous extension"):
+        solve_cuopt(
+            model,
+            time_limit_seconds=1.0,
+            mip_relative_gap=1e-3,
+            mip_start_values=np.asarray([1.0]),
+            mip_start_mode=INTEGER_ONLY_MIP_START,
+        )
 
 
 def test_cuopt_mip_start_requires_native_space_readback_and_presolve_off() -> None:

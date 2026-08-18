@@ -52,6 +52,7 @@ from .matpower import (
     read_contingency_table,
     read_matpower_case,
 )
+from .model import build_master
 from .network import (
     ContingencyCatalog,
     NetworkData,
@@ -78,10 +79,14 @@ from .reduced import (
     security_pair_from_record,
     security_pair_record,
 )
-from .screening import ContingencyScreener, SecurityPair
+from .screening import ContingencyScreener, SecurityPair, add_security_pairs
 from .solution import serialize_solution
-from .solvers.cuopt import native_scaling_vectors
-from .solvers.cuopt_lp import ContinuousSolveResult, solve_cuopt_continuous_pdlp
+from .solvers.cuopt import native_scaling_vectors, solve_cuopt
+from .solvers.cuopt_lp import (
+    ContinuousSolveResult,
+    derive_rate_a_angle_bounds,
+    solve_cuopt_continuous_pdlp,
+)
 from .verify import verify_serialized_solution
 
 EXPERIMENT_ID = "activsg500-gpu-lagrangian-v1"
@@ -91,8 +96,13 @@ ACTIVSG2000_V2_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v2"
 ACTIVSG2000_V3_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v3"
 ACTIVSG2000_V4_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v4"
 ACTIVSG2000_V5_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v5"
+ACTIVSG2000_V6_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v6"
 ACTIVSG2000_V4_PLUS_EXPERIMENT_IDS = frozenset(
-    {ACTIVSG2000_V4_EXPERIMENT_ID, ACTIVSG2000_V5_EXPERIMENT_ID}
+    {
+        ACTIVSG2000_V4_EXPERIMENT_ID,
+        ACTIVSG2000_V5_EXPERIMENT_ID,
+        ACTIVSG2000_V6_EXPERIMENT_ID,
+    }
 )
 REGISTERED_EXPERIMENTS = {
     EXPERIMENT_ID: {
@@ -154,6 +164,14 @@ REGISTERED_EXPERIMENTS = {
         "policy": (
             "gpu_network_aware_commitment_repair_plus_phase_one_first_"
             "safe_residual_refinement_lagrangian_cover_activsg2000_v5"
+        ),
+    },
+    ACTIVSG2000_V6_EXPERIMENT_ID: {
+        "case_name": "ACTIVSg2000",
+        "tag": "experiment-2000-gpu-lagrangian-v6",
+        "policy": (
+            "gpu_heuristics_primal_plus_stable2_stateful_phase_one_"
+            "lagrangian_cover_activsg2000_v6"
         ),
     },
 }
@@ -283,6 +301,26 @@ ACTIVSG2000_V5_NUMERICAL_FIX = {
     "mathematical_feasible_set_changed": False,
     "cpu_commitment_or_dispatch_seeded": False,
 }
+ACTIVSG2000_V6_NUMERICAL_AND_RUNTIME_FIX = {
+    "comparison_baseline": "activsg2000-gpu-lagrangian-v5",
+    "failed_v5_run_preserved": True,
+    "same_shape_pdlp_continuation": "full_native_stable2_solver_state_v1",
+    "changed_shape_pdlp_continuation": "raw_primal_plus_identity_safe_dual_v1",
+    "best_primal_retention": True,
+    "primal_generator": "cuopt_gpu_heuristics_only_on_sparse_full_root_master_v2",
+    "primal_native_conditioning": "rate_a_redundant_finite_angle_bounds_v1",
+    "primal_dual_bound_imported": False,
+    "child_bound_engine": (
+        "phase_one_feasible_point_plus_parent_inherited_gpu_lagrangian_dual_v1"
+    ),
+    "ordinary_child_cost_lp_removed": True,
+    "partial_mip_start_policy": (
+        "never_submit_unextended_commitment_as_native_full_assignment"
+    ),
+    "exact_source_pmin_changed": False,
+    "mathematical_feasible_set_changed": False,
+    "cpu_commitment_dispatch_objective_or_bound_seeded": False,
+}
 ACTIVSG2000_V1_RUNTIME = {
     "deadline_seconds": 1800.0,
     "verification_reserve_seconds": 120.0,
@@ -324,6 +362,17 @@ ACTIVSG2000_V5_RUNTIME = {
     **ACTIVSG2000_V4_RUNTIME,
     "root_canonical_residual_refinement_attempts": 1,
     "root_canonical_residual_refinement_optimality_tolerance": 1e-10,
+}
+ACTIVSG2000_V6_RUNTIME = {
+    **ACTIVSG2000_V5_RUNTIME,
+    "deadline_seconds": 990.0,
+    "verification_reserve_seconds": 60.0,
+    "serialization_reserve_seconds": 15.0,
+    "maximum_pdlp_round_seconds": 180.0,
+    "maximum_frontier_regions": 128,
+    "maximum_failed_split_attempts": 64,
+    "gpu_primal_heuristics_seconds": 300.0,
+    "phase_lagrangian_gpu_iterations": 2048,
 }
 
 
@@ -408,6 +457,7 @@ class PhaseOneAttemptResult:
     record: dict[str, Any]
     source_native_primal: np.ndarray | None
     source_native_row_dual: np.ndarray | None
+    source_values: np.ndarray | None = None
 
 
 @dataclass
@@ -459,12 +509,14 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
     is_activsg2000_v3 = config.benchmark_id == ACTIVSG2000_V3_EXPERIMENT_ID
     is_activsg2000_v4 = config.benchmark_id == ACTIVSG2000_V4_EXPERIMENT_ID
     is_activsg2000_v5 = config.benchmark_id == ACTIVSG2000_V5_EXPERIMENT_ID
+    is_activsg2000_v6 = config.benchmark_id == ACTIVSG2000_V6_EXPERIMENT_ID
     is_activsg2000 = (
         is_activsg2000_v1
         or is_activsg2000_v2
         or is_activsg2000_v3
         or is_activsg2000_v4
         or is_activsg2000_v5
+        or is_activsg2000_v6
     )
     if benchmark.get("kind") != "gpu_lagrangian_disjunctive_experiment":
         raise ScopfError("GPU Lagrangian experiment kind changed")
@@ -508,7 +560,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
                 "GPU Lagrangian v5 bugfix identity changed: "
                 f"expected={V5_BUGFIX_CHANGE}, observed={observed_change}"
             )
-    if config.benchmark_id.endswith("-v6"):
+    if config.benchmark_id.endswith("-v6") and not is_activsg2000_v6:
         observed_change = benchmark.get("controller_change")
         if observed_change != V6_CONTROLLER_CHANGE:
             raise ScopfError(
@@ -561,6 +613,14 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
                 f"expected={ACTIVSG2000_V5_NUMERICAL_FIX}, "
                 f"observed={observed_change}"
             )
+    if is_activsg2000_v6:
+        observed_change = benchmark.get("numerical_and_runtime_fix")
+        if observed_change != ACTIVSG2000_V6_NUMERICAL_AND_RUNTIME_FIX:
+            raise ScopfError(
+                "ACTIVSg2000 GPU Lagrangian v6 fix identity changed: "
+                f"expected={ACTIVSG2000_V6_NUMERICAL_AND_RUNTIME_FIX}, "
+                f"observed={observed_change}"
+            )
     profile = config.raw["platforms"].get("dgx_spark", {})
     required_profile = {
         "solver": "cuopt",
@@ -569,7 +629,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
         "pdlp_precision": "fp64",
         "native_scaling_mode": (
             "power_system_equilibrated_safe_v3"
-            if is_activsg2000_v5
+            if is_activsg2000_v5 or is_activsg2000_v6
             else (
                 "power_system_equilibrated_v2"
                 if is_activsg2000_v4
@@ -580,7 +640,11 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
         "lagrangian_gpu_iterations": 512,
         "lagrangian_polyak_fraction": 0.5,
         "console_logging": True,
-        "integer_solver": "none",
+        "integer_solver": (
+            "cuopt_gpu_heuristics_only_for_primal"
+            if is_activsg2000_v6
+            else "none"
+        ),
         "branch_and_bound": False,
         "custom_cuda_kernels": "allowed_but_not_required",
     }
@@ -590,19 +654,25 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
             f"GPU Lagrangian profile changed: expected={required_profile}, observed={observed}"
         )
     runtime = config.runtime
-    expected_deadline = 1800.0 if is_activsg2000 else 600.0
+    expected_deadline = (
+        990.0 if is_activsg2000_v6 else (1800.0 if is_activsg2000 else 600.0)
+    )
     if float(runtime.get("deadline_seconds", 0.0)) != expected_deadline:
         raise ScopfError(
             "The registered GPU Lagrangian experiment deadline changed: "
             f"expected={expected_deadline}, observed={runtime.get('deadline_seconds')}"
         )
     expected_activsg2000_runtime = (
-        ACTIVSG2000_V5_RUNTIME
-        if is_activsg2000_v5
+        ACTIVSG2000_V6_RUNTIME
+        if is_activsg2000_v6
         else (
-            ACTIVSG2000_V4_RUNTIME
-            if is_activsg2000_v4
-            else ACTIVSG2000_V1_RUNTIME
+            ACTIVSG2000_V5_RUNTIME
+            if is_activsg2000_v5
+            else (
+                ACTIVSG2000_V4_RUNTIME
+                if is_activsg2000_v4
+                else ACTIVSG2000_V1_RUNTIME
+            )
         )
     )
     if is_activsg2000 and runtime != expected_activsg2000_runtime:
@@ -645,7 +715,9 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
             "region_attempt_minimum_relative_residual_improvement": 0.01,
             "region_attempt_dual_divergence_multiple": 1e6,
             "region_attempt_cold_restart_attempts": 1,
-            "maximum_failed_split_attempts": 16 if is_activsg2000 else 8,
+            "maximum_failed_split_attempts": (
+                64 if is_activsg2000_v6 else (16 if is_activsg2000 else 8)
+            ),
             "phase_one_time_limit_seconds": 60.0 if is_activsg2000 else 15.0,
             "phase_one_maximum_violation_pu": 1e6,
             "phase_one_safety_margin_pu": 1e-8,
@@ -669,6 +741,22 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
             raise ScopfError("GPU Lagrangian v4/v5/v6/v7 security-row replay tolerance changed")
         if float(config.model.get("phase_one_replay_tolerance_pu", -1.0)) != 1e-10:
             raise ScopfError("GPU Lagrangian v4/v5/v6/v7 Phase-I replay tolerance changed")
+    if is_activsg2000_v6:
+        required_v6_profile = {
+            "pdlp_solver_mode_native": 1,
+            "pdlp_solver_mode": "stable2",
+            "save_best_primal_solution": True,
+            "integer_solver": "cuopt_gpu_heuristics_only_for_primal",
+            "branch_and_bound": False,
+        }
+        observed_v6_profile = {
+            key: profile.get(key) for key in required_v6_profile
+        }
+        if observed_v6_profile != required_v6_profile:
+            raise ScopfError(
+                "ACTIVSg2000 v6 numerical profile changed: "
+                f"expected={required_v6_profile}, observed={observed_v6_profile}"
+            )
     return {
         "benchmark": benchmark,
         "profile": profile,
@@ -698,6 +786,7 @@ def _solve_summary(result: ContinuousSolveResult) -> dict[str, Any]:
         "native_lp_stats": result.statistics.get("lp_stats"),
         "termination_reason": result.statistics.get("termination_reason"),
         "warm_start": result.statistics.get("warm_start"),
+        "pdlp_warm_start_state_returned": result.pdlp_warm_start_data is not None,
     }
 
 
@@ -888,6 +977,7 @@ def _solve_region(
         if initial_native_row_dual is None
         else np.asarray(initial_native_row_dual, dtype=np.float64).copy()
     )
+    pdlp_warm_start_data: Any | None = None
     if native_primal is not None and native_primal.shape != (master.canonical.num_columns,):
         raise ScopfError("Prepared region native-primal warm start has the wrong shape")
     if native_dual is not None and (
@@ -969,8 +1059,14 @@ def _solve_region(
             log_to_console=True,
             per_constraint_residual=bool(profile["per_constraint_residual"]),
             presolve=int(profile["presolve"]),
-            initial_native_primal=native_primal,
-            initial_native_row_dual=native_dual,
+            initial_native_primal=(
+                None if pdlp_warm_start_data is not None else native_primal
+            ),
+            initial_native_row_dual=(
+                None if pdlp_warm_start_data is not None else native_dual
+            ),
+            initial_pdlp_warm_start_data=pdlp_warm_start_data,
+            pdlp_solver_mode=int(profile.get("pdlp_solver_mode_native", 4)),
             concurrent_solver_context=concurrent_solver_context,
         )
         adapter_wall = time.perf_counter() - started
@@ -1004,6 +1100,7 @@ def _solve_region(
                     cold_restarts_remaining -= 1
                     native_primal = None
                     native_dual = None
+                    pdlp_warm_start_data = None
                     infeasible_residuals.clear()
                     cold_restart_active = True
                     round_record["candidate_gate"] = {
@@ -1035,6 +1132,7 @@ def _solve_region(
             )
         native_primal = last_solve.native_primal
         native_dual = last_solve.native_row_dual
+        pdlp_warm_start_data = last_solve.pdlp_warm_start_data
         dual_certificate = last_solve.statistics.get("dual_certificate", {})
         certificate_primal_feasible = bool(dual_certificate.get("primal_feasible", False))
         canonical_residual_pu = (
@@ -1105,8 +1203,14 @@ def _solve_region(
                     log_to_console=True,
                     per_constraint_residual=bool(profile["per_constraint_residual"]),
                     presolve=int(profile["presolve"]),
-                    initial_native_primal=native_primal,
-                    initial_native_row_dual=native_dual,
+                    initial_native_primal=(
+                        None if pdlp_warm_start_data is not None else native_primal
+                    ),
+                    initial_native_row_dual=(
+                        None if pdlp_warm_start_data is not None else native_dual
+                    ),
+                    initial_pdlp_warm_start_data=pdlp_warm_start_data,
+                    pdlp_solver_mode=int(profile.get("pdlp_solver_mode_native", 4)),
                     concurrent_solver_context=concurrent_solver_context,
                 )
                 refinement_wall = time.perf_counter() - refinement_started
@@ -1132,6 +1236,7 @@ def _solve_region(
                 last_solve = refined
                 native_primal = refined.native_primal
                 native_dual = refined.native_row_dual
+                pdlp_warm_start_data = refined.pdlp_warm_start_data
                 dual_certificate = refined.statistics.get("dual_certificate", {})
                 certificate_primal_feasible = bool(
                     dual_certificate.get("primal_feasible", False)
@@ -1207,6 +1312,7 @@ def _solve_region(
                         cold_restarts_remaining -= 1
                         native_primal = None
                         native_dual = None
+                        pdlp_warm_start_data = None
                         infeasible_residuals.clear()
                         cold_restart_active = True
                         gate["cold_restart_scheduled"] = True
@@ -1286,6 +1392,10 @@ def _solve_region(
                 raise ScopfError(f"Region {region_id} final screen residual exceeds tolerance")
             break
         add_reduced_security_pairs(master, network, screened.violations)
+        # Appended rows change the native PDLP state dimension.  Preserve the
+        # raw primal/dual vectors (the dual is safely zero-extended by row),
+        # but never submit an incompatible full solver context.
+        pdlp_warm_start_data = None
         pairs_by_id.update((pair.pair_id, pair) for pair in screened.violations)
         round_record["added_pair_ids"] = [pair.pair_id for pair in screened.violations]
         emit_progress()
@@ -1395,6 +1505,7 @@ def _solve_fixed_commitment_feasibility(
     rounds: list[dict[str, Any]] = []
     native_phase_primal: np.ndarray | None = None
     native_phase_dual: np.ndarray | None = None
+    pdlp_warm_start_data: Any | None = None
 
     def emit_progress() -> None:
         if progress is not None:
@@ -1459,6 +1570,7 @@ def _solve_fixed_commitment_feasibility(
             phase_model.num_columns,
         ):
             native_phase_primal = None
+            pdlp_warm_start_data = None
         round_record: dict[str, Any] = {
             "round": constraint_round,
             "security_pairs_before_solve": len(pairs_by_id),
@@ -1505,8 +1617,14 @@ def _solve_fixed_commitment_feasibility(
                 log_to_console=True,
                 per_constraint_residual=bool(profile["per_constraint_residual"]),
                 presolve=int(profile["presolve"]),
-                initial_native_primal=native_phase_primal,
-                initial_native_row_dual=native_phase_dual,
+                initial_native_primal=(
+                    None if pdlp_warm_start_data is not None else native_phase_primal
+                ),
+                initial_native_row_dual=(
+                    None if pdlp_warm_start_data is not None else native_phase_dual
+                ),
+                initial_pdlp_warm_start_data=pdlp_warm_start_data,
+                pdlp_solver_mode=int(profile.get("pdlp_solver_mode_native", 4)),
             )
             solve_record: dict[str, Any] = {
                 "attempt": len(round_record["solve_attempts"]) + 1,
@@ -1531,6 +1649,7 @@ def _solve_fixed_commitment_feasibility(
                     cold_restarts_remaining -= 1
                     native_phase_primal = None
                     native_phase_dual = None
+                    pdlp_warm_start_data = None
                     residual_history.clear()
                     cold_restart_active = True
                     solve_record["continuation"] = "cold_restart_after_missing_vectors"
@@ -1544,6 +1663,7 @@ def _solve_fixed_commitment_feasibility(
 
             phase_values = np.asarray(solve.values, dtype=np.float64)
             native_phase_primal = np.asarray(solve.native_primal, dtype=np.float64)
+            pdlp_warm_start_data = solve.pdlp_warm_start_data
             if solve.native_row_dual is not None:
                 native_phase_dual = np.asarray(solve.native_row_dual, dtype=np.float64).copy()
             candidate_projected = phase_values[:-1]
@@ -1598,6 +1718,7 @@ def _solve_fixed_commitment_feasibility(
                     cold_restarts_remaining -= 1
                     native_phase_primal = None
                     native_phase_dual = None
+                    pdlp_warm_start_data = None
                     residual_history.clear()
                     cold_restart_active = True
                     solve_record["continuation"] = f"cold_restart_after_{rejection_reason}"
@@ -1669,6 +1790,10 @@ def _solve_fixed_commitment_feasibility(
                 final_screen=final_screen,
             )
         add_reduced_security_pairs(master, network, screened.violations)
+        # The rebuilt Phase-I model inserts new split rows, so neither its
+        # full state nor the prior native row-dual order is compatible.
+        pdlp_warm_start_data = None
+        native_phase_dual = None
         pairs_by_id.update((pair.pair_id, pair) for pair in screened.violations)
         round_record["added_pair_ids"] = [pair.pair_id for pair in screened.violations]
         emit_progress()
@@ -2232,6 +2357,7 @@ def _run_phase_one_attempt(
         log_to_console=True,
         per_constraint_residual=bool(profile["per_constraint_residual"]),
         presolve=int(profile["presolve"]),
+        pdlp_solver_mode=int(profile.get("pdlp_solver_mode_native", 4)),
     )
     record: dict[str, Any] = {
         "region_id": region_id,
@@ -2258,6 +2384,7 @@ def _run_phase_one_attempt(
     if capacity_gate is not None:
         record["pmin_pmax_capacity_gate"] = capacity_gate
     source_native_primal: np.ndarray | None = None
+    source_canonical_values: np.ndarray | None = None
     source_residual_pu: float | None = None
     violation_value_pu: float | None = None
     numeric_primal_feasible = bool(
@@ -2284,6 +2411,7 @@ def _run_phase_one_attempt(
                 and source_residual_pu <= source_tolerance
             ):
                 source_native_primal = native_values[:-1].copy()
+                source_canonical_values = source_values.copy()
     record["source_feasible_warm_start"] = {
         "eligible": source_native_primal is not None,
         "phase_one_violation_pu": violation_value_pu,
@@ -2331,11 +2459,21 @@ def _run_phase_one_attempt(
     if str(solve.statistics.get("error_status")) != "Success" or solve.native_row_dual is None:
         record["certificate_status"] = "unavailable_solver_dual"
         record["total_attempt_wall_time_seconds"] = time.perf_counter() - attempt_started
-        return PhaseOneAttemptResult(record, source_native_primal, source_native_row_dual)
+        return PhaseOneAttemptResult(
+            record,
+            source_native_primal,
+            source_native_row_dual,
+            source_canonical_values,
+        )
     if solve.native_row_dual.shape != (phase_model.num_rows,):
         record["certificate_status"] = "invalid_native_dual_shape"
         record["total_attempt_wall_time_seconds"] = time.perf_counter() - attempt_started
-        return PhaseOneAttemptResult(record, source_native_primal, source_native_row_dual)
+        return PhaseOneAttemptResult(
+            record,
+            source_native_primal,
+            source_native_row_dual,
+            source_canonical_values,
+        )
     canonical_dual = np.asarray(solve.native_row_dual, dtype=np.float64) * phase_row_scale
     certificate = phase_one_certificate(
         phase_model,
@@ -2355,7 +2493,223 @@ def _run_phase_one_attempt(
             "Phase-I produced contradictory feasible-primal and positive-dual certificates"
         )
     record["total_attempt_wall_time_seconds"] = time.perf_counter() - attempt_started
-    return PhaseOneAttemptResult(record, source_native_primal, source_native_row_dual)
+    return PhaseOneAttemptResult(
+        record,
+        source_native_primal,
+        source_native_row_dual,
+        source_canonical_values,
+    )
+
+
+def _solve_phase_one_lagrangian_region(
+    *,
+    region_id: str,
+    masks: RegionMasks,
+    parent: SolvedRegion,
+    master: ReducedMaster,
+    initial_pairs: tuple[SecurityPair, ...],
+    initial_precheck: PhaseOneAttemptResult,
+    case: Any,
+    network: NetworkData,
+    config: RunConfig,
+    deadline: Deadline,
+    screener: ContingencyScreener,
+    checkpoint: Callable[[], None],
+) -> tuple[SolvedRegion | None, dict[str, Any] | None]:
+    """Secure a child with Phase I and certify its bound without a cost LP.
+
+    Phase I supplies only a feasible continuous point and can certify a
+    positive infeasibility lower bound.  A child lower bound instead starts
+    from the parent's already replayable coupling dual, extended with zeros
+    for newly generated security rows, and is polished entirely by CuPy.  The
+    feasible Phase-I point is merely a safe Polyak target; it is never called
+    an optimal LP solution.
+    """
+
+    if config.benchmark_id != ACTIVSG2000_V6_EXPERIMENT_ID:
+        raise ScopfError("Phase-I Lagrangian child engine is registered only for ACTIVSg2000 v6")
+    pairs_by_id = {pair.pair_id: pair for pair in initial_pairs}
+    if set(pairs_by_id) != set(master.security_pair_ids):
+        raise ScopfError("Phase-I child initial security-pair identity changed")
+
+    current = initial_precheck
+    rounds: list[dict[str, Any]] = []
+    maximum_rounds = int(config.runtime["maximum_constraint_generation_rounds"])
+    for round_number in range(1, maximum_rounds + 1):
+        deadline.require(f"Phase-I Lagrangian region {region_id} round {round_number}")
+        record = current.record
+        round_record: dict[str, Any] = {
+            "round": round_number,
+            "rows_before_phase_one": master.canonical.num_rows,
+            "security_pairs_before_phase_one": len(pairs_by_id),
+            "phase_one": _phase_one_attempt_summary(record),
+            "adapter_wall_time_seconds": float(record["adapter_wall_time_seconds"]),
+            "solve": record["solve"],
+        }
+        rounds.append(round_record)
+        if record["prune_certified"]:
+            return None, record
+        if current.source_values is None or current.source_native_primal is None:
+            raise RegionAttemptRejected(
+                f"Region {region_id} Phase I returned neither a feasible point nor a prune",
+                reason="phase_one_lagrangian_inconclusive",
+                master=master,
+                security_pairs=tuple(sorted(pairs_by_id.values())),
+                rounds=rounds,
+            )
+        source_values = np.asarray(current.source_values, dtype=np.float64)
+        dispatch = reduced_dispatch(master, source_values)
+        screen_started = time.perf_counter()
+        screened = screener.screen(
+            master.operator.flows(dispatch),
+            tolerance_pu=float(config.model["security_violation_tolerance_pu"]),
+            already_added=set(pairs_by_id),
+        )
+        final_screen = {
+            "wall_time_seconds": time.perf_counter() - screen_started,
+            "evaluated_sides": screened.evaluated_pairs,
+            "new_violated_pairs": len(screened.violations),
+            "maximum_violation_pu": screened.maximum_violation_pu,
+            "maximum_pair_id": screened.maximum_pair_id,
+        }
+        round_record["screen"] = final_screen
+        checkpoint()
+        if not screened.violations:
+            if screened.maximum_violation_pu > float(
+                config.model["security_violation_tolerance_pu"]
+            ):
+                raise ScopfError(
+                    f"Region {region_id} Phase-I final screen exceeds tolerance"
+                )
+            parent_dual_by_name = dict(parent.lagrangian.coupling_duals)
+            inherited_dual = np.zeros(master.canonical.num_rows, dtype=np.float64)
+            inherited_count = 0
+            for coupling in master.coupling_rows:
+                if coupling.row_name in parent_dual_by_name:
+                    inherited_dual[coupling.row_index] = parent_dual_by_name[
+                        coupling.row_name
+                    ]
+                    inherited_count += 1
+            objective, _lower, _upper, _integrality = master.canonical.column_arrays()
+            feasible_cost = float(objective @ source_values)
+            gpu_started = time.perf_counter()
+            polished_dual, gpu_evaluation = optimize_lagrangian_bound_cupy(
+                master,
+                inherited_dual,
+                masks,
+                relaxation_primal_objective=feasible_cost,
+                iterations=int(config.runtime["phase_lagrangian_gpu_iterations"]),
+                polyak_fraction=float(
+                    config.raw["platforms"]["dgx_spark"][
+                        "lagrangian_polyak_fraction"
+                    ]
+                ),
+            )
+            gpu_evaluation.update(
+                {
+                    "wall_time_seconds": time.perf_counter() - gpu_started,
+                    "certificate_seed": "parent_coupling_dual_by_row_identity_v1",
+                    "inherited_coupling_row_count": inherited_count,
+                    "zero_initialized_new_coupling_row_count": (
+                        len(master.coupling_rows) - inherited_count
+                    ),
+                    "phase_one_feasible_cost_target": feasible_cost,
+                    "ordinary_cost_lp_solved": False,
+                }
+            )
+            evaluation = evaluate_lagrangian_bound(
+                master,
+                polished_dual,
+                masks,
+                safety_margin_dollars=float(
+                    config.raw["benchmark"]["certificate_safety_margin_dollars"]
+                ),
+            )
+            inherited_evaluation = evaluate_lagrangian_bound(
+                master,
+                inherited_dual,
+                masks,
+                safety_margin_dollars=float(
+                    config.raw["benchmark"]["certificate_safety_margin_dollars"]
+                ),
+            )
+            if evaluation.conservative_lower_bound + 1e-6 < (
+                inherited_evaluation.conservative_lower_bound
+            ):
+                raise ScopfError("GPU Lagrangian polishing weakened the inherited child bound")
+            synthetic_solve = ContinuousSolveResult(
+                status="PhaseOneFeasible",
+                optimal=False,
+                primal_objective=feasible_cost,
+                dual_objective=None,
+                values=source_values.copy(),
+                native_primal=np.asarray(
+                    current.source_native_primal, dtype=np.float64
+                ).copy(),
+                native_row_dual=None,
+                solve_time_seconds=float(
+                    sum(
+                        float(item["phase_one"]["adapter_wall_time_seconds"])
+                        for item in rounds
+                    )
+                ),
+                statistics={
+                    "error_status": "Success",
+                    "solved_by": "PDLP_PhaseOne_then_CuPy_Lagrangian",
+                    "relaxation_solution_role": (
+                        "secure_continuous_feasible_point_not_cost_optimum"
+                    ),
+                    "ordinary_cost_lp_solved": False,
+                },
+            )
+            return (
+                SolvedRegion(
+                    region_id=region_id,
+                    masks=masks,
+                    master=master,
+                    solve=synthetic_solve,
+                    canonical_row_dual=polished_dual,
+                    lagrangian=evaluation,
+                    commitment=commitment_vector(master, source_values),
+                    security_pairs=tuple(sorted(pairs_by_id.values())),
+                    rounds=rounds,
+                    final_screen=final_screen,
+                    gpu_lagrangian=gpu_evaluation,
+                ),
+                None,
+            )
+
+        add_reduced_security_pairs(master, network, screened.violations)
+        pairs_by_id.update((pair.pair_id, pair) for pair in screened.violations)
+        round_record["added_pair_ids"] = [
+            pair.pair_id for pair in screened.violations
+        ]
+        rejection = RegionAttemptRejected(
+            f"Region {region_id} requires another Phase-I security round",
+            reason="phase_one_lagrangian_security_generation",
+            master=master,
+            security_pairs=tuple(sorted(pairs_by_id.values())),
+            rounds=rounds,
+        )
+        current = _run_phase_one_attempt(
+            region_id=region_id,
+            masks=masks,
+            rejected=rejection,
+            case=case,
+            config=config,
+            deadline=deadline,
+            attempt_kind="phase_one_lagrangian_security_resolve",
+            time_limit_seconds=float(
+                config.runtime["precheck_phase_one_time_limit_seconds"]
+            ),
+        )
+    raise RegionAttemptRejected(
+        f"Region {region_id} exhausted Phase-I security-generation rounds",
+        reason="phase_one_lagrangian_constraint_generation_round_limit",
+        master=master,
+        security_pairs=tuple(sorted(pairs_by_id.values())),
+        rounds=rounds,
+    )
 
 
 def _phase_one_attempt_summary(record: dict[str, Any]) -> dict[str, Any]:
@@ -2707,6 +3061,7 @@ def run_gpu_lagrangian_experiment(
         "deadline_seconds": float(config.runtime["deadline_seconds"]),
         "requested_relative_gap": float(config.model["mip_relative_gap_tolerance"]),
         "integer_solver_used": False,
+        "integer_lower_bound_solver_used": False,
         "branch_and_bound_performed": False,
         "custom_cuda_kernel_used": False,
         "disjunctive_splits": [],
@@ -2878,6 +3233,7 @@ def run_gpu_lagrangian_experiment(
                     ACTIVSG2000_V3_EXPERIMENT_ID,
                     ACTIVSG2000_V4_EXPERIMENT_ID,
                     ACTIVSG2000_V5_EXPERIMENT_ID,
+                    ACTIVSG2000_V6_EXPERIMENT_ID,
                 }
             )
             else None
@@ -2893,6 +3249,7 @@ def run_gpu_lagrangian_experiment(
                     ACTIVSG2000_V3_EXPERIMENT_ID,
                     ACTIVSG2000_V4_EXPERIMENT_ID,
                     ACTIVSG2000_V5_EXPERIMENT_ID,
+                    ACTIVSG2000_V6_EXPERIMENT_ID,
                 }
             )
             else None
@@ -2903,6 +3260,7 @@ def run_gpu_lagrangian_experiment(
             ACTIVSG2000_V3_EXPERIMENT_ID,
             ACTIVSG2000_V4_EXPERIMENT_ID,
             ACTIVSG2000_V5_EXPERIMENT_ID,
+            ACTIVSG2000_V6_EXPERIMENT_ID,
         }
         payload["primal_candidate_policy"] = (
             candidate_policy.as_dict() if candidate_policy is not None else None
@@ -2951,8 +3309,17 @@ def run_gpu_lagrangian_experiment(
                 ),
                 "capacity_gate_is_pruning_authority": False,
                 "positive_replayable_phase_one_dual_is_pruning_authority": True,
-                "zero_or_uncertain_phase_one_proceeds_to_cost_lp": True,
-                "phase_one_source_primal_warm_starts_cost_lp": True,
+                "zero_or_uncertain_phase_one_proceeds_to_cost_lp": (
+                    config.benchmark_id != ACTIVSG2000_V6_EXPERIMENT_ID
+                ),
+                "phase_one_source_primal_warm_starts_cost_lp": (
+                    config.benchmark_id != ACTIVSG2000_V6_EXPERIMENT_ID
+                ),
+                "v6_child_policy": (
+                    "secure_phase_one_point_plus_parent_inherited_lagrangian_bound"
+                    if config.benchmark_id == ACTIVSG2000_V6_EXPERIMENT_ID
+                    else None
+                ),
                 "phase_one_row_dual_transferred": (
                     config.benchmark_id in ACTIVSG2000_V4_PLUS_EXPERIMENT_IDS
                 ),
@@ -2981,6 +3348,7 @@ def run_gpu_lagrangian_experiment(
                 ACTIVSG2000_V3_EXPERIMENT_ID,
                 ACTIVSG2000_V4_EXPERIMENT_ID,
                 ACTIVSG2000_V5_EXPERIMENT_ID,
+                ACTIVSG2000_V6_EXPERIMENT_ID,
             }
             else {"enabled": False}
         )
@@ -3169,6 +3537,7 @@ def run_gpu_lagrangian_experiment(
                     ACTIVSG2000_V3_EXPERIMENT_ID,
                     ACTIVSG2000_V4_EXPERIMENT_ID,
                     ACTIVSG2000_V5_EXPERIMENT_ID,
+                    ACTIVSG2000_V6_EXPERIMENT_ID,
                 }:
                     if candidate_policy is None:
                         raise ScopfError("ACTIVSg2000 v2 requires a bounded candidate policy")
@@ -3407,10 +3776,236 @@ def run_gpu_lagrangian_experiment(
                 parent, proposed, origin, generation_audit = pending_primal_candidates.popleft()
                 try_primal(parent, proposed, origin, generation_audit)
 
-        initial_candidates = (
+        target_gap = float(config.model["mip_relative_gap_tolerance"])
+        gpu_heuristic_candidate: tuple[np.ndarray, str, dict[str, Any]] | None = None
+        if config.benchmark_id == ACTIVSG2000_V6_EXPERIMENT_ID:
+            payload["active_stage"] = "gpu_heuristics_primal_model_build"
+            heuristic_build_started = time.perf_counter()
+            heuristic_master = build_master(
+                case,
+                network,
+                segments=int(config.model["pwl_segments"]),
+            )
+            if not np.array_equal(
+                heuristic_master.index.generator_source_rows,
+                source_rows,
+            ):
+                raise ScopfError("Sparse heuristic master changed generator-row identity")
+            add_security_pairs(
+                heuristic_master.canonical,
+                heuristic_master.index,
+                network,
+                root.security_pairs,
+            )
+            redundant_bounds = derive_rate_a_angle_bounds(
+                network,
+                heuristic_master.index.theta_by_bus,
+                total_columns=heuristic_master.canonical.num_columns,
+            )
+            _, original_lower, original_upper, _ = (
+                heuristic_master.canonical.column_arrays()
+            )
+            tightened_lower = np.maximum(original_lower, redundant_bounds.lower)
+            tightened_upper = np.minimum(original_upper, redundant_bounds.upper)
+            if np.any(tightened_lower > tightened_upper):
+                raise ScopfError("Redundant heuristic bounds conflict with canonical bounds")
+            tightened_columns = np.flatnonzero(
+                (tightened_lower > original_lower)
+                | (tightened_upper < original_upper)
+            )
+            if any(
+                not heuristic_master.canonical.variable_names[int(column)].startswith(
+                    "theta_"
+                )
+                for column in tightened_columns
+            ):
+                raise ScopfError("Heuristic conditioning tightened a non-angle column")
+            for column in tightened_columns:
+                position = int(column)
+                heuristic_master.canonical.column_lower[position] = float(
+                    tightened_lower[position]
+                )
+                heuristic_master.canonical.column_upper[position] = float(
+                    tightened_upper[position]
+                )
+            heuristic_model_record: dict[str, Any] = {
+                "formulation": "sparse_full_nodal_dc_scopf_v1",
+                "columns": heuristic_master.canonical.num_columns,
+                "rows": heuristic_master.canonical.num_rows,
+                "nonzeros": int(heuristic_master.canonical.matrix_csr().nnz),
+                "security_pair_count": len(root.security_pairs),
+                "redundant_angle_bounds": {
+                    **redundant_bounds.audit,
+                    "tightened_column_count": int(tightened_columns.size),
+                    "mathematical_feasible_set_changed": False,
+                },
+                "build_wall_time_seconds": time.perf_counter()
+                - heuristic_build_started,
+            }
+            payload["gpu_primal_heuristics"] = {
+                "status": "running",
+                "model": heuristic_model_record,
+                "mip_heuristics_only": True,
+                "dual_bound_used": False,
+                "branch_and_bound_requested": False,
+                "mip_start_submitted": False,
+                "partial_mip_start_policy": (
+                    "unextended_commitments_are_never_submitted_to_cuopt_26_6"
+                ),
+            }
+            payload["integer_solver_used"] = True
+            save()
+            deadline.require("cuOpt GPU heuristics-only primal search")
+            heuristic_budget = min(
+                deadline.solver_budget(),
+                float(config.runtime["gpu_primal_heuristics_seconds"]),
+            )
+            heuristic_started = time.perf_counter()
+            heuristic_result = solve_cuopt(
+                heuristic_master.canonical,
+                time_limit_seconds=heuristic_budget,
+                mip_relative_gap=target_gap,
+                threads=int(config.raw["platforms"]["dgx_spark"]["solver_threads"]),
+                native_scaling_mode=str(
+                    config.raw["platforms"]["dgx_spark"]["native_scaling_mode"]
+                ),
+                native_base_mva=float(case.base_mva),
+                log_to_console=True,
+                track_incumbent_commitments=True,
+                mip_certificate_residual_tolerance=float(
+                    config.model["model_residual_tolerance_pu"]
+                ),
+                mip_heuristics_only=True,
+            )
+            heuristic_wall = time.perf_counter() - heuristic_started
+            trace = heuristic_result.statistics.get("incumbent_commitment_trace")
+            heuristic_record = payload["gpu_primal_heuristics"]
+            heuristic_record.update(
+                {
+                    "status": heuristic_result.status,
+                    "has_incumbent": heuristic_result.has_incumbent,
+                    "objective": heuristic_result.objective,
+                    "native_solve_time_seconds": heuristic_result.solve_time_seconds,
+                    "adapter_wall_time_seconds": heuristic_wall,
+                    "native_residuals": {
+                        name: heuristic_result.statistics.get(name)
+                        for name in (
+                            "max_constraint_violation",
+                            "max_int_violation",
+                            "max_variable_bound_violation",
+                        )
+                    },
+                    "native_log_audit": heuristic_result.statistics.get(
+                        "native_log_audit"
+                    ),
+                    "incumbent_commitment_trace": trace,
+                    "trace_bound_fields_are_diagnostic_only": True,
+                    "reported_solver_bound_used": False,
+                    "reported_solver_gap_used": False,
+                }
+            )
+            if heuristic_result.values is not None:
+                heuristic_values = np.asarray(
+                    heuristic_result.values, dtype=np.float64
+                )
+                canonical_residual_pu = (
+                    heuristic_master.canonical.max_row_violation(heuristic_values)
+                    / float(case.base_mva)
+                )
+                heuristic_commitment_values = np.asarray(
+                    [
+                        heuristic_values[
+                            heuristic_master.index.commitment_by_generator[
+                                int(source_row)
+                            ]
+                        ]
+                        for source_row in source_rows
+                    ],
+                    dtype=np.float64,
+                )
+                rounded_commitment = np.rint(heuristic_commitment_values)
+                maximum_integrality_error = float(
+                    np.max(
+                        np.abs(heuristic_commitment_values - rounded_commitment)
+                    )
+                )
+                heuristic_record["canonical_model_residual_pu"] = (
+                    canonical_residual_pu
+                )
+                heuristic_record["maximum_commitment_integrality_error"] = (
+                    maximum_integrality_error
+                )
+                heuristic_record["commitment_count"] = int(
+                    np.count_nonzero(rounded_commitment)
+                )
+                if (
+                    maximum_integrality_error <= 1e-5
+                    and np.all((rounded_commitment >= 0.0) & (rounded_commitment <= 1.0))
+                ):
+                    heuristic_screen_started = time.perf_counter()
+                    heuristic_screen = screener.screen(
+                        heuristic_values[
+                            heuristic_master.index.flow_by_active_branch
+                        ],
+                        tolerance_pu=float(
+                            config.model["security_violation_tolerance_pu"]
+                        ),
+                        already_added=set(global_pairs),
+                    )
+                    global_pairs.update(
+                        (pair.pair_id, pair)
+                        for pair in heuristic_screen.violations
+                    )
+                    heuristic_record["exhaustive_candidate_screen"] = {
+                        "wall_time_seconds": time.perf_counter()
+                        - heuristic_screen_started,
+                        "evaluated_sides": heuristic_screen.evaluated_pairs,
+                        "new_violated_pairs": len(heuristic_screen.violations),
+                        "maximum_violation_pu": (
+                            heuristic_screen.maximum_violation_pu
+                        ),
+                        "maximum_pair_id": heuristic_screen.maximum_pair_id,
+                        "candidate_generation_only": True,
+                    }
+                    gpu_heuristic_candidate = (
+                        rounded_commitment.astype(np.float64),
+                        "root_cuopt_gpu_heuristics_only",
+                        {
+                            "solver_status": heuristic_result.status,
+                            "heuristic_objective": heuristic_result.objective,
+                            "commitment_count": int(
+                                np.count_nonzero(rounded_commitment)
+                            ),
+                            "canonical_model_residual_pu": canonical_residual_pu,
+                            "dual_bound_used": False,
+                            "mip_start_submitted": False,
+                        },
+                    )
+                    heuristic_record["candidate_enqueued"] = True
+                else:
+                    heuristic_record["candidate_enqueued"] = False
+                    heuristic_record["candidate_rejection_reason"] = (
+                        "nonintegral_or_nonbinary_returned_commitment"
+                    )
+            else:
+                heuristic_record["candidate_enqueued"] = False
+                heuristic_record["candidate_rejection_reason"] = "no_incumbent_vector"
+            payload["timings_seconds"]["gpu_primal_heuristics_adapter_wall"] = (
+                heuristic_wall
+            )
+            save()
+
+        initial_candidates: list[
+            tuple[np.ndarray, str, dict[str, Any] | None]
+        ] = []
+        if gpu_heuristic_candidate is not None:
+            initial_candidates.append(gpu_heuristic_candidate)
+        initial_candidates.extend(
+            (
             (
                 np.rint(root.commitment),
                 "root_pdlp_rounding",
+                None,
             ),
             (
                 np.asarray(
@@ -3418,21 +4013,26 @@ def run_gpu_lagrangian_experiment(
                     dtype=np.float64,
                 ),
                 "root_gpu_lagrangian_minimizer",
+                None,
             ),
             (
                 np.asarray(root.commitment >= 0.25, dtype=np.float64),
                 "root_pdlp_threshold_0p25",
+                None,
             ),
             (
                 np.ones(source_rows.size, dtype=np.float64),
                 "all_online_fallback",
+                None,
             ),
+            )
         )
-        for proposed, origin in initial_candidates:
-            pending_primal_candidates.append((root, proposed, origin, None))
+        for proposed, origin, generation_audit in initial_candidates:
+            pending_primal_candidates.append(
+                (root, proposed, origin, generation_audit)
+            )
         drain_primal_candidate_queue()
 
-        target_gap = float(config.model["mip_relative_gap_tolerance"])
         maximum_regions = int(config.runtime["maximum_frontier_regions"])
         failed_split_positions: dict[str, set[int]] = {}
         split_attempt_number = 0
@@ -3572,6 +4172,84 @@ def run_gpu_lagrangian_experiment(
                         )
                         save()
                         continue
+                    if config.benchmark_id == ACTIVSG2000_V6_EXPERIMENT_ID:
+                        try:
+                            phase_child, phase_prune = (
+                                _solve_phase_one_lagrangian_region(
+                                    region_id=child_id,
+                                    masks=child_masks,
+                                    parent=parent,
+                                    master=prepared_master,
+                                    initial_pairs=child_initial_pairs,
+                                    initial_precheck=precheck,
+                                    case=case,
+                                    network=network,
+                                    config=config,
+                                    deadline=deadline,
+                                    screener=screener,
+                                    checkpoint=save,
+                                )
+                            )
+                        except RegionAttemptRejected as error:
+                            global_pairs.update(
+                                (pair.pair_id, pair)
+                                for pair in error.security_pairs
+                            )
+                            tentative_outcomes.append(
+                                {
+                                    "region_id": child_id,
+                                    "status": "phase_one_lagrangian_inconclusive",
+                                    "reason": error.reason,
+                                    "rounds": error.rounds,
+                                }
+                            )
+                            payload["pending_disjunctive_split"][
+                                "tentative_outcomes"
+                            ] = tentative_outcomes
+                            split_failed = True
+                            save()
+                            break
+                        if phase_prune is not None:
+                            pruned_children[child_id] = phase_prune
+                            tentative_outcomes.append(
+                                {
+                                    "region_id": child_id,
+                                    "status": "phase_one_lagrangian_pruned",
+                                    "phase_one": phase_prune,
+                                }
+                            )
+                            payload["pending_disjunctive_split"][
+                                "completed_child_region_ids"
+                            ].append(child_id)
+                            payload["pending_disjunctive_split"][
+                                "tentative_outcomes"
+                            ] = tentative_outcomes
+                            save()
+                            continue
+                        if phase_child is None:
+                            raise ScopfError(
+                                "Phase-I Lagrangian child returned no outcome"
+                            )
+                        solved_children[child_id] = phase_child
+                        global_pairs.update(
+                            (pair.pair_id, pair)
+                            for pair in phase_child.security_pairs
+                        )
+                        tentative_outcomes.append(
+                            {
+                                "region_id": child_id,
+                                "status": "phase_one_lagrangian_solved",
+                                "region": _region_record(phase_child),
+                            }
+                        )
+                        payload["pending_disjunctive_split"][
+                            "completed_child_region_ids"
+                        ].append(child_id)
+                        payload["pending_disjunctive_split"][
+                            "tentative_outcomes"
+                        ] = tentative_outcomes
+                        save()
+                        continue
                     phase_warm_start = precheck.source_native_primal
                     phase_dual_warm_start = precheck.source_native_row_dual
                     if phase_warm_start is not None:
@@ -3592,6 +4270,27 @@ def run_gpu_lagrangian_experiment(
                         "initial_warm_start_origin": warm_start_origin,
                     }
                 )
+
+            if split_failed:
+                failed_split_positions.setdefault(parent.region_id, set()).add(
+                    split_position
+                )
+                payload["failed_disjunctive_split_attempts"].append(
+                    {
+                        **split_record,
+                        "status": "rolled_back_phase_one_lagrangian_inconclusive",
+                        "parent_certificate_retained": True,
+                        "outcomes": tentative_outcomes,
+                    }
+                )
+                payload.pop("pending_disjunctive_split", None)
+                persist_region_evidence()
+                if len(payload["failed_disjunctive_split_attempts"]) >= int(
+                    config.runtime["maximum_failed_split_attempts"]
+                ):
+                    payload["status"] = "incomplete_failed_split_attempt_limit"
+                    break
+                continue
 
             parallel_contexts = int(config.runtime.get("parallel_child_solver_contexts", 1))
             parallel_minimum_frontier = int(
@@ -3936,7 +4635,15 @@ def run_gpu_lagrangian_experiment(
             "requested_relative_gap": target_gap,
             "relative_gap": payload["relative_gap"],
             "gap_certified": gap_passed,
-            "integer_solver_absent": True,
+            "integer_solver_absent": not bool(payload["integer_solver_used"]),
+            "integer_lower_bound_solver_absent": not bool(
+                payload["integer_lower_bound_solver_used"]
+            ),
+            "gpu_primal_heuristics_only": bool(
+                payload.get("gpu_primal_heuristics", {}).get(
+                    "mip_heuristics_only", False
+                )
+            ),
             "branch_and_bound_absent": True,
             "all_pruned_regions_have_replayed_phase_one_certificates": bool(
                 lagrangian_verification["phase_one_pruned_region_count"]

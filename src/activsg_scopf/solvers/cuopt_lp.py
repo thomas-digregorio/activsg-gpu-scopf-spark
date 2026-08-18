@@ -33,6 +33,7 @@ class ContinuousSolveResult:
     native_row_dual: np.ndarray | None
     solve_time_seconds: float
     statistics: dict[str, Any]
+    pdlp_warm_start_data: Any | None = None
 
 
 @dataclass(frozen=True)
@@ -438,6 +439,9 @@ def solve_cuopt_continuous_pdlp(
     presolve: int = -1,
     initial_native_primal: np.ndarray | None = None,
     initial_native_row_dual: np.ndarray | None = None,
+    initial_pdlp_warm_start_data: Any | None = None,
+    pdlp_solver_mode: int = 4,
+    save_best_primal_solution: bool = True,
     concurrent_solver_context: bool = False,
 ) -> ContinuousSolveResult:
     """Relax every integer column and solve the resulting LP using PDLP only."""
@@ -449,6 +453,19 @@ def solve_cuopt_continuous_pdlp(
             "Concurrent cuOpt contexts require console logging because native "
             "log_file is process-global"
         )
+    if pdlp_solver_mode not in {0, 1, 2, 3, 4}:
+        raise ScopfError("cuOpt PDLP solver mode is outside the native enum")
+    if initial_pdlp_warm_start_data is not None:
+        if int(presolve) != 0:
+            raise ScopfError("cuOpt full PDLP warm starts require presolve=0")
+        if pdlp_solver_mode != 1:
+            raise ScopfError(
+                "cuOpt 26.6 full PDLP warm starts require Stable2 mode (native 1)"
+            )
+        if initial_native_primal is not None or initial_native_row_dual is not None:
+            raise ScopfError(
+                "Submit either full PDLP state or raw primal/dual starts, not both"
+            )
     try:
         import cuopt
         from cuopt import linear_programming
@@ -536,16 +553,18 @@ def solve_cuopt_continuous_pdlp(
     settings = SolverSettings()
     settings.set_parameter("time_limit", float(time_limit_seconds))
     settings.set_parameter("method", 1)
-    settings.set_parameter("pdlp_solver_mode", 4)
+    settings.set_parameter("pdlp_solver_mode", int(pdlp_solver_mode))
     settings.set_parameter("pdlp_precision", 1)
+    settings.set_parameter("save_best_primal_solution", bool(save_best_primal_solution))
     settings.set_parameter("per_constraint_residual", bool(per_constraint_residual))
     settings.set_parameter("presolve", int(presolve))
     settings.set_parameter("log_to_console", bool(log_to_console))
     settings.set_optimality_tolerance(float(optimality_tolerance))
     requested_parameters = {
         "method": 1,
-        "pdlp_solver_mode": 4,
+        "pdlp_solver_mode": int(pdlp_solver_mode),
         "pdlp_precision": 1,
+        "save_best_primal_solution": bool(save_best_primal_solution),
         "per_constraint_residual": bool(per_constraint_residual),
         "presolve": int(presolve),
     }
@@ -581,6 +600,16 @@ def solve_cuopt_continuous_pdlp(
             num_constraints=native_constraint_count,
             presolve=int(presolve),
         )
+        warm_start_audit["full_pdlp_state_submitted"] = (
+            initial_pdlp_warm_start_data is not None
+        )
+        warm_start_audit["full_pdlp_state_policy"] = (
+            "same_shape_stable2_native_context_v1"
+            if initial_pdlp_warm_start_data is not None
+            else None
+        )
+        if initial_pdlp_warm_start_data is not None:
+            settings.set_pdlp_warm_start_data(initial_pdlp_warm_start_data)
         if warm_primal is not None:
             data_model.set_initial_primal_solution(warm_primal)
             observed_primal = np.asarray(data_model.get_initial_primal_solution(), dtype=np.float64)
@@ -713,6 +742,13 @@ def solve_cuopt_continuous_pdlp(
             for marker in ("branch-and-bound", "branch and bound", "mip node", "b&b")
         )
     )
+    pdlp_warm_start_data = None
+    if (
+        pdlp_solver_mode == 1
+        and error_status == "Success"
+        and status in {"Optimal", "FeasibleFound", "TimeLimit"}
+    ):
+        pdlp_warm_start_data = solution.get_pdlp_warm_start_data()
     return ContinuousSolveResult(
         status=status,
         optimal=optimal,
@@ -721,6 +757,7 @@ def solve_cuopt_continuous_pdlp(
         values=canonical_values,
         native_primal=primal,
         native_row_dual=row_dual,
+        pdlp_warm_start_data=pdlp_warm_start_data,
         solve_time_seconds=float(solution.get_solve_time()),
         statistics={
             "cuopt_version": str(getattr(cuopt, "__version__", "unknown")),

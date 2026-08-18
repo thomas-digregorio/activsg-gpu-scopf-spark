@@ -13,6 +13,7 @@ from activsg_scopf.lagrangian_experiment import (
     ACTIVSG2000_EXPERIMENT_ID,
     ACTIVSG2000_V4_EXPERIMENT_ID,
     ACTIVSG2000_V5_EXPERIMENT_ID,
+    ACTIVSG2000_V6_EXPERIMENT_ID,
     EXPERIMENT_ID,
     EXPERIMENT_TAG,
     PrimalCandidatePolicy,
@@ -234,6 +235,33 @@ def test_registered_activsg2000_v5_numerical_fix_is_fail_closed() -> None:
     v5.raw["runtime"]["root_canonical_residual_refinement_attempts"] = 2
     with pytest.raises(ScopfError, match="runtime policy changed"):
         validate_lagrangian_experiment_config(v5)
+
+
+def test_registered_activsg2000_v6_numerical_runtime_fix_is_fail_closed() -> None:
+    v5 = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v5.json")
+    v6 = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v6.json")
+    registration = validate_lagrangian_experiment_config(v6)
+
+    assert v6.benchmark_id == ACTIVSG2000_V6_EXPERIMENT_ID
+    assert registration["benchmark"]["required_git_tag"] == (
+        "experiment-2000-gpu-lagrangian-v6"
+    )
+    assert v6.raw["raw_inputs"] == v5.raw["raw_inputs"]
+    assert v6.model == v5.model
+    assert v6.runtime["deadline_seconds"] == 990.0
+    assert v6.runtime["gpu_primal_heuristics_seconds"] == 300.0
+    assert v6.raw["platforms"]["dgx_spark"]["pdlp_solver_mode_native"] == 1
+    assert v6.raw["platforms"]["dgx_spark"]["save_best_primal_solution"] is True
+    fix = registration["benchmark"]["numerical_and_runtime_fix"]
+    assert fix["primal_generator"] == (
+        "cuopt_gpu_heuristics_only_on_sparse_full_root_master_v2"
+    )
+    assert fix["partial_mip_start_policy"] == (
+        "never_submit_unextended_commitment_as_native_full_assignment"
+    )
+    v6.raw["runtime"]["maximum_failed_split_attempts"] = 63
+    with pytest.raises(ScopfError, match="runtime policy changed"):
+        validate_lagrangian_experiment_config(v6)
 
 
 def test_phase_one_native_dual_maps_lower_upper_and_equality_rows() -> None:
