@@ -1,4 +1,4 @@
-"""One-shot ACTIVSg500 GPU Lagrangian/disjunctive experiment."""
+"""One-shot ACTIVSg GPU Lagrangian/disjunctive experiments."""
 
 from __future__ import annotations
 
@@ -78,6 +78,7 @@ from .verify import verify_serialized_solution
 
 EXPERIMENT_ID = "activsg500-gpu-lagrangian-v1"
 EXPERIMENT_TAG = "experiment-500-gpu-lagrangian-v1"
+ACTIVSG2000_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v1"
 REGISTERED_EXPERIMENTS = {
     EXPERIMENT_ID: {
         "tag": EXPERIMENT_TAG,
@@ -106,6 +107,11 @@ REGISTERED_EXPERIMENTS = {
     "activsg500-gpu-lagrangian-v7": {
         "tag": "experiment-500-gpu-lagrangian-v7",
         "policy": "gpu_pdlp_phase_one_first_plus_lagrangian_cover_v7",
+    },
+    ACTIVSG2000_EXPERIMENT_ID: {
+        "case_name": "ACTIVSg2000",
+        "tag": "experiment-2000-gpu-lagrangian-v1",
+        "policy": "gpu_pdlp_phase_one_first_plus_lagrangian_cover_activsg2000_v1",
     },
 }
 V2_BUGFIX_CHANGE = {
@@ -159,6 +165,46 @@ V7_BUGFIX_CHANGE = {
         "generator_source_row_key_to_canonical_commitment_column_v1"
     ),
     "failed_v6_run_preserved": True,
+}
+ACTIVSG2000_V1_SCALE_CHANGE = {
+    "algorithm_baseline": "activsg500-gpu-lagrangian-v7",
+    "case_name": "ACTIVSg2000",
+    "deadline_seconds": 1800.0,
+    "root_pdlp_round_cap_seconds": 480.0,
+    "bounded_candidate_and_region_seconds": 90.0,
+    "short_phase_one_seconds_per_child": 10.0,
+    "full_phase_one_seconds": 60.0,
+    "mathematical_model_changed": False,
+    "exact_source_pmin_changed": False,
+}
+ACTIVSG2000_V1_RUNTIME = {
+    "deadline_seconds": 1800.0,
+    "verification_reserve_seconds": 120.0,
+    "serialization_reserve_seconds": 30.0,
+    "maximum_constraint_generation_rounds": 100,
+    "maximum_pdlp_round_seconds": 480.0,
+    "maximum_frontier_regions": 64,
+    "maximum_primal_repairs": 8,
+    "maximum_primal_candidate_seconds": 90.0,
+    "maximum_primal_candidate_round_seconds": 30.0,
+    "minimum_primal_candidate_round_seconds": 1.0,
+    "primal_candidate_stagnation_window_rounds": 2,
+    "primal_candidate_minimum_relative_residual_improvement": 0.01,
+    "primal_candidate_dual_divergence_multiple": 1e6,
+    "primal_candidate_cold_restart_attempts": 1,
+    "maximum_region_attempt_seconds": 90.0,
+    "maximum_region_attempt_round_seconds": 30.0,
+    "minimum_region_attempt_round_seconds": 1.0,
+    "region_attempt_stagnation_window_rounds": 2,
+    "region_attempt_minimum_relative_residual_improvement": 0.01,
+    "region_attempt_dual_divergence_multiple": 1e6,
+    "region_attempt_cold_restart_attempts": 1,
+    "maximum_failed_split_attempts": 16,
+    "precheck_phase_one_time_limit_seconds": 10.0,
+    "phase_one_time_limit_seconds": 60.0,
+    "phase_one_maximum_violation_pu": 1e6,
+    "phase_one_safety_margin_pu": 1e-8,
+    "phase_one_infeasibility_threshold_pu": 1e-6,
 }
 
 
@@ -260,19 +306,27 @@ def _write_console(path: Path, stdout: str | bytes | None, stderr: str | bytes |
 
 
 def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
-    if config.case_name != "ACTIVSg500":
-        raise ScopfError("The first GPU Lagrangian experiment is ACTIVSg500-only")
     benchmark = config.raw["benchmark"]
     experiment = REGISTERED_EXPERIMENTS.get(config.benchmark_id)
     if experiment is None:
         raise ScopfError(f"Unregistered GPU Lagrangian experiment: {config.benchmark_id!r}")
+    expected_case_name = str(experiment.get("case_name", "ACTIVSg500"))
+    if config.case_name != expected_case_name:
+        raise ScopfError(
+            "GPU Lagrangian experiment case changed: "
+            f"expected={expected_case_name!r}, observed={config.case_name!r}"
+        )
+    is_activsg2000_v1 = config.benchmark_id == ACTIVSG2000_EXPERIMENT_ID
     if benchmark.get("kind") != "gpu_lagrangian_disjunctive_experiment":
         raise ScopfError("GPU Lagrangian experiment kind changed")
     if benchmark.get("required_git_tag") != experiment["tag"]:
         raise ScopfError("GPU Lagrangian frozen tag changed")
     if (
-        config.benchmark_id.endswith(
-            ("-v2", "-v3", "-v4", "-v5", "-v6", "-v7")
+        (
+            config.benchmark_id.endswith(
+                ("-v2", "-v3", "-v4", "-v5", "-v6", "-v7")
+            )
+            or is_activsg2000_v1
         )
         and float(config.model.get("reduced_coefficient_zero_tolerance", -1.0)) != 1e-14
     ):
@@ -319,6 +373,13 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
                 "GPU Lagrangian v7 bugfix identity changed: "
                 f"expected={V7_BUGFIX_CHANGE}, observed={observed_change}"
             )
+    if is_activsg2000_v1:
+        observed_change = benchmark.get("scale_change")
+        if observed_change != ACTIVSG2000_V1_SCALE_CHANGE:
+            raise ScopfError(
+                "ACTIVSg2000 GPU Lagrangian v1 scale identity changed: "
+                f"expected={ACTIVSG2000_V1_SCALE_CHANGE}, observed={observed_change}"
+            )
     profile = config.raw["platforms"].get("dgx_spark", {})
     required_profile = {
         "solver": "cuopt",
@@ -340,8 +401,17 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
             f"GPU Lagrangian profile changed: expected={required_profile}, observed={observed}"
         )
     runtime = config.runtime
-    if float(runtime.get("deadline_seconds", 0.0)) != 600.0:
-        raise ScopfError("The registered GPU Lagrangian experiment has one 600-second run")
+    expected_deadline = 1800.0 if is_activsg2000_v1 else 600.0
+    if float(runtime.get("deadline_seconds", 0.0)) != expected_deadline:
+        raise ScopfError(
+            "The registered GPU Lagrangian experiment deadline changed: "
+            f"expected={expected_deadline}, observed={runtime.get('deadline_seconds')}"
+        )
+    if is_activsg2000_v1 and runtime != ACTIVSG2000_V1_RUNTIME:
+        raise ScopfError(
+            "ACTIVSg2000 GPU Lagrangian v1 runtime policy changed: "
+            f"expected={ACTIVSG2000_V1_RUNTIME}, observed={runtime}"
+        )
     if int(runtime.get("maximum_frontier_regions", 0)) < 1:
         raise ScopfError("maximum_frontier_regions must be positive")
     if float(config.model["mip_relative_gap_tolerance"]) != 1e-3:
@@ -361,24 +431,37 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
                 "GPU Lagrangian v3 candidate policy changed: "
                 f"expected={required_runtime}, observed={observed_runtime}"
             )
-    if config.benchmark_id.endswith(("-v4", "-v5", "-v6", "-v7")):
+    if (
+        config.benchmark_id.endswith(("-v4", "-v5", "-v6", "-v7"))
+        or is_activsg2000_v1
+    ):
         required_runtime = {
-            "maximum_primal_candidate_seconds": 15.0,
-            "maximum_primal_candidate_round_seconds": 5.0,
-            "minimum_primal_candidate_round_seconds": 0.25,
+            "maximum_primal_candidate_seconds": (
+                90.0 if is_activsg2000_v1 else 15.0
+            ),
+            "maximum_primal_candidate_round_seconds": (
+                30.0 if is_activsg2000_v1 else 5.0
+            ),
+            "minimum_primal_candidate_round_seconds": (
+                1.0 if is_activsg2000_v1 else 0.25
+            ),
             "primal_candidate_stagnation_window_rounds": 2,
             "primal_candidate_minimum_relative_residual_improvement": 0.01,
             "primal_candidate_dual_divergence_multiple": 1e6,
             "primal_candidate_cold_restart_attempts": 1,
-            "maximum_region_attempt_seconds": 15.0,
-            "maximum_region_attempt_round_seconds": 5.0,
-            "minimum_region_attempt_round_seconds": 0.25,
+            "maximum_region_attempt_seconds": 90.0 if is_activsg2000_v1 else 15.0,
+            "maximum_region_attempt_round_seconds": (
+                30.0 if is_activsg2000_v1 else 5.0
+            ),
+            "minimum_region_attempt_round_seconds": (
+                1.0 if is_activsg2000_v1 else 0.25
+            ),
             "region_attempt_stagnation_window_rounds": 2,
             "region_attempt_minimum_relative_residual_improvement": 0.01,
             "region_attempt_dual_divergence_multiple": 1e6,
             "region_attempt_cold_restart_attempts": 1,
-            "maximum_failed_split_attempts": 8,
-            "phase_one_time_limit_seconds": 15.0,
+            "maximum_failed_split_attempts": 16 if is_activsg2000_v1 else 8,
+            "phase_one_time_limit_seconds": 60.0 if is_activsg2000_v1 else 15.0,
             "phase_one_maximum_violation_pu": 1e6,
             "phase_one_safety_margin_pu": 1e-8,
             "phase_one_infeasibility_threshold_pu": 1e-6,
@@ -386,13 +469,15 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
         observed_runtime = {key: runtime.get(key) for key in required_runtime}
         if observed_runtime != required_runtime:
             raise ScopfError(
-                "GPU Lagrangian v4/v5/v6/v7 bounded-region policy changed: "
+                "GPU Lagrangian bounded-region policy changed: "
                 f"expected={required_runtime}, observed={observed_runtime}"
             )
-        if config.benchmark_id.endswith(("-v6", "-v7")) and float(
-            runtime.get("precheck_phase_one_time_limit_seconds", -1.0)
-        ) != 2.0:
-            raise ScopfError("GPU Lagrangian v6/v7 short Phase-I budget changed")
+        if config.benchmark_id.endswith(("-v6", "-v7")) or is_activsg2000_v1:
+            expected_precheck = 10.0 if is_activsg2000_v1 else 2.0
+            if float(runtime.get("precheck_phase_one_time_limit_seconds", -1.0)) != (
+                expected_precheck
+            ):
+                raise ScopfError("GPU Lagrangian short Phase-I budget changed")
         if float(config.model.get("serialized_lodf_replay_tolerance", -1.0)) != 1e-12:
             raise ScopfError("GPU Lagrangian v4/v5/v6/v7 LODF replay tolerance changed")
         if (
@@ -1566,13 +1651,17 @@ def _load_cpu_comparison(config: RunConfig, registration: dict[str, Any]) -> dic
     canonical_sha256 = hashlib.sha256(canonical_bytes).hexdigest()
     if canonical_sha256 != str(reference["canonical_json_sha256"]):
         raise ScopfError("Registered laptop comparison canonical JSON hash mismatch")
-    if result.get("experiment_suite_id") != "activsg500-gap-sensitivity-v1":
+    expected_suite = str(
+        reference.get("source_suite", "activsg500-gap-sensitivity-v1")
+    )
+    if result.get("experiment_suite_id") != expected_suite:
         raise ScopfError("Registered laptop comparison suite identity changed")
-    if result.get("tag") != reference.get("source_tag"):
+    result_identity = result.get("frozen_identity", result)
+    if result_identity.get("tag") != reference.get("source_tag"):
         raise ScopfError("Registered laptop comparison tag changed")
-    if result.get("commit") != reference.get("source_commit"):
+    if result_identity.get("commit") != reference.get("source_commit"):
         raise ScopfError("Registered laptop comparison commit changed")
-    hashes = result.get("source_hashes", {})
+    hashes = result.get("source_hashes", result.get("source_identity", {}))
     if (
         hashes.get("case_sha256") != config.raw["raw_inputs"]["case_sha256"]
         or hashes.get("contingency_sha256") != config.raw["raw_inputs"]["contingency_sha256"]
@@ -1584,9 +1673,23 @@ def _load_cpu_comparison(config: RunConfig, registration: dict[str, Any]) -> dic
     summary = matching[0]
     if summary.get("raw_result_sha256") != reference.get("raw_result_sha256"):
         raise ScopfError("Registered laptop raw-result identity changed")
+    accepted = result.get("accepted_1e-3", {})
+    security_violation = summary.get(
+        "final_security_violation_pu",
+        accepted.get(
+            "final_exhaustive_violation_pu",
+            summary.get("last_screen_maximum_violation_pu", float("inf")),
+        ),
+    )
+    model_residual = summary.get(
+        "final_model_residual_pu",
+        accepted.get("maximum_model_residual_pu", float("inf")),
+    )
+    independent_passed = summary.get("independent_verification_passed", True)
     if (
-        float(summary.get("final_security_violation_pu", float("inf"))) > 1e-5
-        or float(summary.get("final_model_residual_pu", float("inf"))) > 1e-6
+        not bool(independent_passed)
+        or float(security_violation) > 1e-5
+        or float(model_residual) > 1e-6
     ):
         raise ScopfError("Registered laptop comparison did not pass its original gates")
     return {
@@ -1594,8 +1697,8 @@ def _load_cpu_comparison(config: RunConfig, registration: dict[str, Any]) -> dic
         "canonical_json_sha256": canonical_sha256,
         "raw_result_sha256": summary["raw_result_sha256"],
         "frozen_identity": {
-            "commit": result.get("commit"),
-            "tag": result.get("tag"),
+            "commit": result_identity.get("commit"),
+            "tag": result_identity.get("tag"),
         },
         "status": "optimal_verified",
         "objective": summary.get("objective"),
@@ -1785,17 +1888,26 @@ def run_gpu_lagrangian_experiment(
         last_tried_commitment: np.ndarray | None = None
         candidate_policy = (
             PrimalCandidatePolicy.from_config(config)
-            if config.benchmark_id.endswith(
-                ("-v3", "-v4", "-v5", "-v6", "-v7")
+            if (
+                config.benchmark_id.endswith(
+                    ("-v3", "-v4", "-v5", "-v6", "-v7")
+                )
+                or config.benchmark_id == ACTIVSG2000_EXPERIMENT_ID
             )
             else None
         )
         region_attempt_policy = (
             PrimalCandidatePolicy.from_config(config, scope="disjunctive_region")
-            if config.benchmark_id.endswith(("-v4", "-v5", "-v6", "-v7"))
+            if (
+                config.benchmark_id.endswith(("-v4", "-v5", "-v6", "-v7"))
+                or config.benchmark_id == ACTIVSG2000_EXPERIMENT_ID
+            )
             else None
         )
-        phase_one_first = config.benchmark_id.endswith(("-v6", "-v7"))
+        phase_one_first = (
+            config.benchmark_id.endswith(("-v6", "-v7"))
+            or config.benchmark_id == ACTIVSG2000_EXPERIMENT_ID
+        )
         payload["primal_candidate_policy"] = (
             candidate_policy.as_dict() if candidate_policy is not None else None
         )

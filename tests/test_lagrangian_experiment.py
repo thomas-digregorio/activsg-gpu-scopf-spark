@@ -9,6 +9,7 @@ from activsg_scopf.deadline import Deadline
 from activsg_scopf.errors import PrimalCandidateRejected, ScopfError
 from activsg_scopf.lagrangian import RegionMasks
 from activsg_scopf.lagrangian_experiment import (
+    ACTIVSG2000_EXPERIMENT_ID,
     EXPERIMENT_ID,
     EXPERIMENT_TAG,
     PrimalCandidatePolicy,
@@ -177,6 +178,32 @@ def test_registered_v7_source_row_mapping_bugfix_is_fail_closed() -> None:
     v7.raw["benchmark"]["bugfix_change"]["failed_v6_run_preserved"] = False
     with pytest.raises(ScopfError, match="v7 bugfix identity changed"):
         validate_lagrangian_experiment_config(v7)
+
+
+def test_registered_activsg2000_lagrangian_config_is_fail_closed() -> None:
+    config = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v1.json")
+    registration = validate_lagrangian_experiment_config(config)
+
+    assert config.benchmark_id == ACTIVSG2000_EXPERIMENT_ID
+    assert config.case_name == "ACTIVSg2000"
+    assert registration["benchmark"]["required_git_tag"] == (
+        "experiment-2000-gpu-lagrangian-v1"
+    )
+    assert config.runtime["deadline_seconds"] == 1800.0
+    assert config.runtime["precheck_phase_one_time_limit_seconds"] == 10.0
+    assert config.model["mip_relative_gap_tolerance"] == 1e-3
+    assert registration["profile"]["integer_solver"] == "none"
+    assert registration["profile"]["branch_and_bound"] is False
+    comparison = _load_cpu_comparison(config, registration)
+    assert comparison["status"] == "optimal_verified"
+    assert comparison["objective"] == pytest.approx(1133479.3855011363)
+    assert comparison["total_wall_time_seconds"] == pytest.approx(
+        1007.3702709000063
+    )
+
+    config.raw["runtime"]["deadline_seconds"] = 1801.0
+    with pytest.raises(ScopfError, match="deadline changed"):
+        validate_lagrangian_experiment_config(config)
 
 
 def test_v6_exact_pmin_pmax_capacity_gate_precedes_phase_one() -> None:
@@ -367,10 +394,10 @@ def test_v6_zero_phase_one_primal_warm_starts_cost_lp_without_dual(
     )
 
 
-def test_lagrangian_config_rejects_non_500_identity() -> None:
+def test_lagrangian_config_rejects_case_mismatched_identity() -> None:
     config = load_config(ROOT / "configs" / "activsg500-gpu-lagrangian-v1.json")
     config.raw["benchmark"]["id"] = "activsg2000-gpu-lagrangian-v1"
-    with pytest.raises(ScopfError, match="Unregistered"):
+    with pytest.raises(ScopfError, match="case changed"):
         validate_lagrangian_experiment_config(config)
 
 
