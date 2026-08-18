@@ -1,0 +1,117 @@
+{
+  "schema_version": "1.0.0",
+  "experiment_suite_id": "activsg2000-gpu-lagrangian-v4",
+  "status": "ready_to_freeze_user_authorized",
+  "recorded_at_utc": "2026-08-18T19:12:58.9521994Z",
+  "implementation_commit": "6fe3851e3e826fedc07428cb93171e749afb988f",
+  "authorization": {
+    "user_requested_next_try": true,
+    "requested_changes": [
+      "phase_one_before_initial_commitment_cost_lps",
+      "more_network_feasible_commitment_generation",
+      "independent_gpu_solver_context_batching_if_supported",
+      "improved_scaling_and_safe_redundancy_handling",
+      "primal_and_dual_warm_start_preservation",
+      "concurrent_disjunctive_children"
+    ],
+    "full_run_count_allowed": 1,
+    "deadline_seconds": 1800.0,
+    "automatic_retry": false
+  },
+  "configuration": {
+    "path": "configs/activsg2000-gpu-lagrangian-v4.json",
+    "sha256": "f7489c311d01608de172dc4a3ab57906ea1a18a3631dbf1a19ffa665618399ad",
+    "build_script_sha256": "ebd7b46bd9ede104ac0d2a5c1b4e38fd5d07cc28d7dfff1bcd430cf9c085fd66",
+    "run_script_sha256": "119298d4e78cc4d9cecd45b6f76f3574e52d9e58832e39d13b5c36c8a1614349",
+    "concurrency_smoke_script_sha256": "3c77acef90f76e84551d4013ba449c422b943800d24b34d0179801c784a86efb",
+    "case_sha256": "8d00618de8fd10bf35a599f59d2deebfecd0d86e28fcff73219ad7c4ebab860b",
+    "contingency_sha256": "198b39f0381925a4ddacbe2148973cb1d93ddfe220303829cf87b16d45190bba",
+    "exact_source_pmin_retained": true,
+    "requested_relative_gap": 0.001,
+    "deadline_seconds": 1800.0,
+    "integer_solver": "none",
+    "branch_and_bound": false,
+    "cpu_commitment_or_dispatch_seeded": false
+  },
+  "v3_result_preserved": {
+    "frozen_tag": "experiment-2000-gpu-lagrangian-v3",
+    "status": "deadline_budget_exhausted",
+    "secure_primal_available": false,
+    "independently_replayed_lower_bound": 1128528.25932818
+  },
+  "v4_changes": {
+    "initial_phase_one": "already_present_and_now_explicitly_telemetried",
+    "network_aware_commitment_repair": {
+      "policy": "violated_constant_coupling_row_ranked_one_and_two_flip_repairs_v1",
+      "exact_v3_all_online_replay_without_optimization": {
+        "trigger_row": "c0603_m0609_lower",
+        "base_row_shortfall_mw": 0.37999999999345846,
+        "single_flip_repair_count_found": 3,
+        "first_repair_turned_off_generator_source_row": 125,
+        "first_repair_row_shortfall_mw": 0.0,
+        "first_repair_capacity_shortfall_mw": 0.0
+      },
+      "candidate_generation_is_feasibility_proof": false,
+      "phase_one_and_exhaustive_screen_still_required": true
+    },
+    "native_scaling": {
+      "policy": "power_system_equilibrated_v2",
+      "mathematically_exact_positive_diagonal_reformulation": true
+    },
+    "row_redundancy": {
+      "proven_exact_duplicate_security_rows_removed": true,
+      "nearly_dependent_rows_removed": false,
+      "reason": "tolerance_based_row_removal_would_change_the_certified_feasible_set"
+    },
+    "warm_starts": {
+      "phase_one_primal_to_cost_lp": true,
+      "phase_one_native_row_dual_mapped_by_side_sign_and_scaling": true,
+      "same_master_primal_dual_reused_and_new_rows_zero_extended": true,
+      "warm_start_used_as_certificate": false
+    },
+    "parallel_children": {
+      "maximum_solver_contexts": 2,
+      "minimum_frontier_regions": 2,
+      "independent_cupy_screeners": true,
+      "concurrent_native_log_policy": "console_only",
+      "sequential_native_log_policy": "per_solve_file_audited"
+    },
+    "mathematical_feasible_set_changed": false,
+    "exact_source_pmin_changed": false
+  },
+  "laptop_validation": {
+    "full_activsg2000_optimization_performed": false,
+    "test_suite": {
+      "passed": 203,
+      "skipped_expected_gpu_only": 22,
+      "failed": 0
+    },
+    "ruff": "passed",
+    "shell_syntax_validation": "passed"
+  },
+  "dgx_spark_validation": {
+    "full_activsg2000_v4_run_count": 0,
+    "all_v4_one_shot_paths_absent": true,
+    "successful_tiny_gpu_algorithm_smoke_count": 1,
+    "concurrent_context_smoke": {
+      "fixed_source_commit": "1269c4c",
+      "image_id": "sha256:00a42002f04e6741e7967ac9b6c0464b4e9108c490545f3c674e1fc880ffff2d",
+      "context_count": 2,
+      "repetitions_per_context": 1,
+      "both_optimal": true,
+      "both_primal_feasible": true,
+      "both_dual_certificate_passed": true,
+      "parallel_wall_seconds": 1.0555624389962759,
+      "sum_adapter_wall_seconds": 2.0953452679823386,
+      "pre_fix_log_file_race_found_and_fixed": true
+    }
+  },
+  "run_gate": {
+    "required_tag": "experiment-2000-gpu-lagrangian-v4",
+    "explicit_user_authorization_received": true,
+    "full_run_count_allowed": 1,
+    "deadline_seconds": 1800.0,
+    "automatic_retry": false,
+    "all_one_shot_paths_confirmed_absent": true
+  }
+}
