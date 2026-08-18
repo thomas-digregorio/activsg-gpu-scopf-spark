@@ -656,7 +656,7 @@ def native_scaling_vectors(
     if mode == NO_NATIVE_SCALING:
         return column_scale, row_scale
     for column, name in enumerate(model.variable_names):
-        if name.startswith(("pg_", "pseg_", "flow_")):
+        if name.startswith(("pg_", "pseg_", "flow_", "cost_")):
             column_scale[column] = float(base_mva)
     integrality = model.column_arrays()[3]
     if np.any(column_scale[integrality > 0] != 1.0):

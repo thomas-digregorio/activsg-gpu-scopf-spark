@@ -45,6 +45,106 @@ class RedundantColumnBounds:
     audit: dict[str, Any]
 
 
+_PDLP_STATE_COLUMN_VECTORS = (
+    "current_ATY",
+    "current_primal_solution",
+    "initial_primal_average",
+    "last_restart_duality_gap_primal_solution",
+    "sum_primal_solutions",
+)
+_PDLP_STATE_ROW_VECTORS = (
+    "current_dual_solution",
+    "initial_dual_average",
+    "last_restart_duality_gap_dual_solution",
+    "sum_dual_solutions",
+)
+_PDLP_STATE_SCALARS = (
+    "initial_primal_weight",
+    "initial_step_size",
+    "iterations_since_last_restart",
+    "last_candidate_kkt_score",
+    "last_restart_kkt_score",
+    "sum_solution_weight",
+    "total_pdhg_iterations",
+    "total_pdlp_iterations",
+)
+
+
+def audit_pdlp_warm_start_data(
+    data: Any,
+    *,
+    num_columns: int,
+    num_constraints: int,
+) -> dict[str, Any]:
+    """Fail closed on partially populated cuOpt 26.6 Stable2 state.
+
+    cuOpt can expose a ``PDLPWarmStartData`` object after a time-limited solve
+    even when one or more of the internal restart vectors is ``None``.  It can
+    also expose a publicly complete object that still triggers the opaque
+    ``TypeError: object of type 'NoneType' has no len()`` inside the next
+    low-level solve.  Raw primal/dual vectors remain valid in that situation.
+    Consequently the adapter both audits the public payload and independently
+    limits opaque-state reuse to an ``Optimal`` source termination.
+    """
+
+    audit: dict[str, Any] = {
+        "policy": "cuopt_26_6_stable2_complete_payload_v1",
+        "passed": False,
+        "num_columns": int(num_columns),
+        "num_constraints": int(num_constraints),
+        "missing_fields": [],
+        "none_fields": [],
+        "wrong_shape_fields": [],
+        "nonfinite_fields": [],
+    }
+    if data is None:
+        audit["none_fields"] = ["state"]
+        audit["reason"] = "state_is_none"
+        return audit
+
+    expected_shapes = {
+        **{name: (int(num_columns),) for name in _PDLP_STATE_COLUMN_VECTORS},
+        **{name: (int(num_constraints),) for name in _PDLP_STATE_ROW_VECTORS},
+        **{name: () for name in _PDLP_STATE_SCALARS},
+    }
+    field_shapes: dict[str, list[int]] = {}
+    for name, expected_shape in expected_shapes.items():
+        if not hasattr(data, name):
+            audit["missing_fields"].append(name)
+            continue
+        value = getattr(data, name)
+        if value is None:
+            audit["none_fields"].append(name)
+            continue
+        try:
+            array = np.asarray(value)
+        except (TypeError, ValueError):
+            audit["wrong_shape_fields"].append(name)
+            continue
+        field_shapes[name] = [int(size) for size in array.shape]
+        if array.shape != expected_shape:
+            audit["wrong_shape_fields"].append(name)
+            continue
+        try:
+            finite = bool(np.all(np.isfinite(array)))
+        except TypeError:
+            finite = False
+        if not finite:
+            audit["nonfinite_fields"].append(name)
+    audit["field_shapes"] = field_shapes
+    audit["passed"] = not any(
+        audit[key]
+        for key in (
+            "missing_fields",
+            "none_fields",
+            "wrong_shape_fields",
+            "nonfinite_fields",
+        )
+    )
+    audit["reason"] = "complete" if audit["passed"] else "incomplete_or_invalid_payload"
+    return audit
+
+
 def derive_rate_a_angle_bounds(
     network: NetworkData,
     theta_columns: np.ndarray,
@@ -604,11 +704,23 @@ def solve_cuopt_continuous_pdlp(
             initial_pdlp_warm_start_data is not None
         )
         warm_start_audit["full_pdlp_state_policy"] = (
-            "same_shape_stable2_native_context_v1"
+            "same_shape_stable2_complete_native_context_v2"
             if initial_pdlp_warm_start_data is not None
             else None
         )
         if initial_pdlp_warm_start_data is not None:
+            submitted_state_audit = audit_pdlp_warm_start_data(
+                initial_pdlp_warm_start_data,
+                num_columns=model.num_columns,
+                num_constraints=native_constraint_count,
+            )
+            warm_start_audit["full_pdlp_state_validation"] = submitted_state_audit
+            if not submitted_state_audit["passed"]:
+                raise ScopfError(
+                    "cuOpt PDLP full warm-start state is incomplete or invalid; "
+                    "use the retained raw primal/dual vectors instead: "
+                    f"{submitted_state_audit}"
+                )
             settings.set_pdlp_warm_start_data(initial_pdlp_warm_start_data)
         if warm_primal is not None:
             data_model.set_initial_primal_solution(warm_primal)
@@ -743,12 +855,42 @@ def solve_cuopt_continuous_pdlp(
         )
     )
     pdlp_warm_start_data = None
+    returned_pdlp_state_audit: dict[str, Any] = {
+        "policy": "cuopt_26_6_stable2_complete_payload_v1",
+        "passed": False,
+        "reason": "not_requested_for_termination_status_or_solver_mode",
+    }
     if (
         pdlp_solver_mode == 1
         and error_status == "Success"
         and status in {"Optimal", "FeasibleFound", "TimeLimit"}
     ):
-        pdlp_warm_start_data = solution.get_pdlp_warm_start_data()
+        try:
+            candidate_pdlp_warm_start_data = solution.get_pdlp_warm_start_data()
+        except (TypeError, ValueError) as exc:
+            returned_pdlp_state_audit = {
+                "policy": "cuopt_26_6_stable2_complete_payload_v1",
+                "passed": False,
+                "reason": "native_state_extraction_failed",
+                "error_type": type(exc).__name__,
+                "error": str(exc),
+            }
+        else:
+            returned_pdlp_state_audit = audit_pdlp_warm_start_data(
+                candidate_pdlp_warm_start_data,
+                num_columns=model.num_columns,
+                num_constraints=native_constraint_count,
+            )
+            returned_pdlp_state_audit["termination_status"] = status
+            returned_pdlp_state_audit["resubmission_eligible"] = bool(
+                returned_pdlp_state_audit["passed"] and status == "Optimal"
+            )
+            if returned_pdlp_state_audit["resubmission_eligible"]:
+                pdlp_warm_start_data = candidate_pdlp_warm_start_data
+            elif returned_pdlp_state_audit["passed"]:
+                returned_pdlp_state_audit["reason"] = (
+                    "complete_but_nonoptimal_state_not_resubmitted_cuopt_26_6"
+                )
     return ContinuousSolveResult(
         status=status,
         optimal=optimal,
@@ -798,5 +940,6 @@ def solve_cuopt_continuous_pdlp(
                 solution_vectors_available and not optimal
             ),
             "warm_start": warm_start_audit,
+            "returned_pdlp_warm_start_state": returned_pdlp_state_audit,
         },
     )

@@ -9,6 +9,7 @@ import subprocess
 import sys
 import threading
 import time
+import traceback
 from collections import deque
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
@@ -33,6 +34,7 @@ from .fixed_commitment import (
     FixedCommitmentProjection,
     FixedCommitmentProjectionInfeasible,
     build_fixed_commitment_projection,
+    repair_along_feasible_segment,
 )
 from .lagrangian import (
     LagrangianEvaluation,
@@ -102,11 +104,13 @@ ACTIVSG2000_V3_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v3"
 ACTIVSG2000_V4_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v4"
 ACTIVSG2000_V5_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v5"
 ACTIVSG2000_V6_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v6"
+ACTIVSG2000_V7_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v7"
 ACTIVSG2000_V4_PLUS_EXPERIMENT_IDS = frozenset(
     {
         ACTIVSG2000_V4_EXPERIMENT_ID,
         ACTIVSG2000_V5_EXPERIMENT_ID,
         ACTIVSG2000_V6_EXPERIMENT_ID,
+        ACTIVSG2000_V7_EXPERIMENT_ID,
     }
 )
 REGISTERED_EXPERIMENTS = {
@@ -177,6 +181,14 @@ REGISTERED_EXPERIMENTS = {
         "policy": (
             "gpu_heuristics_primal_plus_stable2_stateful_phase_one_"
             "lagrangian_cover_activsg2000_v6"
+        ),
+    },
+    ACTIVSG2000_V7_EXPERIMENT_ID: {
+        "case_name": "ACTIVSg2000",
+        "tag": "experiment-2000-gpu-lagrangian-v7",
+        "policy": (
+            "gpu_heuristics_primal_plus_fail_closed_stable2_state_"
+            "lagrangian_cover_activsg2000_v7"
         ),
     },
 }
@@ -330,6 +342,34 @@ ACTIVSG2000_V6_NUMERICAL_AND_RUNTIME_FIX = {
     "mathematical_feasible_set_changed": False,
     "cpu_commitment_dispatch_objective_or_bound_seeded": False,
 }
+ACTIVSG2000_V7_NUMERICAL_ROBUSTNESS_FIX = {
+    "comparison_baseline": "activsg2000-gpu-lagrangian-v6",
+    "failed_v6_run_preserved": True,
+    "opaque_v6_exception": "cuopt_26_6_time_limit_stable2_state_len_none",
+    "same_shape_pdlp_continuation": (
+        "optimal_complete_state_else_raw_primal_dual_v3"
+    ),
+    "cost_polish_initial_dual_policy": (
+        "verified_phase_one_primal_only_because_phase_one_dual_has_different_objective"
+    ),
+    "cost_polish_formulation": (
+        "exact_fixed_commitment_convex_pwl_epigraph_without_fixed_u_or_segment_columns_v1"
+    ),
+    "cost_polish_solver": (
+        "single_cuopt_gpu_pdlp_slice_then_cupy_balance_and_feasible_segment_v2"
+    ),
+    "barrier_policy": "disabled_after_first_newton_step_nan_factorization_diagnostic",
+    "time_limit_primal_recovery": (
+        "gpu_boxed_balance_then_exhaustive_target_screen_then_convex_segment_v1"
+    ),
+    "repair_residual_budget_fraction": 0.5,
+    "pricing_policy": "fail_closed_if_repair_breaks_primal_dual_complementarity",
+    "exception_attribution": "bounded_worker_traceback_persisted_v1",
+    "best_primal_retention": True,
+    "exact_source_pmin_changed": False,
+    "mathematical_feasible_set_changed": False,
+    "cpu_commitment_dispatch_objective_or_bound_seeded": False,
+}
 ACTIVSG2000_V1_RUNTIME = {
     "deadline_seconds": 1800.0,
     "verification_reserve_seconds": 120.0,
@@ -384,6 +424,7 @@ ACTIVSG2000_V6_RUNTIME = {
     "gpu_primal_seed_seconds": 75.0,
     "phase_lagrangian_gpu_iterations": 2048,
 }
+ACTIVSG2000_V7_RUNTIME = dict(ACTIVSG2000_V6_RUNTIME)
 
 
 @dataclass
@@ -480,6 +521,19 @@ class FixedCommitmentFeasibilityResult:
     final_screen: dict[str, Any]
 
 
+@dataclass
+class FixedCommitmentCostResult:
+    master: ReducedMaster
+    source_values: np.ndarray
+    canonical_row_dual: np.ndarray
+    projected_solve: ContinuousSolveResult
+    security_pairs: tuple[SecurityPair, ...]
+    rounds: list[dict[str, Any]]
+    final_screen: dict[str, Any]
+    pricing_certified: bool
+    pricing_audit: dict[str, Any]
+
+
 @dataclass(frozen=True)
 class NetworkCommitmentRepair:
     """A deterministic binary repair for one violated coupling row."""
@@ -520,6 +574,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
     is_activsg2000_v4 = config.benchmark_id == ACTIVSG2000_V4_EXPERIMENT_ID
     is_activsg2000_v5 = config.benchmark_id == ACTIVSG2000_V5_EXPERIMENT_ID
     is_activsg2000_v6 = config.benchmark_id == ACTIVSG2000_V6_EXPERIMENT_ID
+    is_activsg2000_v7 = config.benchmark_id == ACTIVSG2000_V7_EXPERIMENT_ID
     is_activsg2000 = (
         is_activsg2000_v1
         or is_activsg2000_v2
@@ -527,6 +582,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
         or is_activsg2000_v4
         or is_activsg2000_v5
         or is_activsg2000_v6
+        or is_activsg2000_v7
     )
     if benchmark.get("kind") != "gpu_lagrangian_disjunctive_experiment":
         raise ScopfError("GPU Lagrangian experiment kind changed")
@@ -577,7 +633,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
                 "GPU Lagrangian v6 controller identity changed: "
                 f"expected={V6_CONTROLLER_CHANGE}, observed={observed_change}"
             )
-    if config.benchmark_id.endswith("-v7"):
+    if config.benchmark_id.endswith("-v7") and not is_activsg2000_v7:
         observed_change = benchmark.get("bugfix_change")
         if observed_change != V7_BUGFIX_CHANGE:
             raise ScopfError(
@@ -631,6 +687,14 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
                 f"expected={ACTIVSG2000_V6_NUMERICAL_AND_RUNTIME_FIX}, "
                 f"observed={observed_change}"
             )
+    if is_activsg2000_v7:
+        observed_change = benchmark.get("numerical_robustness_fix")
+        if observed_change != ACTIVSG2000_V7_NUMERICAL_ROBUSTNESS_FIX:
+            raise ScopfError(
+                "ACTIVSg2000 GPU Lagrangian v7 numerical-robustness identity changed: "
+                f"expected={ACTIVSG2000_V7_NUMERICAL_ROBUSTNESS_FIX}, "
+                f"observed={observed_change}"
+            )
     profile = config.raw["platforms"].get("dgx_spark", {})
     required_profile = {
         "solver": "cuopt",
@@ -639,7 +703,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
         "pdlp_precision": "fp64",
         "native_scaling_mode": (
             "power_system_equilibrated_safe_v3"
-            if is_activsg2000_v5 or is_activsg2000_v6
+            if is_activsg2000_v5 or is_activsg2000_v6 or is_activsg2000_v7
             else (
                 "power_system_equilibrated_v2"
                 if is_activsg2000_v4
@@ -652,7 +716,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
         "console_logging": True,
         "integer_solver": (
             "cuopt_gpu_heuristics_only_for_primal"
-            if is_activsg2000_v6
+            if is_activsg2000_v6 or is_activsg2000_v7
             else "none"
         ),
         "branch_and_bound": False,
@@ -665,7 +729,9 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
         )
     runtime = config.runtime
     expected_deadline = (
-        990.0 if is_activsg2000_v6 else (1800.0 if is_activsg2000 else 600.0)
+        990.0
+        if is_activsg2000_v6 or is_activsg2000_v7
+        else (1800.0 if is_activsg2000 else 600.0)
     )
     if float(runtime.get("deadline_seconds", 0.0)) != expected_deadline:
         raise ScopfError(
@@ -673,15 +739,19 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
             f"expected={expected_deadline}, observed={runtime.get('deadline_seconds')}"
         )
     expected_activsg2000_runtime = (
-        ACTIVSG2000_V6_RUNTIME
-        if is_activsg2000_v6
+        ACTIVSG2000_V7_RUNTIME
+        if is_activsg2000_v7
         else (
-            ACTIVSG2000_V5_RUNTIME
-            if is_activsg2000_v5
+            ACTIVSG2000_V6_RUNTIME
+            if is_activsg2000_v6
             else (
-                ACTIVSG2000_V4_RUNTIME
-                if is_activsg2000_v4
-                else ACTIVSG2000_V1_RUNTIME
+                ACTIVSG2000_V5_RUNTIME
+                if is_activsg2000_v5
+                else (
+                    ACTIVSG2000_V4_RUNTIME
+                    if is_activsg2000_v4
+                    else ACTIVSG2000_V1_RUNTIME
+                )
             )
         )
     )
@@ -726,7 +796,9 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
             "region_attempt_dual_divergence_multiple": 1e6,
             "region_attempt_cold_restart_attempts": 1,
             "maximum_failed_split_attempts": (
-                64 if is_activsg2000_v6 else (16 if is_activsg2000 else 8)
+                64
+                if is_activsg2000_v6 or is_activsg2000_v7
+                else (16 if is_activsg2000 else 8)
             ),
             "phase_one_time_limit_seconds": 60.0 if is_activsg2000 else 15.0,
             "phase_one_maximum_violation_pu": 1e6,
@@ -751,7 +823,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
             raise ScopfError("GPU Lagrangian v4/v5/v6/v7 security-row replay tolerance changed")
         if float(config.model.get("phase_one_replay_tolerance_pu", -1.0)) != 1e-10:
             raise ScopfError("GPU Lagrangian v4/v5/v6/v7 Phase-I replay tolerance changed")
-    if is_activsg2000_v6:
+    if is_activsg2000_v6 or is_activsg2000_v7:
         required_v6_profile = {
             "pdlp_solver_mode_native": 1,
             "pdlp_solver_mode": "stable2",
@@ -764,9 +836,14 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
         }
         if observed_v6_profile != required_v6_profile:
             raise ScopfError(
-                "ACTIVSg2000 v6 numerical profile changed: "
+                "ACTIVSg2000 v6/v7 numerical profile changed: "
                 f"expected={required_v6_profile}, observed={observed_v6_profile}"
             )
+    if is_activsg2000_v7 and any(
+        key in profile
+        for key in ("cost_polish_lp_method", "cost_polish_method_native")
+    ):
+        raise ScopfError("ACTIVSg2000 v7 must use the registered PDLP-only profile")
     return {
         "benchmark": benchmark,
         "profile": profile,
@@ -796,6 +873,9 @@ def _solve_summary(result: ContinuousSolveResult) -> dict[str, Any]:
         "native_lp_stats": result.statistics.get("lp_stats"),
         "termination_reason": result.statistics.get("termination_reason"),
         "warm_start": result.statistics.get("warm_start"),
+        "returned_pdlp_warm_start_state": result.statistics.get(
+            "returned_pdlp_warm_start_state"
+        ),
         "pdlp_warm_start_state_returned": result.pdlp_warm_start_data is not None,
     }
 
@@ -1585,6 +1665,7 @@ def _solve_fixed_commitment_feasibility(
             "round": constraint_round,
             "security_pairs_before_solve": len(pairs_by_id),
             "projection": dict(projection.audit),
+            "adapter_wall_time_seconds": 0.0,
             "phase_one_model": {
                 "columns": phase_model.num_columns,
                 "rows": phase_model.num_rows,
@@ -1645,6 +1726,9 @@ def _solve_fixed_commitment_feasibility(
                 "error_status": solve.statistics.get("error_status"),
             }
             round_record["solve_attempts"].append(solve_record)
+            round_record["adapter_wall_time_seconds"] = float(
+                round_record["adapter_wall_time_seconds"]
+            ) + float(solve_record["adapter_wall_time_seconds"])
             emit_progress()
             error_status = str(solve.statistics.get("error_status", ""))
             vectors_available = bool(
@@ -1813,6 +1897,376 @@ def _solve_fixed_commitment_feasibility(
         f"Candidate {region_id} reached the constraint-generation round limit",
     )
     raise AssertionError("unreachable fixed-commitment feasibility rejection")
+
+
+def _solve_fixed_commitment_cost_projection(
+    *,
+    region_id: str,
+    commitment: np.ndarray,
+    case: Any,
+    network: NetworkData,
+    config: RunConfig,
+    deadline: Deadline,
+    prepared_master: ReducedMaster,
+    initial_source_values: np.ndarray,
+    initial_pairs: tuple[SecurityPair, ...],
+    screener: ContingencyScreener,
+    checkpoint: Callable[[], None],
+    progress: Callable[[dict[str, Any]], None] | None,
+    policy: PrimalCandidatePolicy,
+) -> FixedCommitmentCostResult:
+    """Polish a secure fixed commitment and repair PDLP numerical noise.
+
+    A single bounded PDLP solve targets production cost in the exact convex
+    PWL epigraph.  Its dispatch is then projected onto PMIN/PMAX and exact
+    balance on the selected array backend.  Any newly exposed N-1 rows are
+    inserted, and the largest feasible point on the segment from the already
+    verified secure dispatch to that target is computed on the GPU.  This
+    avoids treating a time-limit PDLP residual as physical infeasibility and
+    avoids a second factorization or opaque Stable2-state submission.
+    """
+
+    if config.benchmark_id != ACTIVSG2000_V7_EXPERIMENT_ID:
+        raise ScopfError("The fixed-commitment cost projection is registered only for v7")
+    started = time.perf_counter()
+    master = prepared_master
+    binary = np.asarray(commitment, dtype=np.int8)
+    pairs_by_id = {pair.pair_id: pair for pair in initial_pairs}
+    source_seed = np.asarray(initial_source_values, dtype=np.float64).copy()
+    if source_seed.shape != (master.canonical.num_columns,):
+        raise ScopfError("Fixed-commitment cost projection source seed has the wrong shape")
+    rounds: list[dict[str, Any]] = []
+
+    def emit_progress() -> None:
+        if progress is not None:
+            progress(
+                {
+                    "region_id": region_id,
+                    "policy": (
+                        "single_pdlp_then_gpu_balance_and_convex_feasible_segment_v2"
+                    ),
+                    "security_pair_count": len(pairs_by_id),
+                    "constraint_generation_rounds": rounds,
+                    "elapsed_seconds": time.perf_counter() - started,
+                    "candidate_policy": policy.as_dict(),
+                }
+            )
+        else:
+            checkpoint()
+
+    def reject(reason: str, detail: str) -> None:
+        raise RegionAttemptRejected(
+            detail,
+            reason=reason,
+            master=master,
+            security_pairs=tuple(sorted(pairs_by_id.values())),
+            rounds=rounds,
+        )
+
+    profile = config.raw["platforms"]["dgx_spark"]
+    tolerance_pu = float(config.model["model_residual_tolerance_pu"])
+    tolerance_mw = tolerance_pu * float(case.base_mva)
+    repair_tolerance_mw = 0.5 * tolerance_mw
+    maximum_rounds = int(config.runtime["maximum_constraint_generation_rounds"])
+    repair_backend = str(screener.backend)
+    deadline.require(f"fixed-commitment projected cost {region_id}")
+    solve_projection = build_fixed_commitment_projection(
+        master,
+        binary,
+        include_cost_epigraph=True,
+    )
+    projected_seed = solve_projection.project_source_values(source_seed)
+    seed_validation = solve_projection.validate_lift(
+        projected_seed,
+        tolerance_mw=tolerance_mw,
+    )
+    if not seed_validation["passed"]:
+        raise ScopfError("Secure source seed did not survive exact cost projection")
+    column_scale, _ = native_scaling_vectors(
+        solve_projection.canonical,
+        mode=str(profile["native_scaling_mode"]),
+        base_mva=float(case.base_mva),
+    )
+    candidate_remaining = policy.total_seconds - (time.perf_counter() - started)
+    if candidate_remaining < policy.minimum_round_seconds:
+        reject(
+            "projected_cost_budget_exhausted",
+            f"Candidate {region_id} has no exact cost-projection solve budget",
+        )
+    solver_budget = min(
+        deadline.solver_budget(),
+        policy.maximum_round_seconds,
+        candidate_remaining,
+    )
+    round_record: dict[str, Any] = {
+        "round": 1,
+        "security_pairs_before_solve": len(pairs_by_id),
+        "projection": dict(solve_projection.audit),
+        "seed": {
+            "canonical_residual_pu": (
+                solve_projection.canonical.max_row_violation(projected_seed)
+                / float(case.base_mva)
+            ),
+            "lift_validation": seed_validation,
+            "source_objective": float(
+                np.asarray(master.canonical.objective) @ source_seed
+            ),
+        },
+        "solve_attempts": [],
+        "repair_rounds": [],
+    }
+    rounds.append(round_record)
+    emit_progress()
+    solve_started = time.perf_counter()
+    solve = solve_cuopt_continuous_pdlp(
+        solve_projection.canonical,
+        time_limit_seconds=solver_budget,
+        optimality_tolerance=float(profile["pdlp_optimality_tolerance"]),
+        primal_feasibility_tolerance=tolerance_pu,
+        certificate_residual_tolerance=float(
+            profile["dual_certificate_residual_tolerance"]
+        ),
+        native_scaling_mode=str(profile["native_scaling_mode"]),
+        native_base_mva=float(case.base_mva),
+        log_to_console=True,
+        per_constraint_residual=bool(profile["per_constraint_residual"]),
+        presolve=int(profile["presolve"]),
+        initial_native_primal=projected_seed / column_scale,
+        initial_native_row_dual=None,
+        initial_pdlp_warm_start_data=None,
+        pdlp_solver_mode=int(profile["pdlp_solver_mode_native"]),
+    )
+    solve_record: dict[str, Any] = {
+        "attempt": 1,
+        "solver_budget_seconds": solver_budget,
+        "adapter_wall_time_seconds": time.perf_counter() - solve_started,
+        "solve": _solve_summary(solve),
+        "continuation": "none_single_bounded_cost_solve",
+    }
+    round_record["solve_attempts"].append(solve_record)
+    round_record["adapter_wall_time_seconds"] = float(
+        solve_record["adapter_wall_time_seconds"]
+    )
+    emit_progress()
+    if (
+        str(solve.statistics.get("error_status", "")) != "Success"
+        or solve.values is None
+        or solve.native_primal is None
+        or solve.native_row_dual is None
+    ):
+        reject(
+            "projected_cost_missing_vectors",
+            f"Candidate {region_id} projected cost LP returned no usable vectors: "
+            f"status={solve.status}",
+        )
+
+    raw_projected = np.asarray(solve.values, dtype=np.float64)
+    raw_source = solve_projection.lift(raw_projected)
+    raw_metrics = {
+        "numeric_certificate_primal_feasible": bool(
+            solve.statistics.get("dual_certificate", {}).get(
+                "primal_feasible", False
+            )
+        ),
+        "projected_canonical_residual_pu": (
+            solve_projection.canonical.max_row_violation(raw_projected)
+            / float(case.base_mva)
+        ),
+        "lifted_source_residual_pu": (
+            master.canonical.max_row_violation(raw_source) / float(case.base_mva)
+        ),
+        "projected_objective": float(
+            np.asarray(solve_projection.canonical.objective) @ raw_projected
+        ),
+        "lifted_exact_pwl_objective": float(
+            np.asarray(master.canonical.objective) @ raw_source
+        ),
+    }
+    balanced_projected, balance_audit = solve_projection.rebalance_dispatch(
+        raw_projected,
+        total_demand_mw=float(master.operator.total_demand_mw),
+        backend=repair_backend,
+    )
+    target_source = solve_projection.lift(balanced_projected)
+    target_objective = float(np.asarray(master.canonical.objective) @ target_source)
+    solve_record["raw_primal"] = raw_metrics
+    solve_record["gpu_balance_projection"] = balance_audit
+    solve_record["balanced_target"] = {
+        "source_objective": target_objective,
+        "source_canonical_residual_pu": (
+            master.canonical.max_row_violation(target_source) / float(case.base_mva)
+        ),
+    }
+
+    target_screen_started = time.perf_counter()
+    target_screened = screener.screen(
+        master.operator.flows(reduced_dispatch(master, target_source)),
+        tolerance_pu=float(config.model["security_violation_tolerance_pu"]),
+        already_added=set(pairs_by_id),
+    )
+    target_screen = {
+        "wall_time_seconds": time.perf_counter() - target_screen_started,
+        "evaluated_sides": target_screened.evaluated_pairs,
+        "new_violated_pairs": len(target_screened.violations),
+        "maximum_violation_pu": target_screened.maximum_violation_pu,
+        "maximum_pair_id": target_screened.maximum_pair_id,
+        "purpose": "discover_all_target_endpoint_security_rows_before_segment_repair",
+    }
+    round_record["target_screen"] = target_screen
+    if target_screened.violations:
+        add_reduced_security_pairs(master, network, target_screened.violations)
+        pairs_by_id.update((pair.pair_id, pair) for pair in target_screened.violations)
+        round_record["target_added_pair_ids"] = [
+            pair.pair_id for pair in target_screened.violations
+        ]
+    emit_progress()
+
+    accepted_source_values: np.ndarray | None = None
+    final_screen: dict[str, Any] | None = None
+    final_projection: FixedCommitmentProjection | None = None
+    final_repair_audit: dict[str, Any] | None = None
+    for repair_round in range(1, maximum_rounds + 1):
+        deadline.require(f"fixed-commitment numerical repair {region_id}")
+        projection = build_fixed_commitment_projection(
+            master,
+            binary,
+            include_cost_epigraph=True,
+        )
+        repair_seed = projection.project_source_values(source_seed)
+        repair_target = projection.project_source_values(target_source)
+        seed_recheck = projection.validate_lift(
+            repair_seed,
+            tolerance_mw=repair_tolerance_mw,
+        )
+        if not seed_recheck["passed"]:
+            reject(
+                "projected_cost_secure_seed_lost_margin",
+                "Secure seed lacks the registered numerical-repair safety margin",
+            )
+        repaired_projected, segment_audit = repair_along_feasible_segment(
+            projection.canonical,
+            repair_seed,
+            repair_target,
+            tolerance=repair_tolerance_mw,
+            backend=repair_backend,
+        )
+        repaired_source = projection.lift(repaired_projected)
+        lift_validation = projection.validate_lift(
+            repaired_projected,
+            tolerance_mw=tolerance_mw,
+        )
+        source_residual_pu = (
+            master.canonical.max_row_violation(repaired_source) / float(case.base_mva)
+        )
+        repair_record: dict[str, Any] = {
+            "repair_round": repair_round,
+            "security_pair_count": len(pairs_by_id),
+            "projection": dict(projection.audit),
+            "segment": segment_audit,
+            "lift_validation": lift_validation,
+            "source_canonical_residual_pu": source_residual_pu,
+            "seed_source_objective": float(
+                np.asarray(master.canonical.objective) @ source_seed
+            ),
+            "target_source_objective": target_objective,
+            "repaired_source_objective": float(
+                np.asarray(master.canonical.objective) @ repaired_source
+            ),
+        }
+        round_record["repair_rounds"].append(repair_record)
+        if not lift_validation["passed"] or source_residual_pu > tolerance_pu:
+            reject(
+                "projected_cost_segment_repair_residual",
+                "GPU feasible-segment repair exceeded the canonical tolerance",
+            )
+        screen_started = time.perf_counter()
+        screened = screener.screen(
+            master.operator.flows(reduced_dispatch(master, repaired_source)),
+            tolerance_pu=float(config.model["security_violation_tolerance_pu"]),
+            already_added=set(pairs_by_id),
+        )
+        final_screen = {
+            "wall_time_seconds": time.perf_counter() - screen_started,
+            "evaluated_sides": screened.evaluated_pairs,
+            "new_violated_pairs": len(screened.violations),
+            "maximum_violation_pu": screened.maximum_violation_pu,
+            "maximum_pair_id": screened.maximum_pair_id,
+        }
+        repair_record["screen"] = final_screen
+        emit_progress()
+        if not screened.violations:
+            accepted_source_values = repaired_source
+            final_projection = projection
+            final_repair_audit = segment_audit
+            break
+        add_reduced_security_pairs(master, network, screened.violations)
+        pairs_by_id.update((pair.pair_id, pair) for pair in screened.violations)
+        repair_record["added_pair_ids"] = [pair.pair_id for pair in screened.violations]
+
+    if (
+        accepted_source_values is None
+        or final_screen is None
+        or final_projection is None
+        or final_repair_audit is None
+    ):
+        reject(
+            "projected_cost_segment_repair_round_limit",
+            f"Candidate {region_id} reached the numerical-repair round limit",
+        )
+
+    mapped_native_dual, mapping = _map_native_row_dual_by_identity(
+        solve_projection.canonical,
+        master.canonical,
+        np.asarray(solve.native_row_dual, dtype=np.float64),
+        scaling_mode=str(profile["native_scaling_mode"]),
+        base_mva=float(case.base_mva),
+    )
+    round_record["source_dual_mapping"] = mapping
+    dispatch_changed = bool(
+        np.max(np.abs(accepted_source_values - raw_source)) > 1e-9
+    )
+    added_after_solve = len(pairs_by_id) > int(round_record["security_pairs_before_solve"])
+    pricing_certified = bool(
+        solve.optimal
+        and solve.statistics.get("dual_certificate", {}).get("passed", False)
+        and not dispatch_changed
+        and not added_after_solve
+        and float(final_repair_audit["step_fraction"]) == 1.0
+    )
+    pricing_audit = {
+        "certified_for_returned_dispatch": pricing_certified,
+        "source": "fixed_commitment_cost_pdlp_row_dual",
+        "pdlp_termination_status": solve.status,
+        "dispatch_changed_by_numerical_repair": dispatch_changed,
+        "security_rows_added_after_solve": (
+            len(pairs_by_id) - int(round_record["security_pairs_before_solve"])
+        ),
+        "source_rows_zero_filled_by_projection_mapping": int(
+            mapping["zero_filled_native_constraint_count"]
+        ),
+        "interpretation": (
+            "certified_fixed_commitment_lp_prices"
+            if pricing_certified
+            else "provisional_dual_candidate_not_complementary_to_repaired_dispatch"
+        ),
+    }
+    round_record["pricing_audit"] = pricing_audit
+    return FixedCommitmentCostResult(
+        master=master,
+        source_values=accepted_source_values,
+        canonical_row_dual=canonical_row_duals(
+            master,
+            mapped_native_dual,
+            native_scaling_mode=str(profile["native_scaling_mode"]),
+            base_mva=float(case.base_mva),
+        ),
+        projected_solve=solve,
+        security_pairs=tuple(sorted(pairs_by_id.values())),
+        rounds=rounds,
+        final_screen=final_screen,
+        pricing_certified=pricing_certified,
+        pricing_audit=pricing_audit,
+    )
 
 
 def _network_feasible_commitment_repairs(
@@ -2542,8 +2996,13 @@ def _solve_phase_one_lagrangian_region(
     an optimal LP solution.
     """
 
-    if config.benchmark_id != ACTIVSG2000_V6_EXPERIMENT_ID:
-        raise ScopfError("Phase-I Lagrangian child engine is registered only for ACTIVSg2000 v6")
+    if config.benchmark_id not in {
+        ACTIVSG2000_V6_EXPERIMENT_ID,
+        ACTIVSG2000_V7_EXPERIMENT_ID,
+    }:
+        raise ScopfError(
+            "Phase-I Lagrangian child engine is registered only for ACTIVSg2000 v6/v7"
+        )
     pairs_by_id = {pair.pair_id: pair for pair in initial_pairs}
     if set(pairs_by_id) != set(master.security_pair_ids):
         raise ScopfError("Phase-I child initial security-pair identity changed")
@@ -3250,6 +3709,7 @@ def run_gpu_lagrangian_experiment(
                     ACTIVSG2000_V4_EXPERIMENT_ID,
                     ACTIVSG2000_V5_EXPERIMENT_ID,
                     ACTIVSG2000_V6_EXPERIMENT_ID,
+                    ACTIVSG2000_V7_EXPERIMENT_ID,
                 }
             )
             else None
@@ -3266,6 +3726,7 @@ def run_gpu_lagrangian_experiment(
                     ACTIVSG2000_V4_EXPERIMENT_ID,
                     ACTIVSG2000_V5_EXPERIMENT_ID,
                     ACTIVSG2000_V6_EXPERIMENT_ID,
+                    ACTIVSG2000_V7_EXPERIMENT_ID,
                 }
             )
             else None
@@ -3277,6 +3738,7 @@ def run_gpu_lagrangian_experiment(
             ACTIVSG2000_V4_EXPERIMENT_ID,
             ACTIVSG2000_V5_EXPERIMENT_ID,
             ACTIVSG2000_V6_EXPERIMENT_ID,
+            ACTIVSG2000_V7_EXPERIMENT_ID,
         }
         payload["primal_candidate_policy"] = (
             candidate_policy.as_dict() if candidate_policy is not None else None
@@ -3326,14 +3788,26 @@ def run_gpu_lagrangian_experiment(
                 "capacity_gate_is_pruning_authority": False,
                 "positive_replayable_phase_one_dual_is_pruning_authority": True,
                 "zero_or_uncertain_phase_one_proceeds_to_cost_lp": (
-                    config.benchmark_id != ACTIVSG2000_V6_EXPERIMENT_ID
+                    config.benchmark_id
+                    not in {
+                        ACTIVSG2000_V6_EXPERIMENT_ID,
+                        ACTIVSG2000_V7_EXPERIMENT_ID,
+                    }
                 ),
                 "phase_one_source_primal_warm_starts_cost_lp": (
-                    config.benchmark_id != ACTIVSG2000_V6_EXPERIMENT_ID
+                    config.benchmark_id
+                    not in {
+                        ACTIVSG2000_V6_EXPERIMENT_ID,
+                        ACTIVSG2000_V7_EXPERIMENT_ID,
+                    }
                 ),
                 "v6_child_policy": (
                     "secure_phase_one_point_plus_parent_inherited_lagrangian_bound"
-                    if config.benchmark_id == ACTIVSG2000_V6_EXPERIMENT_ID
+                    if config.benchmark_id
+                    in {
+                        ACTIVSG2000_V6_EXPERIMENT_ID,
+                        ACTIVSG2000_V7_EXPERIMENT_ID,
+                    }
                     else None
                 ),
                 "phase_one_row_dual_transferred": (
@@ -3352,9 +3826,15 @@ def run_gpu_lagrangian_experiment(
                 "network_and_security_coupling_rows_retained": True,
                 "exhaustive_screen_after_every_feasible_resolve": True,
                 "secure_dispatch_checkpointed_before_cost_polish": True,
-                "cost_polish_uses_lifted_source_space_primal_start": True,
+                "cost_polish_uses_lifted_source_space_primal_start": (
+                    config.benchmark_id != ACTIVSG2000_V7_EXPERIMENT_ID
+                ),
+                "cost_polish_uses_exact_convex_pwl_epigraph_projection": (
+                    config.benchmark_id == ACTIVSG2000_V7_EXPERIMENT_ID
+                ),
                 "cost_polish_uses_mapped_native_row_dual_start": (
                     config.benchmark_id in ACTIVSG2000_V4_PLUS_EXPERIMENT_IDS
+                    and config.benchmark_id != ACTIVSG2000_V7_EXPERIMENT_ID
                 ),
                 "cpu_commitment_or_dispatch_seeded": False,
             }
@@ -3365,6 +3845,7 @@ def run_gpu_lagrangian_experiment(
                 ACTIVSG2000_V4_EXPERIMENT_ID,
                 ACTIVSG2000_V5_EXPERIMENT_ID,
                 ACTIVSG2000_V6_EXPERIMENT_ID,
+                ACTIVSG2000_V7_EXPERIMENT_ID,
             }
             else {"enabled": False}
         )
@@ -3547,6 +4028,7 @@ def run_gpu_lagrangian_experiment(
             projected_secure_primal = False
             feasibility: FixedCommitmentFeasibilityResult | None = None
             solved: SolvedRegion | None = None
+            projected_cost: FixedCommitmentCostResult | None = None
             try:
                 if config.benchmark_id in {
                     ACTIVSG2000_V2_EXPERIMENT_ID,
@@ -3554,6 +4036,7 @@ def run_gpu_lagrangian_experiment(
                     ACTIVSG2000_V4_EXPERIMENT_ID,
                     ACTIVSG2000_V5_EXPERIMENT_ID,
                     ACTIVSG2000_V6_EXPERIMENT_ID,
+                    ACTIVSG2000_V7_EXPERIMENT_ID,
                 }:
                     if candidate_policy is None:
                         raise ScopfError("ACTIVSg2000 v2 requires a bounded candidate policy")
@@ -3604,53 +4087,102 @@ def run_gpu_lagrangian_experiment(
                         final_screen=feasibility.final_screen,
                     )
                     projected_secure_primal = True
-                    source_column_scale, _ = native_scaling_vectors(
-                        feasibility.master.canonical,
-                        mode=str(config.raw["platforms"]["dgx_spark"]["native_scaling_mode"]),
-                        base_mva=float(case.base_mva),
-                    )
-                    initial_native_primal = feasibility.source_values / source_column_scale
-                    attempt["cost_polish"] = {
-                        "status": "running",
-                        "warm_start_source": (
-                            "independently_verified_projected_phase_one_dispatch"
-                        ),
-                        "native_primal_count": int(initial_native_primal.size),
-                        "native_primal_sha256": hashlib.sha256(
-                            initial_native_primal.tobytes()
-                        ).hexdigest(),
-                        "native_row_dual_count": (
-                            None
-                            if feasibility.source_native_row_dual is None
-                            else int(feasibility.source_native_row_dual.size)
-                        ),
-                        "native_row_dual_transferred": (
-                            feasibility.source_native_row_dual is not None
-                        ),
-                    }
-                    save()
-                    solved = _solve_region(
-                        region_id=f"p{len(tried_commitments)}_cost",
-                        masks=fixed,
-                        case=case,
-                        network=network,
-                        catalog=catalog,
-                        config=config,
-                        deadline=deadline,
-                        initial_pairs=feasibility.security_pairs,
-                        screener=screener,
-                        checkpoint=save,
-                        progress=save_candidate_progress,
-                        candidate_policy=candidate_policy,
-                        prepared_master=feasibility.master,
-                        initial_native_primal=initial_native_primal,
-                        initial_native_row_dual=(feasibility.source_native_row_dual),
-                        initial_warm_start_origin=(
-                            "projected_phase_one_secure_dispatch_primal_dual_v2"
-                            if feasibility.source_native_row_dual is not None
-                            else "projected_phase_one_secure_dispatch_v1"
-                        ),
-                    )
+                    if config.benchmark_id == ACTIVSG2000_V7_EXPERIMENT_ID:
+                        attempt["cost_polish"] = {
+                            "status": "running",
+                            "formulation": (
+                                "exact_fixed_commitment_convex_pwl_cost_epigraph_v1"
+                            ),
+                            "warm_start_source": (
+                                "independently_verified_projected_phase_one_dispatch"
+                            ),
+                            "phase_one_native_row_dual_available_count": (
+                                None
+                                if feasibility.source_native_row_dual is None
+                                else int(feasibility.source_native_row_dual.size)
+                            ),
+                            "native_row_dual_transferred": False,
+                            "initial_dual_policy": (
+                                "phase_one_primal_only_different_objective_v1"
+                            ),
+                        }
+                        save()
+                        projected_cost = _solve_fixed_commitment_cost_projection(
+                            region_id=f"p{len(tried_commitments)}_cost",
+                            commitment=candidate,
+                            case=case,
+                            network=network,
+                            config=config,
+                            deadline=deadline,
+                            prepared_master=feasibility.master,
+                            initial_source_values=feasibility.source_values,
+                            initial_pairs=feasibility.security_pairs,
+                            screener=screener,
+                            checkpoint=save,
+                            progress=save_candidate_progress,
+                            policy=candidate_policy,
+                        )
+                    else:
+                        source_column_scale, _ = native_scaling_vectors(
+                            feasibility.master.canonical,
+                            mode=str(
+                                config.raw["platforms"]["dgx_spark"][
+                                    "native_scaling_mode"
+                                ]
+                            ),
+                            base_mva=float(case.base_mva),
+                        )
+                        initial_native_primal = (
+                            feasibility.source_values / source_column_scale
+                        )
+                        cost_initial_native_dual = feasibility.source_native_row_dual
+                        attempt["cost_polish"] = {
+                            "status": "running",
+                            "warm_start_source": (
+                                "independently_verified_projected_phase_one_dispatch"
+                            ),
+                            "native_primal_count": int(initial_native_primal.size),
+                            "native_primal_sha256": hashlib.sha256(
+                                initial_native_primal.tobytes()
+                            ).hexdigest(),
+                            "phase_one_native_row_dual_available_count": (
+                                None
+                                if feasibility.source_native_row_dual is None
+                                else int(feasibility.source_native_row_dual.size)
+                            ),
+                            "native_row_dual_submitted_count": (
+                                None
+                                if cost_initial_native_dual is None
+                                else int(cost_initial_native_dual.size)
+                            ),
+                            "native_row_dual_transferred": (
+                                cost_initial_native_dual is not None
+                            ),
+                            "initial_dual_policy": "mapped_phase_one_native_row_dual_v1",
+                        }
+                        save()
+                        solved = _solve_region(
+                            region_id=f"p{len(tried_commitments)}_cost",
+                            masks=fixed,
+                            case=case,
+                            network=network,
+                            catalog=catalog,
+                            config=config,
+                            deadline=deadline,
+                            initial_pairs=feasibility.security_pairs,
+                            screener=screener,
+                            checkpoint=save,
+                            progress=save_candidate_progress,
+                            candidate_policy=candidate_policy,
+                            prepared_master=feasibility.master,
+                            initial_native_primal=initial_native_primal,
+                            initial_native_row_dual=cost_initial_native_dual,
+                            initial_warm_start_origin=(
+                                "projected_phase_one_secure_dispatch_primal_dual_v2"
+                                if feasibility.source_native_row_dual is not None
+                                else "projected_phase_one_secure_dispatch_v1"
+                            ),
+                        )
                 else:
                     solved = _solve_region(
                         region_id=f"p{len(tried_commitments)}",
@@ -3748,18 +4280,48 @@ def run_gpu_lagrangian_experiment(
                 save()
                 return False
             payload.pop("active_region_progress", None)
-            if solved is None:
+            if projected_cost is not None:
+                result_master = projected_cost.master
+                result_values = projected_cost.source_values
+                result_dual = projected_cost.canonical_row_dual
+                result_pairs = projected_cost.security_pairs
+                result_rounds = projected_cost.rounds
+                result_screen = projected_cost.final_screen
+                price_status = (
+                    "gpu_pdlp_fixed_commitment_exact_cost_epigraph_dual_certified"
+                    if projected_cost.pricing_certified
+                    else "gpu_pdlp_dual_candidate_uncertified_for_repaired_dispatch"
+                )
+                price_termination = projected_cost.projected_solve.status
+                price_audit = projected_cost.pricing_audit
+            elif solved is not None:
+                if solved.solve.values is None:
+                    raise ScopfError("Fixed-commitment PDLP lost its primal vector")
+                result_master = solved.master
+                result_values = solved.solve.values
+                result_dual = solved.canonical_row_dual
+                result_pairs = solved.security_pairs
+                result_rounds = solved.rounds
+                result_screen = solved.final_screen
+                price_status = "gpu_pdlp_fixed_commitment_dual"
+                price_termination = solved.solve.status
+                price_audit = {
+                    "certified_for_returned_dispatch": bool(solved.solve.optimal),
+                    "source": "fixed_commitment_cost_pdlp_row_dual",
+                }
+            else:
                 raise ScopfError("Fixed-commitment cost LP result is missing")
-            global_pairs.update((pair.pair_id, pair) for pair in solved.security_pairs)
-            if solved.solve.values is None:
-                raise ScopfError("Fixed-commitment PDLP lost its primal vector")
-            prices = bus_prices_from_coupling_duals(solved.master, solved.canonical_row_dual)
+            global_pairs.update((pair.pair_id, pair) for pair in result_pairs)
+            prices = bus_prices_from_coupling_duals(result_master, result_dual)
             pricing = {
-                "status": "gpu_pdlp_fixed_commitment_dual",
+                "status": price_status,
                 "definition": (
-                    "Demand-derivative dual prices from the final secure "
-                    "fixed-commitment cuOpt PDLP; not MILP duals"
+                    "Demand-derivative fixed-commitment LP dual values; they are "
+                    "not MILP duals and are explicitly marked uncertified when "
+                    "the returned dispatch required numerical feasibility repair"
                 ),
+                "pdlp_termination_status": price_termination,
+                "audit": price_audit,
                 "bus_prices": [
                     {
                         "bus": int(bus),
@@ -3769,20 +4331,20 @@ def run_gpu_lagrangian_experiment(
                     for bus, price in zip(network.bus_ids, prices, strict=True)
                 ],
             }
-            attempt["constraint_generation_rounds"] = solved.rounds
+            attempt["constraint_generation_rounds"] = result_rounds
             if projected_secure_primal:
                 attempt["cost_polish"] = {
                     **attempt.get("cost_polish", {}),
                     "status": "secure_cost_lp_complete",
-                    "constraint_generation_rounds": solved.rounds,
-                    "final_screen": solved.final_screen,
+                    "constraint_generation_rounds": result_rounds,
+                    "final_screen": result_screen,
                 }
             retain_secure_primal(
-                source_master=solved.master,
-                source_values=solved.solve.values,
+                source_master=result_master,
+                source_values=result_values,
                 status="secure_fixed_commitment_cost_pdlp",
                 pricing=pricing,
-                final_screen=solved.final_screen,
+                final_screen=result_screen,
             )
             save()
             return True
@@ -3794,7 +4356,10 @@ def run_gpu_lagrangian_experiment(
 
         target_gap = float(config.model["mip_relative_gap_tolerance"])
         gpu_heuristic_candidate: tuple[np.ndarray, str, dict[str, Any]] | None = None
-        if config.benchmark_id == ACTIVSG2000_V6_EXPERIMENT_ID:
+        if config.benchmark_id in {
+            ACTIVSG2000_V6_EXPERIMENT_ID,
+            ACTIVSG2000_V7_EXPERIMENT_ID,
+        }:
             heuristic_pipeline_started = time.perf_counter()
             payload["gpu_primal_heuristics"] = {
                 "status": "running",
@@ -4386,7 +4951,10 @@ def run_gpu_lagrangian_experiment(
                         )
                         save()
                         continue
-                    if config.benchmark_id == ACTIVSG2000_V6_EXPERIMENT_ID:
+                    if config.benchmark_id in {
+                        ACTIVSG2000_V6_EXPERIMENT_ID,
+                        ACTIVSG2000_V7_EXPERIMENT_ID,
+                    }:
                         try:
                             phase_child, phase_prune = (
                                 _solve_phase_one_lagrangian_region(
@@ -5038,6 +5606,7 @@ def run_gpu_lagrangian_worker_serialized(
                 "status": "failed_exception",
                 "error_type": type(exc).__name__,
                 "error": str(exc),
+                "exception_traceback": traceback.format_exc().splitlines()[-80:],
             }
         )
     result["elapsed_seconds"] = max(

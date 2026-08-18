@@ -5,12 +5,15 @@ import numpy as np
 import pytest
 
 from activsg_scopf import lagrangian_experiment as experiment_module
+from activsg_scopf.canonical import CanonicalMILP
 from activsg_scopf.config import load_config
 from activsg_scopf.deadline import Deadline
 from activsg_scopf.errors import ScopfError
 from activsg_scopf.fixed_commitment import (
     FixedCommitmentProjectionInfeasible,
     build_fixed_commitment_projection,
+    project_boxed_sum,
+    repair_along_feasible_segment,
 )
 from activsg_scopf.lagrangian import RegionMasks
 from activsg_scopf.lagrangian_experiment import (
@@ -18,8 +21,10 @@ from activsg_scopf.lagrangian_experiment import (
     ACTIVSG2000_V3_EXPERIMENT_ID,
     PrimalCandidatePolicy,
     RegionAttemptRejected,
+    _native_constraint_layout,
     _network_feasible_commitment_repairs,
     _prepare_region_master,
+    _solve_fixed_commitment_cost_projection,
     _solve_fixed_commitment_feasibility,
     validate_lagrangian_experiment_config,
 )
@@ -65,6 +70,88 @@ def test_fixed_commitment_projection_lifts_exact_pmin_and_pwl_segments() -> None
     )
     assert np.sum(segments) == 37.0
     assert projection.validate_lift(np.asarray([62.0]), tolerance_mw=1e-10)["passed"]
+
+
+def test_fixed_commitment_cost_epigraph_is_exact_for_lifted_pwl_dispatch() -> None:
+    config = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v7.json")
+    case, _ = triangle_case()
+    network = build_network(case)
+    masks = RegionMasks(np.asarray([False]), np.asarray([True]))
+    master = _prepare_region_master(
+        case=case,
+        network=network,
+        config=config,
+        masks=masks,
+        initial_pairs=(),
+    )
+    feasibility = build_fixed_commitment_projection(master, np.asarray([1]))
+    source_values = feasibility.lift(np.asarray([62.0]))
+
+    cost_projection = build_fixed_commitment_projection(
+        master,
+        np.asarray([1]),
+        include_cost_epigraph=True,
+    )
+    cost_values = cost_projection.project_source_values(source_values)
+
+    assert cost_projection.canonical.variable_names == ["pg_g0001", "cost_g0001"]
+    assert cost_projection.audit["cost_epigraph_enabled"] is True
+    assert cost_projection.audit["cost_epigraph_column_count"] == 1
+    assert cost_projection.audit["cost_epigraph_row_count"] <= 10
+    assert cost_projection.canonical.max_row_violation(cost_values) <= 1e-10
+    source_objective = float(np.asarray(master.canonical.objective) @ source_values)
+    projected_objective = float(
+        np.asarray(cost_projection.canonical.objective) @ cost_values
+    )
+    assert projected_objective == pytest.approx(source_objective)
+    assert cost_projection.validate_lift(cost_values, tolerance_mw=1e-10)["passed"]
+
+    noisy = cost_values.copy()
+    noisy[cost_projection.projected_column_by_generator[0]] += 0.01
+    balanced, balance_audit = cost_projection.rebalance_dispatch(
+        noisy,
+        total_demand_mw=62.0,
+        backend="numpy",
+    )
+    assert cost_projection.dispatch(balanced)[0] == pytest.approx(62.0)
+    assert balance_audit["absolute_balance_residual"] <= 1e-10
+    assert balance_audit["cost_epigraph_reset_from_exact_pwl"] is True
+    assert cost_projection.validate_lift(balanced, tolerance_mw=1e-10)["passed"]
+
+
+def test_boxed_sum_projection_restores_balance_without_crossing_pmin_pmax() -> None:
+    projected, audit = project_boxed_sum(
+        np.asarray([24.0, 81.0, 12.0]),
+        np.asarray([20.0, 40.0, 10.0]),
+        np.asarray([60.0, 80.0, 30.0]),
+        target_sum=120.0,
+        backend="numpy",
+    )
+
+    assert np.sum(projected) == pytest.approx(120.0, abs=1e-10)
+    assert np.all(projected >= np.asarray([20.0, 40.0, 10.0]))
+    assert np.all(projected <= np.asarray([60.0, 80.0, 30.0]))
+    assert audit["absolute_balance_residual"] <= 1e-10
+
+
+def test_feasible_segment_repair_keeps_largest_linear_feasible_step() -> None:
+    model = CanonicalMILP()
+    x = model.add_variable("x", lower=0.0, upper=1.0)
+    y = model.add_variable("y", lower=0.0, upper=1.0)
+    model.add_row("balance", {x: 1.0, y: 1.0}, lower=1.0, upper=1.0)
+    model.add_row("flow", {x: 1.0}, upper=0.6)
+
+    repaired, audit = repair_along_feasible_segment(
+        model,
+        np.asarray([0.5, 0.5]),
+        np.asarray([0.8, 0.2]),
+        tolerance=1e-10,
+        backend="numpy",
+    )
+
+    np.testing.assert_allclose(repaired, [0.6, 0.4], atol=2e-10)
+    assert audit["step_fraction"] == pytest.approx(1.0 / 3.0, abs=1e-9)
+    assert model.max_row_violation(repaired) <= 1e-10
 
 
 def test_registered_activsg2000_v2_feasibility_fix_is_fail_closed() -> None:
@@ -309,3 +396,82 @@ def test_v4_projected_phase_one_maps_dual_into_exact_cost_model(
     mapping = result.rounds[0]["cost_lp_dual_warm_start"]
     assert mapping["eligible"] is True
     assert mapping["projection_to_source"]["mapped_native_constraint_count"] > 0
+
+
+def test_v7_projected_cost_polish_lifts_exact_pwl_and_maps_prices(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v7.json")
+    case, table = triangle_case()
+    network = build_network(case)
+    catalog = build_contingency_catalog(case, network, table)
+    masks = RegionMasks(np.asarray([False]), np.asarray([True]))
+    master = _prepare_region_master(
+        case=case,
+        network=network,
+        config=config,
+        masks=masks,
+        initial_pairs=(),
+    )
+    feasibility_projection = build_fixed_commitment_projection(master, np.asarray([1]))
+    source_seed = feasibility_projection.lift(np.asarray([62.0]))
+    expected_cost_projection = build_fixed_commitment_projection(
+        master,
+        np.asarray([1]),
+        include_cost_epigraph=True,
+    )
+    expected_cost_values = expected_cost_projection.project_source_values(source_seed)
+
+    def fake_solve(model, **kwargs):
+        column_scale, _ = native_scaling_vectors(
+            model,
+            mode=str(kwargs["native_scaling_mode"]),
+            base_mva=case.base_mva,
+        )
+        assert "solver_method" not in kwargs
+        assert kwargs["initial_native_primal"] is not None
+        values = expected_cost_values.copy()
+        objective = float(np.asarray(model.objective) @ values)
+        return ContinuousSolveResult(
+            status="Optimal",
+            optimal=True,
+            primal_objective=objective,
+            dual_objective=objective,
+            values=values,
+            native_primal=values / column_scale,
+            native_row_dual=np.zeros(len(_native_constraint_layout(model))),
+            solve_time_seconds=0.001,
+            statistics={
+                "error_status": "Success",
+                "solved_by": "PDLP",
+                "solved_by_pdlp": True,
+                "native_integer_columns": 0,
+                "dual_certificate": {"passed": True, "primal_feasible": True},
+            },
+        )
+
+    monkeypatch.setattr(experiment_module, "solve_cuopt_continuous_pdlp", fake_solve)
+    result = _solve_fixed_commitment_cost_projection(
+        region_id="v7_cost_fixture",
+        commitment=np.asarray([1], dtype=np.int8),
+        case=case,
+        network=network,
+        config=config,
+        deadline=Deadline(10.0, 0.0, 0.0),
+        prepared_master=master,
+        initial_source_values=source_seed,
+        initial_pairs=(),
+        screener=ContingencyScreener(network, catalog, backend="numpy"),
+        checkpoint=lambda: None,
+        progress=None,
+        policy=PrimalCandidatePolicy.from_config(config),
+    )
+
+    assert result.final_screen["maximum_violation_pu"] == 0.0
+    assert result.projected_solve.status == "Optimal"
+    assert result.rounds[0]["projection"]["cost_epigraph_enabled"] is True
+    assert result.rounds[0]["projection"]["projected_column_count"] == 2
+    assert result.rounds[0]["projection"]["cost_epigraph_column_count"] == 1
+    assert result.source_values[master.index.dispatch_by_generator[0]] == pytest.approx(62.0)
+    assert result.canonical_row_dual.shape == (master.canonical.num_rows,)
+    assert result.pricing_certified is True

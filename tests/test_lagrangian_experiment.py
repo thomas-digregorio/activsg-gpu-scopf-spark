@@ -14,6 +14,7 @@ from activsg_scopf.lagrangian_experiment import (
     ACTIVSG2000_V4_EXPERIMENT_ID,
     ACTIVSG2000_V5_EXPERIMENT_ID,
     ACTIVSG2000_V6_EXPERIMENT_ID,
+    ACTIVSG2000_V7_EXPERIMENT_ID,
     EXPERIMENT_ID,
     EXPERIMENT_TAG,
     PrimalCandidatePolicy,
@@ -264,6 +265,45 @@ def test_registered_activsg2000_v6_numerical_runtime_fix_is_fail_closed() -> Non
     v6.raw["runtime"]["maximum_failed_split_attempts"] = 63
     with pytest.raises(ScopfError, match="runtime policy changed"):
         validate_lagrangian_experiment_config(v6)
+
+
+def test_registered_activsg2000_v7_numerical_robustness_is_fail_closed() -> None:
+    v6 = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v6.json")
+    v7 = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v7.json")
+    registration = validate_lagrangian_experiment_config(v7)
+
+    assert v7.benchmark_id == ACTIVSG2000_V7_EXPERIMENT_ID
+    assert registration["benchmark"]["required_git_tag"] == (
+        "experiment-2000-gpu-lagrangian-v7"
+    )
+    assert v7.raw["raw_inputs"] == v6.raw["raw_inputs"]
+    assert v7.model == v6.model
+    assert v7.runtime == v6.runtime
+    v7_profile = dict(v7.raw["platforms"]["dgx_spark"])
+    assert v7_profile == v6.raw["platforms"]["dgx_spark"]
+    fix = registration["benchmark"]["numerical_robustness_fix"]
+    assert fix["same_shape_pdlp_continuation"] == (
+        "optimal_complete_state_else_raw_primal_dual_v3"
+    )
+    assert fix["cost_polish_initial_dual_policy"] == (
+        "verified_phase_one_primal_only_because_phase_one_dual_has_different_objective"
+    )
+    assert fix["cost_polish_formulation"] == (
+        "exact_fixed_commitment_convex_pwl_epigraph_without_fixed_u_or_segment_columns_v1"
+    )
+    assert fix["cost_polish_solver"] == (
+        "single_cuopt_gpu_pdlp_slice_then_cupy_balance_and_feasible_segment_v2"
+    )
+    assert fix["barrier_policy"] == (
+        "disabled_after_first_newton_step_nan_factorization_diagnostic"
+    )
+    assert fix["pricing_policy"] == (
+        "fail_closed_if_repair_breaks_primal_dual_complementarity"
+    )
+    assert fix["repair_residual_budget_fraction"] == 0.5
+    v7.raw["benchmark"]["numerical_robustness_fix"]["failed_v6_run_preserved"] = False
+    with pytest.raises(ScopfError, match="numerical-robustness identity changed"):
+        validate_lagrangian_experiment_config(v7)
 
 
 def test_phase_one_native_dual_maps_lower_upper_and_equality_rows() -> None:

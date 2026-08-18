@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import numpy as np
 import pytest
 from scipy import sparse
@@ -7,11 +9,34 @@ from scipy import sparse
 from activsg_scopf.errors import ScopfError
 from activsg_scopf.network import NetworkData
 from activsg_scopf.solvers.cuopt_lp import (
+    audit_pdlp_warm_start_data,
     derive_rate_a_angle_bounds,
     prepare_pdlp_warm_start,
     solve_cuopt_continuous_pdlp,
     validate_numeric_lp_certificate,
 )
+
+
+def _complete_pdlp_state(columns: int, rows: int) -> SimpleNamespace:
+    return SimpleNamespace(
+        current_ATY=np.zeros(columns),
+        current_dual_solution=np.zeros(rows),
+        current_primal_solution=np.zeros(columns),
+        initial_dual_average=np.zeros(rows),
+        initial_primal_average=np.zeros(columns),
+        initial_primal_weight=1.0,
+        initial_step_size=1.0,
+        iterations_since_last_restart=0,
+        last_candidate_kkt_score=0.0,
+        last_restart_duality_gap_dual_solution=np.zeros(rows),
+        last_restart_duality_gap_primal_solution=np.zeros(columns),
+        last_restart_kkt_score=0.0,
+        sum_dual_solutions=np.zeros(rows),
+        sum_primal_solutions=np.zeros(columns),
+        sum_solution_weight=1.0,
+        total_pdhg_iterations=1,
+        total_pdlp_iterations=1,
+    )
 
 
 def test_concurrent_cuopt_context_requires_console_logging() -> None:
@@ -218,6 +243,50 @@ def test_pdlp_warm_start_rejects_presolve_and_oversized_dual() -> None:
             num_constraints=1,
             presolve=0,
         )
+
+
+def test_pdlp_full_state_audit_accepts_only_complete_finite_payload() -> None:
+    state = _complete_pdlp_state(columns=3, rows=2)
+
+    audit = audit_pdlp_warm_start_data(
+        state,
+        num_columns=3,
+        num_constraints=2,
+    )
+
+    assert audit["passed"] is True
+    assert audit["reason"] == "complete"
+
+
+def test_pdlp_full_state_audit_rejects_time_limit_none_field_for_raw_fallback() -> None:
+    state = _complete_pdlp_state(columns=3, rows=2)
+    state.last_restart_duality_gap_dual_solution = None
+
+    audit = audit_pdlp_warm_start_data(
+        state,
+        num_columns=3,
+        num_constraints=2,
+    )
+
+    assert audit["passed"] is False
+    assert audit["reason"] == "incomplete_or_invalid_payload"
+    assert audit["none_fields"] == ["last_restart_duality_gap_dual_solution"]
+
+
+def test_pdlp_full_state_audit_rejects_wrong_shape_and_nonfinite_field() -> None:
+    state = _complete_pdlp_state(columns=3, rows=2)
+    state.current_primal_solution = np.zeros(2)
+    state.initial_step_size = np.inf
+
+    audit = audit_pdlp_warm_start_data(
+        state,
+        num_columns=3,
+        num_constraints=2,
+    )
+
+    assert audit["passed"] is False
+    assert audit["wrong_shape_fields"] == ["current_primal_solution"]
+    assert audit["nonfinite_fields"] == ["initial_step_size"]
 
 
 def test_rate_a_angle_bounds_follow_shortest_reference_paths() -> None:

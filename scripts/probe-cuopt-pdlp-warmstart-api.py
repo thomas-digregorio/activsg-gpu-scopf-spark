@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 
+import numpy as np
 from cuopt import linear_programming
 from cuopt.linear_programming.problem import CONTINUOUS, MINIMIZE, Problem
 from cuopt.linear_programming.solver_settings import (
@@ -21,6 +22,25 @@ def build_problem(rhs: float) -> Problem:
     problem.addConstraint(x + y >= rhs, name="balance")
     problem.setObjective(x + 2.0 * y, sense=MINIMIZE)
     return problem
+
+
+def warmstart_payload_summary(warm: object) -> dict[str, object]:
+    """Describe every public PDLP state field without assuming it is populated."""
+
+    summary: dict[str, object] = {}
+    for name in sorted(item for item in dir(warm) if not item.startswith("_")):
+        value = getattr(warm, name)
+        if value is None:
+            summary[name] = {"is_none": True}
+            continue
+        array = np.asarray(value)
+        summary[name] = {
+            "is_none": False,
+            "shape": list(array.shape),
+            "finite": bool(np.all(np.isfinite(array))),
+            "type": type(value).__name__,
+        }
+    return summary
 
 
 def solve_with_warmstart(warm: object, rhs: float) -> dict[str, object]:
@@ -71,6 +91,7 @@ def main() -> None:
                 "warmstart_attributes": sorted(
                     name for name in dir(warm) if not name.startswith("_")
                 ),
+                "warmstart_payload": warmstart_payload_summary(warm),
                 "primal_count": len(warm.current_primal_solution),
                 "dual_count": len(warm.current_dual_solution),
                 "solver_modes": {
