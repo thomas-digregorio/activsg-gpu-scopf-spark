@@ -14,8 +14,11 @@ from activsg_scopf.lagrangian_experiment import (
     PrimalCandidatePolicy,
     RegionAttemptRejected,
     _load_cpu_comparison,
+    _prepare_region_master,
+    _region_pmin_pmax_capacity_gate,
     _relative_gap,
     _replay_cleanup_audit_comparison,
+    _run_phase_one_attempt,
     _solve_region,
     validate_lagrangian_experiment_config,
 )
@@ -26,6 +29,7 @@ from activsg_scopf.screening import (
     ScreenResult,
     SecurityPair,
 )
+from activsg_scopf.solvers.cuopt import native_scaling_vectors
 from activsg_scopf.solvers.cuopt_lp import ContinuousSolveResult
 
 from .helpers import triangle_case
@@ -123,6 +127,197 @@ def test_registered_v5_replay_bugfix_config_is_fail_closed() -> None:
     v5.raw["benchmark"]["bugfix_change"]["gap_bookkeeping"] = "changed"
     with pytest.raises(ScopfError, match="v5 bugfix identity changed"):
         validate_lagrangian_experiment_config(v5)
+
+
+def test_registered_v6_phase_one_first_config_is_fail_closed() -> None:
+    v5 = load_config(ROOT / "configs" / "activsg500-gpu-lagrangian-v5.json")
+    v6 = load_config(ROOT / "configs" / "activsg500-gpu-lagrangian-v6.json")
+    registration = validate_lagrangian_experiment_config(v6)
+
+    assert v6.benchmark_id == "activsg500-gpu-lagrangian-v6"
+    assert registration["benchmark"]["required_git_tag"] == (
+        "experiment-500-gpu-lagrangian-v6"
+    )
+    assert v6.raw["raw_inputs"] == v5.raw["raw_inputs"]
+    assert v6.model == v5.model
+    assert v6.raw["platforms"] == v5.raw["platforms"]
+    v6_runtime_without_precheck = dict(v6.runtime)
+    assert v6_runtime_without_precheck.pop("precheck_phase_one_time_limit_seconds") == 2.0
+    assert v6_runtime_without_precheck == v5.runtime
+    assert registration["benchmark"]["controller_change"]["prune_authority"] == (
+        "positive_independently_replayable_phase_one_dual_only"
+    )
+    v6.raw["runtime"]["precheck_phase_one_time_limit_seconds"] = 3.0
+    with pytest.raises(ScopfError, match="short Phase-I budget changed"):
+        validate_lagrangian_experiment_config(v6)
+
+
+def test_v6_exact_pmin_pmax_capacity_gate_precedes_phase_one() -> None:
+    config = load_config(ROOT / "configs" / "activsg500-gpu-lagrangian-v6.json")
+    case, _ = triangle_case()
+    network = build_network(case)
+    root_masks = RegionMasks.root(1)
+    root = _prepare_region_master(
+        case=case,
+        network=network,
+        config=config,
+        masks=root_masks,
+        initial_pairs=(),
+    )
+    root_gate = _region_pmin_pmax_capacity_gate(
+        case=case,
+        master=root,
+        masks=root_masks,
+        tolerance_pu=1e-6,
+    )
+    assert root_gate["passes"] is True
+    assert root_gate["demand_mw"] == pytest.approx(62.0)
+    assert root_gate["minimum_dispatch_mw"] == pytest.approx(0.0)
+    assert root_gate["maximum_dispatch_mw"] == pytest.approx(100.0)
+
+    off_masks = RegionMasks(np.asarray([True]), np.asarray([False]))
+    off = _prepare_region_master(
+        case=case,
+        network=network,
+        config=config,
+        masks=off_masks,
+        initial_pairs=(),
+    )
+    off_gate = _region_pmin_pmax_capacity_gate(
+        case=case,
+        master=off,
+        masks=off_masks,
+        tolerance_pu=1e-6,
+    )
+    assert off_gate["passes"] is False
+    assert off_gate["capacity_shortfall_mw"] == pytest.approx(62.0)
+    assert off_gate["exact_source_pmin_changed"] is False
+
+
+def test_v6_zero_phase_one_primal_warm_starts_cost_lp_without_dual(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = load_config(ROOT / "configs" / "activsg500-gpu-lagrangian-v6.json")
+    case, table = triangle_case()
+    network = build_network(case)
+    catalog = build_contingency_catalog(case, network, table)
+    masks = RegionMasks.root(1)
+    master = _prepare_region_master(
+        case=case,
+        network=network,
+        config=config,
+        masks=masks,
+        initial_pairs=(),
+    )
+    source_values = np.zeros(master.canonical.num_columns)
+    source_values[master.index.commitment_by_generator[0]] = 1.0
+    source_values[master.index.dispatch_by_generator[0]] = 62.0
+    remaining = 37.0
+    for column, width in zip(
+        master.index.segments_by_generator[0],
+        master.costs[0].segment_widths_mw,
+        strict=True,
+    ):
+        if column is not None:
+            source_values[column] = min(remaining, width)
+            remaining -= source_values[column]
+
+    solve_calls: list[dict[str, object]] = []
+
+    def fake_solve(model, **kwargs):
+        solve_calls.append(kwargs)
+        is_phase_one = model.variable_names[-1] == "phase1_violation_pu"
+        values = (
+            np.concatenate((source_values, np.asarray([0.0])))
+            if is_phase_one
+            else source_values.copy()
+        )
+        column_scale, _ = native_scaling_vectors(
+            model,
+            mode="power_system_per_unit_v1",
+            base_mva=case.base_mva,
+        )
+        return ContinuousSolveResult(
+            status="Optimal",
+            optimal=True,
+            primal_objective=float(np.asarray(model.objective) @ values),
+            dual_objective=0.0,
+            values=values,
+            native_primal=values / column_scale,
+            native_row_dual=np.zeros(model.num_rows),
+            solve_time_seconds=0.001,
+            statistics={
+                "error_status": "Success",
+                "solved_by": "PDLP",
+                "solved_by_pdlp": True,
+                "native_integer_columns": 0,
+                "dual_certificate": {"passed": True, "primal_feasible": True},
+            },
+        )
+
+    monkeypatch.setattr(experiment_module, "solve_cuopt_continuous_pdlp", fake_solve)
+    rejected = RegionAttemptRejected(
+        "registered precheck",
+        reason="phase_one_first_precheck",
+        master=master,
+        security_pairs=(),
+        rounds=[],
+    )
+    phase = _run_phase_one_attempt(
+        region_id="r0",
+        masks=masks,
+        rejected=rejected,
+        case=case,
+        config=config,
+        deadline=Deadline(10.0, 0.0, 0.0),
+        attempt_kind="pre_cost_lp",
+        time_limit_seconds=2.0,
+    )
+    assert phase.record["prune_certified"] is False
+    assert phase.record["source_feasible_warm_start"]["eligible"] is True
+    assert phase.record["source_feasible_warm_start"]["dual_transferred"] is False
+    assert phase.source_native_primal is not None
+
+    monkeypatch.setattr(
+        experiment_module,
+        "canonical_row_duals",
+        lambda _master, native_row_dual, **_kwargs: np.asarray(native_row_dual),
+    )
+    monkeypatch.setattr(
+        experiment_module,
+        "optimize_lagrangian_bound_cupy",
+        lambda _master, row_dual, _region, **_kwargs: (
+            np.asarray(row_dual),
+            {
+                "backend": "fixture",
+                "best_raw_lower_bound": 0.0,
+                "best_minimizing_commitment": np.asarray([0], dtype=np.int8),
+            },
+        ),
+    )
+    solved = _solve_region(
+        region_id="r0",
+        masks=masks,
+        case=case,
+        network=network,
+        catalog=catalog,
+        config=config,
+        deadline=Deadline(10.0, 0.0, 0.0),
+        initial_pairs=(),
+        screener=ContingencyScreener(network, catalog, backend="numpy"),
+        checkpoint=lambda: None,
+        prepared_master=master,
+        initial_native_primal=phase.source_native_primal,
+        initial_warm_start_origin="phase_one_zero_violation_primal_v1",
+    )
+    assert len(solve_calls) == 2
+    assert np.array_equal(
+        solve_calls[1]["initial_native_primal"], phase.source_native_primal
+    )
+    assert solve_calls[1]["initial_native_row_dual"] is None
+    assert solved.rounds[0]["initial_warm_start_origin"] == (
+        "phase_one_zero_violation_primal_v1"
+    )
 
 
 def test_lagrangian_config_rejects_non_500_identity() -> None:

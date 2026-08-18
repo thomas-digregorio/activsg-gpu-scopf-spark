@@ -86,6 +86,18 @@ activsg-scopf benchmark --config configs\activsg10k-v3.json --platform laptop_cp
 activsg-scopf gpu-lagrangian-experiment --config configs\activsg500-gpu-lagrangian-v5.json --output results\experiments\activsg500-gpu-lagrangian-v5-dgx-spark.json
 ```
 
+The authorized v6 speed experiment moves the replayable GPU Phase-I solve in
+front of each ordinary disjunctive child cost LP. A positive certified
+Phase-I bound prunes immediately; a zero or uncertain result proceeds to the
+cost LP and can supply a primal-only warm start. See the
+[v6 controller contract](docs/gpu-lagrangian-500-v6.md). Its one-shot commands
+are:
+
+```bash
+bash scripts/spark-build-500-gpu-lagrangian-v6.sh
+bash scripts/spark-run-500-gpu-lagrangian-v6.sh
+```
+
 `solve` is a bounded nonofficial end-to-end run. `benchmark` is the registered
 one-shot run. Do not invoke `benchmark` casually: before starting work it writes
 an ignored, durable registry entry, and it refuses an automatic retry or

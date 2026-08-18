@@ -1,0 +1,102 @@
+{
+  "$schema": "../schemas/config.schema.json",
+  "schema_version": "1.0.0",
+  "case_name": "ACTIVSg500",
+  "raw_inputs": {
+    "case_file": "data/raw/matpower-8.1/case_ACTIVSg500.m",
+    "case_sha256": "8ca6d54ea5179eeb03fe29d7b645618e7a86338c172247e81687476660f6dcbe",
+    "contingency_file": "data/raw/matpower-8.1/contab_ACTIVSg500.m",
+    "contingency_sha256": "f6b2e7e38fd1cf5e09e877cf04233b4d0487d6d0e99903070d519eade12b76a9"
+  },
+  "model": {
+    "interval_hours": 1.0,
+    "pwl_segments": 10,
+    "mip_relative_gap_tolerance": 0.001,
+    "model_residual_tolerance_pu": 0.000001,
+    "security_violation_tolerance_pu": 0.00001,
+    "lodf_validation_tolerance_pu": 1e-9,
+    "lodf_validation_columns": 3,
+    "lodf_build_chunk_columns": 256,
+    "screen_chunk_columns": 256,
+    "reduced_coefficient_zero_tolerance": 1e-14,
+    "serialized_lodf_replay_tolerance": 1e-12,
+    "security_equivalence_replay_tolerance": 1e-12,
+    "phase_one_replay_tolerance_pu": 1e-10
+  },
+  "runtime": {
+    "deadline_seconds": 600.0,
+    "verification_reserve_seconds": 45.0,
+    "serialization_reserve_seconds": 10.0,
+    "maximum_constraint_generation_rounds": 20,
+    "maximum_pdlp_round_seconds": 120.0,
+    "maximum_frontier_regions": 16,
+    "maximum_primal_repairs": 8,
+    "maximum_primal_candidate_seconds": 15.0,
+    "maximum_primal_candidate_round_seconds": 5.0,
+    "minimum_primal_candidate_round_seconds": 0.25,
+    "primal_candidate_stagnation_window_rounds": 2,
+    "primal_candidate_minimum_relative_residual_improvement": 0.01,
+    "primal_candidate_dual_divergence_multiple": 1000000.0,
+    "primal_candidate_cold_restart_attempts": 1,
+    "maximum_region_attempt_seconds": 15.0,
+    "maximum_region_attempt_round_seconds": 5.0,
+    "minimum_region_attempt_round_seconds": 0.25,
+    "region_attempt_stagnation_window_rounds": 2,
+    "region_attempt_minimum_relative_residual_improvement": 0.01,
+    "region_attempt_dual_divergence_multiple": 1000000.0,
+    "region_attempt_cold_restart_attempts": 1,
+    "maximum_failed_split_attempts": 8,
+    "precheck_phase_one_time_limit_seconds": 2.0,
+    "phase_one_time_limit_seconds": 15.0,
+    "phase_one_maximum_violation_pu": 1000000.0,
+    "phase_one_safety_margin_pu": 1e-8,
+    "phase_one_infeasibility_threshold_pu": 1e-6
+  },
+  "platforms": {
+    "dgx_spark": {
+      "solver": "cuopt",
+      "screening": "cupy",
+      "solver_threads": 0,
+      "native_scaling_mode": "power_system_per_unit_v1",
+      "lp_method": "pdlp",
+      "pdlp_precision": "fp64",
+      "pdlp_optimality_tolerance": 1e-8,
+      "dual_certificate_residual_tolerance": 1e-7,
+      "per_constraint_residual": true,
+      "presolve": 0,
+      "lagrangian_gpu_iterations": 512,
+      "lagrangian_polyak_fraction": 0.5,
+      "console_logging": true,
+      "integer_solver": "none",
+      "branch_and_bound": false,
+      "custom_cuda_kernels": "allowed_but_not_required",
+      "container_image": "nvidia/cuopt@sha256:0faac7182b32f5be747e30f081427e80e8dfeccd8f49613814d3d217167fe1ad",
+      "cuopt_version": "26.06.00"
+    }
+  },
+  "benchmark": {
+    "id": "activsg500-gpu-lagrangian-v6",
+    "required_git_tag": "experiment-500-gpu-lagrangian-v6",
+    "official": false,
+    "kind": "gpu_lagrangian_disjunctive_experiment",
+    "experiment_suite_id": "activsg500-gpu-lagrangian-v6",
+    "certificate_safety_margin_dollars": 0.01,
+    "gpu_cpu_replay_tolerance_dollars": 0.000001,
+    "controller_change": {
+      "comparison_baseline": "activsg500-gpu-lagrangian-v5",
+      "child_order": "exact_pmin_pmax_capacity_gate_then_short_gpu_phase_one_then_cost_lp",
+      "capacity_gate": "aggregate_exact_source_pmin_pmax_interval_telemetry_only",
+      "phase_one_precheck_budget": "2_seconds_per_child_within_600_second_global_deadline",
+      "prune_authority": "positive_independently_replayable_phase_one_dual_only",
+      "feasible_child_handoff": "phase_one_source_native_primal_to_cost_lp_without_row_dual",
+      "uncertain_child_fallback": "ordinary_cost_lp_then_full_phase_one_if_cost_attempt_rejects"
+    },
+    "cpu_comparison": {
+      "result_file": "reports/activsg500-gap-sensitivity-v1/comparison.json",
+      "canonical_json_sha256": "6932e15a876c936c6263e81edcc38d09f7bb95b69725c844df8bc0446a4119a5",
+      "raw_result_sha256": "d1eb3e0dc5815d55fb261b73ec42d6831e9022002c8d709e97c3f8a63091e9c0",
+      "source_tag": "experiment-500-gap-v1",
+      "source_commit": "6fcc0de1eb3194d7b8d1c821c03a2a0f99362e9f"
+    }
+  }
+}
