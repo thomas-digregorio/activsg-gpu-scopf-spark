@@ -16,11 +16,13 @@ from activsg_scopf.lagrangian import (
     optimize_lagrangian_bound_cupy,
 )
 from activsg_scopf.lagrangian_experiment import (
+    PrimalCandidatePolicy,
     RegionAttemptRejected,
     _load_cpu_comparison,
     _prepare_region_master,
     _region_pmin_pmax_capacity_gate,
     _run_phase_one_attempt,
+    _solve_fixed_commitment_feasibility,
     _solve_region,
     _validate_prepared_region_master,
     validate_lagrangian_experiment_config,
@@ -86,11 +88,13 @@ def main() -> None:
     cleanup = real_master.coefficient_cleanup_audit
     if real_minimum_nonzero < 1e-8:
         raise RuntimeError(
-            f"ACTIVSg500 cleaned native coefficient is still too small: "
+            f"{config.case_name} cleaned native coefficient is still too small: "
             f"{real_minimum_nonzero}"
         )
     if not cleanup["solver_rows_are_relaxations_of_original_rows"]:
-        raise RuntimeError("ACTIVSg500 coefficient cleanup lost its relaxation proof")
+        raise RuntimeError(
+            f"{config.case_name} coefficient cleanup lost its relaxation proof"
+        )
     case, table = triangle_case()
     network = build_network(case)
     master = build_reduced_master(case, network)
@@ -273,6 +277,25 @@ def main() -> None:
         "phase_one_zero_violation_primal_v1"
     ):
         raise RuntimeError("Tiny cost LP did not record its Phase-I primal warm start")
+    projected_feasibility = _solve_fixed_commitment_feasibility(
+        region_id="tiny_fixed_projection",
+        commitment=np.asarray([1], dtype=np.int8),
+        case=case,
+        network=network,
+        catalog=tiny_catalog,
+        config=config,
+        deadline=Deadline(30.0, 0.0, 0.0),
+        initial_pairs=(),
+        screener=ContingencyScreener(network, tiny_catalog, backend="cupy"),
+        checkpoint=lambda: None,
+        progress=None,
+        policy=PrimalCandidatePolicy.from_config(config),
+    )
+    if projected_feasibility.final_screen["maximum_violation_pu"] != 0.0:
+        raise RuntimeError("Tiny projected fixed-commitment dispatch was not secure")
+    projection_audit = projected_feasibility.rounds[0]["projection"]
+    if projection_audit["projected_column_count"] != 1:
+        raise RuntimeError("Tiny fixed-commitment projection did not remove local columns")
     print(
         {
             "status": resolved.status,
@@ -302,6 +325,16 @@ def main() -> None:
             "phase_one_first_cost_lp_warm_started": True,
             "phase_one_first_cost_lp_final_security_violation_pu": (
                 phase_first_cost.final_screen["maximum_violation_pu"]
+            ),
+            "fixed_commitment_projection_policy": projection_audit["policy"],
+            "fixed_commitment_projected_columns": projection_audit[
+                "projected_column_count"
+            ],
+            "fixed_commitment_source_columns": projection_audit[
+                "source_column_count"
+            ],
+            "fixed_commitment_projected_final_security_violation_pu": (
+                projected_feasibility.final_screen["maximum_violation_pu"]
             ),
         }
     )
