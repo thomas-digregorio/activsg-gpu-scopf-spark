@@ -81,7 +81,12 @@ from .reduced import (
 )
 from .screening import ContingencyScreener, SecurityPair, add_security_pairs
 from .solution import serialize_solution
-from .solvers.cuopt import native_scaling_vectors, solve_cuopt
+from .solvers.cuopt import (
+    FULL_MIP_START,
+    native_scaling_vectors,
+    solve_cuopt,
+    validate_full_mip_start_feasibility,
+)
 from .solvers.cuopt_lp import (
     ContinuousSolveResult,
     derive_rate_a_angle_bounds,
@@ -307,7 +312,10 @@ ACTIVSG2000_V6_NUMERICAL_AND_RUNTIME_FIX = {
     "same_shape_pdlp_continuation": "full_native_stable2_solver_state_v1",
     "changed_shape_pdlp_continuation": "raw_primal_plus_identity_safe_dual_v1",
     "best_primal_retention": True,
-    "primal_generator": "cuopt_gpu_heuristics_only_on_sparse_full_root_master_v2",
+    "primal_generator": (
+        "reduced_gpu_heuristics_then_sparse_full_gpu_heuristics_"
+        "with_complete_gpu_feasible_start_v3"
+    ),
     "primal_native_conditioning": "rate_a_redundant_finite_angle_bounds_v1",
     "primal_dual_bound_imported": False,
     "child_bound_engine": (
@@ -372,6 +380,7 @@ ACTIVSG2000_V6_RUNTIME = {
     "maximum_frontier_regions": 128,
     "maximum_failed_split_attempts": 64,
     "gpu_primal_heuristics_seconds": 300.0,
+    "gpu_primal_seed_seconds": 75.0,
     "phase_lagrangian_gpu_iterations": 2048,
 }
 
@@ -3779,13 +3788,151 @@ def run_gpu_lagrangian_experiment(
         target_gap = float(config.model["mip_relative_gap_tolerance"])
         gpu_heuristic_candidate: tuple[np.ndarray, str, dict[str, Any]] | None = None
         if config.benchmark_id == ACTIVSG2000_V6_EXPERIMENT_ID:
-            payload["active_stage"] = "gpu_heuristics_primal_model_build"
-            heuristic_build_started = time.perf_counter()
-            heuristic_master = build_master(
-                case,
-                network,
-                segments=int(config.model["pwl_segments"]),
+            heuristic_pipeline_started = time.perf_counter()
+            payload["gpu_primal_heuristics"] = {
+                "status": "running",
+                "policy": (
+                    "reduced_gpu_seed_then_sparse_full_gpu_improvement_with_"
+                    "complete_feasible_start_v1"
+                ),
+                "mip_heuristics_only": True,
+                "dual_bound_used": False,
+                "branch_and_bound_requested": False,
+                "partial_mip_start_policy": (
+                    "unextended_commitments_are_never_submitted_to_cuopt_26_6"
+                ),
+                "stages": {},
+            }
+            payload["integer_solver_used"] = True
+            save()
+
+            def heuristic_stage_record(
+                result: Any,
+                *,
+                adapter_wall_time_seconds: float,
+                formulation: str,
+            ) -> dict[str, Any]:
+                return {
+                    "formulation": formulation,
+                    "status": result.status,
+                    "has_incumbent": result.has_incumbent,
+                    "objective": result.objective,
+                    "native_solve_time_seconds": result.solve_time_seconds,
+                    "adapter_wall_time_seconds": adapter_wall_time_seconds,
+                    "native_residuals": {
+                        name: result.statistics.get(name)
+                        for name in (
+                            "max_constraint_violation",
+                            "max_int_violation",
+                            "max_variable_bound_violation",
+                        )
+                    },
+                    "native_log_audit": result.statistics.get("native_log_audit"),
+                    "incumbent_commitment_trace": result.statistics.get(
+                        "incumbent_commitment_trace"
+                    ),
+                    "trace_bound_fields_are_diagnostic_only": True,
+                    "reported_solver_bound_used": False,
+                    "reported_solver_gap_used": False,
+                }
+
+            payload["active_stage"] = "gpu_heuristics_reduced_seed"
+            deadline.require("cuOpt reduced GPU heuristics seed")
+            seed_budget = min(
+                deadline.solver_budget(),
+                float(config.runtime["gpu_primal_seed_seconds"]),
             )
+            seed_started = time.perf_counter()
+            seed_result = solve_cuopt(
+                root.master.canonical,
+                time_limit_seconds=seed_budget,
+                mip_relative_gap=target_gap,
+                threads=int(config.raw["platforms"]["dgx_spark"]["solver_threads"]),
+                native_scaling_mode=str(
+                    config.raw["platforms"]["dgx_spark"]["native_scaling_mode"]
+                ),
+                native_base_mva=float(case.base_mva),
+                log_to_console=True,
+                track_incumbent_commitments=True,
+                mip_certificate_residual_tolerance=float(
+                    config.model["model_residual_tolerance_pu"]
+                ),
+                mip_heuristics_only=True,
+            )
+            seed_wall = time.perf_counter() - seed_started
+            seed_record = heuristic_stage_record(
+                seed_result,
+                adapter_wall_time_seconds=seed_wall,
+                formulation="reduced_affine_network_dc_scopf_v1",
+            )
+            seed_record["model"] = {
+                "columns": root.master.canonical.num_columns,
+                "rows": root.master.canonical.num_rows,
+                "nonzeros": int(root.master.canonical.matrix_csr().nnz),
+                "security_pair_count": len(root.security_pairs),
+                "coefficient_cleanup": dict(
+                    root.master.coefficient_cleanup_audit
+                )
+            }
+            payload["gpu_primal_heuristics"]["stages"]["reduced_seed"] = (
+                seed_record
+            )
+            seed_values = (
+                None
+                if seed_result.values is None
+                else np.asarray(seed_result.values, dtype=np.float64)
+            )
+            seed_commitment: np.ndarray | None = None
+            seed_start_values: np.ndarray | None = None
+            if seed_values is not None:
+                seed_residual_pu = (
+                    root.master.canonical.max_row_violation(seed_values)
+                    / float(case.base_mva)
+                )
+                seed_commitment_values = commitment_vector(root.master, seed_values)
+                rounded_seed_commitment = np.rint(seed_commitment_values)
+                seed_integrality_error = float(
+                    np.max(
+                        np.abs(seed_commitment_values - rounded_seed_commitment)
+                    )
+                )
+                seed_record.update(
+                    {
+                        "canonical_model_residual_pu": seed_residual_pu,
+                        "maximum_commitment_integrality_error": (
+                            seed_integrality_error
+                        ),
+                        "commitment_count": int(
+                            np.count_nonzero(rounded_seed_commitment)
+                        ),
+                    }
+                )
+                if (
+                    seed_integrality_error <= 1e-5
+                    and np.all(
+                        (rounded_seed_commitment >= 0.0)
+                        & (rounded_seed_commitment <= 1.0)
+                    )
+                ):
+                    seed_commitment = rounded_seed_commitment.astype(np.float64)
+            save()
+
+            payload["active_stage"] = "gpu_heuristics_sparse_full_model_build"
+            sparse_build_started = time.perf_counter()
+            if seed_values is not None and seed_commitment is not None:
+                heuristic_master, seed_start_values = reconstruct_full_values(
+                    case,
+                    network,
+                    root.master,
+                    seed_values,
+                    exact_commitment=seed_commitment,
+                )
+            else:
+                heuristic_master = build_master(
+                    case,
+                    network,
+                    segments=int(config.model["pwl_segments"]),
+                )
             if not np.array_equal(
                 heuristic_master.index.generator_source_rows,
                 source_rows,
@@ -3840,32 +3987,61 @@ def run_gpu_lagrangian_experiment(
                     "mathematical_feasible_set_changed": False,
                 },
                 "build_wall_time_seconds": time.perf_counter()
-                - heuristic_build_started,
+                - sparse_build_started,
             }
-            payload["gpu_primal_heuristics"] = {
-                "status": "running",
-                "model": heuristic_model_record,
-                "mip_heuristics_only": True,
-                "dual_bound_used": False,
-                "branch_and_bound_requested": False,
-                "mip_start_submitted": False,
-                "partial_mip_start_policy": (
-                    "unextended_commitments_are_never_submitted_to_cuopt_26_6"
-                ),
-            }
-            payload["integer_solver_used"] = True
-            save()
-            deadline.require("cuOpt GPU heuristics-only primal search")
-            heuristic_budget = min(
-                deadline.solver_budget(),
-                float(config.runtime["gpu_primal_heuristics_seconds"]),
+            start_audit: dict[str, Any] | None = None
+            if seed_start_values is not None:
+                column_scale, row_scale = native_scaling_vectors(
+                    heuristic_master.canonical,
+                    mode=str(
+                        config.raw["platforms"]["dgx_spark"][
+                            "native_scaling_mode"
+                        ]
+                    ),
+                    base_mva=float(case.base_mva),
+                )
+                try:
+                    start_audit = validate_full_mip_start_feasibility(
+                        heuristic_master.canonical,
+                        seed_start_values,
+                        column_scale=column_scale,
+                        row_scale=row_scale,
+                        tolerance=float(
+                            config.model["model_residual_tolerance_pu"]
+                        ),
+                    )
+                except ScopfError as exc:
+                    heuristic_model_record["complete_start_rejection"] = {
+                        "error_type": type(exc).__name__,
+                        "error": str(exc),
+                        "native_solver_called": False,
+                    }
+                    seed_start_values = None
+            heuristic_model_record["complete_start_precheck"] = start_audit
+            payload["gpu_primal_heuristics"]["sparse_full_model"] = (
+                heuristic_model_record
             )
-            heuristic_started = time.perf_counter()
-            heuristic_result = solve_cuopt(
+            save()
+
+            total_heuristic_budget = float(
+                config.runtime["gpu_primal_heuristics_seconds"]
+            )
+            heuristic_remaining = total_heuristic_budget - (
+                time.perf_counter() - heuristic_pipeline_started
+            )
+            deadline.require("cuOpt sparse full GPU heuristics improvement")
+            if heuristic_remaining <= 1.0:
+                raise ScopfError("GPU primal seed exhausted the full heuristic budget")
+            full_budget = min(deadline.solver_budget(), heuristic_remaining)
+            payload["active_stage"] = "gpu_heuristics_sparse_full_improvement"
+            full_started = time.perf_counter()
+            full_result = solve_cuopt(
                 heuristic_master.canonical,
-                time_limit_seconds=heuristic_budget,
+                time_limit_seconds=full_budget,
                 mip_relative_gap=target_gap,
                 threads=int(config.raw["platforms"]["dgx_spark"]["solver_threads"]),
+                mip_start_values=seed_start_values,
+                mip_start_mode=FULL_MIP_START,
                 native_scaling_mode=str(
                     config.raw["platforms"]["dgx_spark"]["native_scaling_mode"]
                 ),
@@ -3877,44 +4053,36 @@ def run_gpu_lagrangian_experiment(
                 ),
                 mip_heuristics_only=True,
             )
-            heuristic_wall = time.perf_counter() - heuristic_started
-            trace = heuristic_result.statistics.get("incumbent_commitment_trace")
-            heuristic_record = payload["gpu_primal_heuristics"]
-            heuristic_record.update(
-                {
-                    "status": heuristic_result.status,
-                    "has_incumbent": heuristic_result.has_incumbent,
-                    "objective": heuristic_result.objective,
-                    "native_solve_time_seconds": heuristic_result.solve_time_seconds,
-                    "adapter_wall_time_seconds": heuristic_wall,
-                    "native_residuals": {
-                        name: heuristic_result.statistics.get(name)
-                        for name in (
-                            "max_constraint_violation",
-                            "max_int_violation",
-                            "max_variable_bound_violation",
-                        )
-                    },
-                    "native_log_audit": heuristic_result.statistics.get(
-                        "native_log_audit"
-                    ),
-                    "incumbent_commitment_trace": trace,
-                    "trace_bound_fields_are_diagnostic_only": True,
-                    "reported_solver_bound_used": False,
-                    "reported_solver_gap_used": False,
-                }
+            full_wall = time.perf_counter() - full_started
+            full_record = heuristic_stage_record(
+                full_result,
+                adapter_wall_time_seconds=full_wall,
+                formulation="sparse_full_nodal_dc_scopf_v1",
             )
-            if heuristic_result.values is not None:
-                heuristic_values = np.asarray(
-                    heuristic_result.values, dtype=np.float64
-                )
-                canonical_residual_pu = (
-                    heuristic_master.canonical.max_row_violation(heuristic_values)
-                    / float(case.base_mva)
-                )
-                heuristic_commitment_values = np.asarray(
+            full_record["complete_gpu_feasible_start_submitted"] = (
+                seed_start_values is not None
+            )
+            full_record["mip_start_contract"] = full_result.statistics.get(
+                "mip_start_native_contract"
+            )
+            payload["gpu_primal_heuristics"]["stages"][
+                "sparse_full_improvement"
+            ] = full_record
+
+            candidate_values: np.ndarray | None = None
+            candidate_master: Any = None
+            candidate_formulation: str | None = None
+            candidate_objective: float | None = None
+            candidate_status: str | None = None
+            if full_result.values is not None:
+                candidate_values = np.asarray(full_result.values, dtype=np.float64)
+                candidate_master = heuristic_master
+                candidate_formulation = "sparse_full_nodal_dc_scopf_v1"
+                candidate_objective = full_result.objective
+                candidate_status = full_result.status
+                candidate_commitment_values = np.asarray(
                     [
-                        heuristic_values[
+                        candidate_values[
                             heuristic_master.index.commitment_by_generator[
                                 int(source_row)
                             ]
@@ -3923,30 +4091,56 @@ def run_gpu_lagrangian_experiment(
                     ],
                     dtype=np.float64,
                 )
-                rounded_commitment = np.rint(heuristic_commitment_values)
+                candidate_flow = candidate_values[
+                    heuristic_master.index.flow_by_active_branch
+                ]
+            elif seed_values is not None and seed_commitment is not None:
+                candidate_values = seed_values
+                candidate_master = root.master
+                candidate_formulation = "reduced_affine_network_dc_scopf_v1"
+                candidate_objective = seed_result.objective
+                candidate_status = seed_result.status
+                candidate_commitment_values = commitment_vector(
+                    root.master, seed_values
+                )
+                candidate_flow = root.master.operator.flows(
+                    reduced_dispatch(root.master, seed_values)
+                )
+            if candidate_values is not None:
+                rounded_commitment = np.rint(candidate_commitment_values)
                 maximum_integrality_error = float(
                     np.max(
-                        np.abs(heuristic_commitment_values - rounded_commitment)
+                        np.abs(candidate_commitment_values - rounded_commitment)
                     )
                 )
-                heuristic_record["canonical_model_residual_pu"] = (
-                    canonical_residual_pu
+                canonical_residual_pu = (
+                    candidate_master.canonical.max_row_violation(candidate_values)
+                    / float(case.base_mva)
                 )
-                heuristic_record["maximum_commitment_integrality_error"] = (
-                    maximum_integrality_error
-                )
-                heuristic_record["commitment_count"] = int(
-                    np.count_nonzero(rounded_commitment)
+                payload["gpu_primal_heuristics"].update(
+                    {
+                        "status": candidate_status,
+                        "candidate_formulation": candidate_formulation,
+                        "candidate_objective": candidate_objective,
+                        "canonical_model_residual_pu": canonical_residual_pu,
+                        "maximum_commitment_integrality_error": (
+                            maximum_integrality_error
+                        ),
+                        "commitment_count": int(
+                            np.count_nonzero(rounded_commitment)
+                        ),
+                    }
                 )
                 if (
                     maximum_integrality_error <= 1e-5
-                    and np.all((rounded_commitment >= 0.0) & (rounded_commitment <= 1.0))
+                    and np.all(
+                        (rounded_commitment >= 0.0)
+                        & (rounded_commitment <= 1.0)
+                    )
                 ):
                     heuristic_screen_started = time.perf_counter()
                     heuristic_screen = screener.screen(
-                        heuristic_values[
-                            heuristic_master.index.flow_by_active_branch
-                        ],
+                        candidate_flow,
                         tolerance_pu=float(
                             config.model["security_violation_tolerance_pu"]
                         ),
@@ -3956,7 +4150,9 @@ def run_gpu_lagrangian_experiment(
                         (pair.pair_id, pair)
                         for pair in heuristic_screen.violations
                     )
-                    heuristic_record["exhaustive_candidate_screen"] = {
+                    payload["gpu_primal_heuristics"][
+                        "exhaustive_candidate_screen"
+                    ] = {
                         "wall_time_seconds": time.perf_counter()
                         - heuristic_screen_started,
                         "evaluated_sides": heuristic_screen.evaluated_pairs,
@@ -3969,29 +4165,40 @@ def run_gpu_lagrangian_experiment(
                     }
                     gpu_heuristic_candidate = (
                         rounded_commitment.astype(np.float64),
-                        "root_cuopt_gpu_heuristics_only",
+                        "root_cuopt_gpu_heuristics_pipeline",
                         {
-                            "solver_status": heuristic_result.status,
-                            "heuristic_objective": heuristic_result.objective,
+                            "solver_status": candidate_status,
+                            "heuristic_objective": candidate_objective,
                             "commitment_count": int(
                                 np.count_nonzero(rounded_commitment)
                             ),
                             "canonical_model_residual_pu": canonical_residual_pu,
                             "dual_bound_used": False,
-                            "mip_start_submitted": False,
+                            "complete_gpu_feasible_mip_start_used": (
+                                seed_start_values is not None
+                            ),
                         },
                     )
-                    heuristic_record["candidate_enqueued"] = True
+                    payload["gpu_primal_heuristics"]["candidate_enqueued"] = True
                 else:
-                    heuristic_record["candidate_enqueued"] = False
-                    heuristic_record["candidate_rejection_reason"] = (
-                        "nonintegral_or_nonbinary_returned_commitment"
-                    )
+                    payload["gpu_primal_heuristics"]["candidate_enqueued"] = False
+                    payload["gpu_primal_heuristics"][
+                        "candidate_rejection_reason"
+                    ] = "nonintegral_or_nonbinary_returned_commitment"
             else:
-                heuristic_record["candidate_enqueued"] = False
-                heuristic_record["candidate_rejection_reason"] = "no_incumbent_vector"
+                payload["gpu_primal_heuristics"]["status"] = "no_incumbent"
+                payload["gpu_primal_heuristics"]["candidate_enqueued"] = False
+                payload["gpu_primal_heuristics"]["candidate_rejection_reason"] = (
+                    "both_gpu_heuristic_stages_returned_no_incumbent"
+                )
+            heuristic_pipeline_wall = (
+                time.perf_counter() - heuristic_pipeline_started
+            )
+            payload["gpu_primal_heuristics"]["total_wall_time_seconds"] = (
+                heuristic_pipeline_wall
+            )
             payload["timings_seconds"]["gpu_primal_heuristics_adapter_wall"] = (
-                heuristic_wall
+                seed_wall + full_wall
             )
             save()
 

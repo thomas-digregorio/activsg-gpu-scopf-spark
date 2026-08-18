@@ -58,6 +58,7 @@
     "root_canonical_residual_refinement_attempts": 1,
     "root_canonical_residual_refinement_optimality_tolerance": 1e-10,
     "gpu_primal_heuristics_seconds": 300.0,
+    "gpu_primal_seed_seconds": 75.0,
     "phase_lagrangian_gpu_iterations": 2048
   },
   "platforms": {
@@ -99,7 +100,7 @@
       "same_shape_pdlp_continuation": "full_native_stable2_solver_state_v1",
       "changed_shape_pdlp_continuation": "raw_primal_plus_identity_safe_dual_v1",
       "best_primal_retention": true,
-      "primal_generator": "cuopt_gpu_heuristics_only_on_sparse_full_root_master_v2",
+      "primal_generator": "reduced_gpu_heuristics_then_sparse_full_gpu_heuristics_with_complete_gpu_feasible_start_v3",
       "primal_native_conditioning": "rate_a_redundant_finite_angle_bounds_v1",
       "primal_dual_bound_imported": false,
       "child_bound_engine": "phase_one_feasible_point_plus_parent_inherited_gpu_lagrangian_dual_v1",
