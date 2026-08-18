@@ -57,7 +57,10 @@ class CommitmentFeasibilityCut:
     def as_dict(self, generator_source_rows: npt.ArrayLike) -> dict[str, Any]:
         rows = np.asarray(generator_source_rows, dtype=np.int64)
         self.validate(rows.size)
-        nonzero = np.flatnonzero(self.coefficients != 0.0)
+        canonical_coefficients = np.where(
+            self.coefficients == 0.0, 0.0, self.coefficients
+        ).astype(np.float64, copy=False)
+        nonzero = np.flatnonzero(canonical_coefficients != 0.0)
         return {
             "certificate_kind": "phase_one_binary_benders_feasibility_cut_v1",
             "cut_id": self.cut_id,
@@ -71,12 +74,12 @@ class CommitmentFeasibilityCut:
             "generator_coefficients": [
                 {
                     "source_row": int(rows[position]) + 1,
-                    "coefficient_pu": float(self.coefficients[position]),
+                    "coefficient_pu": float(canonical_coefficients[position]),
                 }
                 for position in nonzero
             ],
             "coefficient_sha256": hashlib.sha256(
-                self.coefficients.tobytes()
+                canonical_coefficients.tobytes()
             ).hexdigest(),
             "validity": (
                 "necessary_for_zero_violation_dispatch_with_exact_conditional_"
@@ -242,6 +245,86 @@ def commitment_cardinality_cut_from_record(
     return cut
 
 
+def commitment_feasibility_cut_from_record(
+    record: dict[str, Any], generator_source_rows: npt.ArrayLike
+) -> CommitmentFeasibilityCut:
+    """Rebuild one serialized Phase-I feasibility cut by source-row identity.
+
+    ``generator_source_rows`` uses the public one-based MATPOWER row identity,
+    while the in-memory feasibility-cut serializer historically accepts the
+    zero-based source indices and adds one.  Keeping that conversion here
+    makes old v8-v10 cut evidence replayable and gives new frontier
+    certificates one deterministic reconstruction path.
+    """
+
+    rows = np.asarray(generator_source_rows, dtype=np.int64)
+    if rows.ndim != 1 or len(set(int(row) for row in rows)) != int(rows.size):
+        raise ScopfError("Serialized feasibility-cut generator identity is invalid")
+    by_row = {int(row): position for position, row in enumerate(rows)}
+    coefficients = np.zeros(rows.size, dtype=np.float64)
+    serialized = record.get("generator_coefficients", [])
+    seen: set[int] = set()
+    for item in serialized:
+        source_row = int(item["source_row"])
+        if source_row not in by_row or source_row in seen:
+            raise ScopfError(
+                "Serialized feasibility cut references an unknown or duplicate generator"
+            )
+        seen.add(source_row)
+        coefficients[by_row[source_row]] = float(item["coefficient_pu"])
+    serialized_hash = str(record.get("coefficient_sha256", ""))
+    if len(serialized_hash) != 64 or any(
+        character not in "0123456789abcdef" for character in serialized_hash
+    ):
+        raise ScopfError("Serialized feasibility cut has an invalid coefficient hash")
+    cut = CommitmentFeasibilityCut(
+        cut_id=str(record["cut_id"]),
+        coefficients=coefficients,
+        rhs=float(record["rhs"]),
+        source_commitment_sha256=str(record["source_commitment_sha256"]),
+        conservative_source_violation_pu=float(
+            record["conservative_source_violation_pu"]
+        ),
+    )
+    cut.validate(rows.size)
+    expected = cut.as_dict(rows - 1)
+    for key in (
+        "certificate_kind",
+        "cut_id",
+        "source_commitment_sha256",
+        "rhs",
+        "conservative_source_violation_pu",
+        "generator_coefficient_count",
+        "nonzero_generator_coefficient_count",
+        "generator_coefficients",
+        "validity",
+        "exact_source_pmin_pmax_changed",
+    ):
+        if record.get(key) != expected[key]:
+            raise ScopfError(
+                "Serialized feasibility cut identity mismatch for "
+                f"{key}: expected={expected[key]!r}, observed={record.get(key)!r}"
+            )
+    return cut
+
+
+def commitment_upper_cut_from_record(
+    record: dict[str, Any], generator_source_rows: npt.ArrayLike
+) -> CommitmentUpperCut:
+    """Rebuild either supported replayable commitment upper inequality."""
+
+    kind = str(record.get("certificate_kind", ""))
+    if kind == "phase_one_binary_benders_feasibility_cut_v1":
+        return commitment_feasibility_cut_from_record(
+            record, generator_source_rows
+        )
+    if kind == "binary_commitment_cardinality_branch_v1":
+        return commitment_cardinality_cut_from_record(
+            record, generator_source_rows
+        )
+    raise ScopfError(f"Unknown serialized commitment-cut kind: {kind!r}")
+
+
 def add_commitment_upper_cuts(
     master: ReducedMaster, cuts: tuple[CommitmentUpperCut, ...]
 ) -> dict[str, int]:
@@ -369,6 +452,12 @@ def derive_commitment_feasibility_cut(
     if np.any(~np.isfinite(pmin)) or np.any(~np.isfinite(pmax)) or np.any(pmin > pmax):
         raise ScopfError("Commitment-cut derivation found invalid source PMIN/PMAX")
     online_values = np.minimum(reduced_dispatch * pmin, reduced_dispatch * pmax)
+    # Signed zero is mathematically immaterial but changes byte hashes across
+    # sparse/BLAS implementations.  Canonicalize it before the stable cut id
+    # and serialized coefficient hash are formed.
+    online_values = np.where(online_values == 0.0, 0.0, online_values).astype(
+        np.float64, copy=False
+    )
     violation_upper = float(phase_model.column_upper[-1])
     base_mva = float(-phase_model.matrix_csr()[0, -1])
     if not isfinite(base_mva) or base_mva <= 0.0:

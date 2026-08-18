@@ -18,6 +18,7 @@ from activsg_scopf.lagrangian_experiment import (
     ACTIVSG2000_V8_EXPERIMENT_ID,
     ACTIVSG2000_V9_EXPERIMENT_ID,
     ACTIVSG2000_V10_EXPERIMENT_ID,
+    ACTIVSG2000_V11_EXPERIMENT_ID,
     EXPERIMENT_ID,
     EXPERIMENT_TAG,
     PrimalCandidatePolicy,
@@ -398,6 +399,32 @@ def test_registered_activsg2000_v10_cardinality_refinement_is_fail_closed() -> N
     ] = True
     with pytest.raises(ScopfError, match="cardinality identity changed"):
         validate_lagrangian_experiment_config(v10)
+
+
+def test_registered_activsg2000_v11_numerical_runtime_fix_is_fail_closed() -> None:
+    v10 = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v10.json")
+    v11 = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v11.json")
+    registration = validate_lagrangian_experiment_config(v11)
+
+    assert v11.benchmark_id == ACTIVSG2000_V11_EXPERIMENT_ID
+    assert registration["benchmark"]["required_git_tag"] == (
+        "experiment-2000-gpu-lagrangian-v11"
+    )
+    assert v11.raw["raw_inputs"] == v10.raw["raw_inputs"]
+    assert v11.model == v10.model
+    assert v11.runtime["parallel_child_solver_contexts"] == 1
+    assert v11.runtime["gpu_primal_seed_seconds"] == 1.0
+    assert v11.runtime["minimum_refinement_launch_seconds"] == 195.0
+    assert v11.runtime["lagrangian_diagonal_preconditioning"] is True
+    assert registration["benchmark"]["certificate_controller_fix"][
+        "gpu_cut_lower_bound_used"
+    ] is True
+    fix = registration["benchmark"]["numerical_runtime_fix"]
+    assert fix["failed_v10_run_preserved"] is True
+    assert fix["cpu_commitment_dispatch_objective_or_bound_seeded"] is False
+    v11.raw["runtime"]["parallel_child_solver_contexts"] = 2
+    with pytest.raises(ScopfError, match="runtime policy changed"):
+        validate_lagrangian_experiment_config(v11)
 
 
 def test_phase_one_native_dual_maps_lower_upper_and_equality_rows() -> None:

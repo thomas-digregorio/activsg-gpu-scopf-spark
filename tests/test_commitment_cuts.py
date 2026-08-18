@@ -2,6 +2,8 @@ import numpy as np
 import pytest
 
 from activsg_scopf.commitment_cuts import (
+    commitment_feasibility_cut_from_record,
+    commitment_upper_cut_from_record,
     derive_commitment_feasibility_cut,
     generate_commitment_cut_repairs,
 )
@@ -81,6 +83,17 @@ def test_phase_one_dual_lifts_to_global_exact_pmin_pmax_commitment_cut() -> None
     assert cut.violation(source_commitment) == pytest.approx(0.05999999)
     assert cut.violation(np.asarray([1, 1], dtype=np.int8)) < 0.0
     assert audit["conservative_source_replay_difference_pu"] < 1e-14
+
+    serialized_cut = cut.as_dict(source_rows)
+    rebuilt_cut = commitment_feasibility_cut_from_record(
+        serialized_cut, source_rows + 1
+    )
+    generic_cut = commitment_upper_cut_from_record(
+        serialized_cut, source_rows + 1
+    )
+    assert rebuilt_cut.cut_id == cut.cut_id
+    np.testing.assert_array_equal(rebuilt_cut.coefficients, cut.coefficients)
+    assert generic_cut.cut_id == cut.cut_id
 
     repairs = generate_commitment_cut_repairs(
         cut=cut,

@@ -248,13 +248,18 @@ def optimize_lagrangian_bound_cupy(
     polyak_fraction: float,
     commitment_cuts: tuple[CommitmentUpperCut, ...] = (),
     initial_commitment_cut_dual: npt.ArrayLike | None = None,
+    coupling_row_scales: npt.ArrayLike | None = None,
+    commitment_cut_scales: npt.ArrayLike | None = None,
 ) -> tuple[FloatArray, dict[str, Any]]:
     """Polish coupling multipliers while all numerical state remains on GPU.
 
     The initial cuOpt PDLP multiplier is already valid.  Projected Polyak
     supergradient steps can improve it but never replace the best valid iterate
-    with a worse one.  The target is the relaxation primal objective, an upper
-    bound on this concave dual maximum.
+    with a worse one.  Optional positive diagonal row scales precondition the
+    update in the same way as an exact row reformulation: for scaled row
+    ``s * h(x)``, the canonical multiplier changes by ``step * s**2 * h``.
+    Every evaluated canonical multiplier therefore remains a valid certificate.
+    The target is any finite upper bound on this concave dual maximum.
     """
 
     if iterations < 0:
@@ -281,6 +286,16 @@ def optimize_lagrangian_bound_cupy(
     coupling_indices_host = np.asarray(
         [row.row_index for row in coupling_rows], dtype=np.int64
     )
+    supplied_coupling_scales = (
+        np.ones(len(coupling_rows), dtype=np.float64)
+        if coupling_row_scales is None
+        else np.asarray(coupling_row_scales, dtype=np.float64)
+    )
+    if supplied_coupling_scales.shape != (len(coupling_rows),) or not np.all(
+        np.isfinite(supplied_coupling_scales) & (supplied_coupling_scales > 0.0)
+    ):
+        raise ScopfError("GPU Lagrangian coupling-row scales are invalid")
+    coupling_scale = cp.asarray(supplied_coupling_scales, dtype=cp.float64)
     upper_host = np.asarray(
         [row.kind != "balance_equality" for row in coupling_rows], dtype=bool
     )
@@ -320,10 +335,22 @@ def optimize_lagrangian_bound_cupy(
             np.isfinite(supplied_cut_dual)
         ):
             raise ScopfError("GPU Lagrangian initial commitment-cut dual is invalid")
+        supplied_cut_scales = (
+            np.ones(len(commitment_cuts), dtype=np.float64)
+            if commitment_cut_scales is None
+            else np.asarray(commitment_cut_scales, dtype=np.float64)
+        )
+        if supplied_cut_scales.shape != (len(commitment_cuts),) or not np.all(
+            np.isfinite(supplied_cut_scales) & (supplied_cut_scales > 0.0)
+        ):
+            raise ScopfError("GPU Lagrangian commitment-cut scales are invalid")
+        cut_scale = cp.asarray(supplied_cut_scales, dtype=cp.float64)
         z = cp.minimum(cp.asarray(supplied_cut_dual), 0.0)
     else:
         cut_coefficients = cp.empty((0, generator_count), dtype=cp.float64)
         cut_rhs = cp.empty(0, dtype=cp.float64)
+        supplied_cut_scales = np.empty(0, dtype=np.float64)
+        cut_scale = cp.empty(0, dtype=cp.float64)
         z = cp.empty(0, dtype=cp.float64)
     target = cp.asarray(float(relaxation_primal_objective), dtype=cp.float64)
     best_q = cp.asarray(-cp.inf, dtype=cp.float64)
@@ -356,18 +383,26 @@ def optimize_lagrangian_bound_cupy(
         cut_residual = cut_rhs - cut_coefficients @ commitment
         projected_active = (~upper) | (y < 0.0) | (residual < 0.0)
         cut_projected_active = (z < 0.0) | (cut_residual < 0.0)
+        scaled_residual = coupling_scale * residual
+        scaled_cut_residual = cut_scale * cut_residual
         denominator = cp.sum(
-            cp.where(projected_active, residual * residual, 0.0)
-        ) + cp.sum(cp.where(cut_projected_active, cut_residual * cut_residual, 0.0))
+            cp.where(projected_active, scaled_residual * scaled_residual, 0.0)
+        ) + cp.sum(
+            cp.where(
+                cut_projected_active,
+                scaled_cut_residual * scaled_cut_residual,
+                0.0,
+            )
+        )
         zero_denominator_iterations += denominator <= 0.0
         step = cp.where(
             denominator > 0.0,
             float(polyak_fraction) * cp.maximum(target - q, 0.0) / denominator,
             0.0,
         )
-        y = y + step * residual
+        y = y + step * coupling_scale * scaled_residual
         y = cp.where(upper, cp.minimum(y, 0.0), y)
-        z = cp.minimum(z + step * cut_residual, 0.0)
+        z = cp.minimum(z + step * cut_scale * scaled_cut_residual, 0.0)
 
     cp.cuda.get_current_stream().synchronize()
     best_y_host = cp.asnumpy(best_y)
@@ -397,6 +432,26 @@ def optimize_lagrangian_bound_cupy(
         "best_minimizing_commitment": cp.asnumpy(best_commitment),
         "best_commitment_cut_dual": cp.asnumpy(best_z),
         "commitment_feasibility_cut_count": len(commitment_cuts),
+        "diagonal_preconditioning": {
+            "enabled": bool(
+                coupling_row_scales is not None
+                or commitment_cut_scales is not None
+            ),
+            "policy": "exact_positive_row_scaling_projected_polyak_v1",
+            "coupling_scale_minimum": float(np.min(supplied_coupling_scales)),
+            "coupling_scale_maximum": float(np.max(supplied_coupling_scales)),
+            "commitment_cut_scale_minimum": (
+                None
+                if not supplied_cut_scales.size
+                else float(np.min(supplied_cut_scales))
+            ),
+            "commitment_cut_scale_maximum": (
+                None
+                if not supplied_cut_scales.size
+                else float(np.max(supplied_cut_scales))
+            ),
+            "certificate_validity_changed": False,
+        },
         "zero_projected_subgradient_iterations": int(
             zero_denominator_iterations.item()
         ),

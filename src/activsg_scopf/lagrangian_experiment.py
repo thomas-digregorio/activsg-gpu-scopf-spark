@@ -13,7 +13,7 @@ import traceback
 from collections import deque
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -31,7 +31,7 @@ from .commitment_cuts import (
     CommitmentFeasibilityCut,
     CommitmentUpperCut,
     add_commitment_upper_cuts,
-    commitment_cardinality_cut_from_record,
+    commitment_upper_cut_from_record,
     derive_commitment_feasibility_cut,
     generate_commitment_cut_repairs,
 )
@@ -82,6 +82,7 @@ from .paths import guard_output_path, guard_runtime_environment
 from .phase_one import (
     build_phase_one_model,
     phase_one_certificate,
+    phase_one_semantic_row_key,
     replay_phase_one_certificate,
 )
 from .provenance import build_source_manifest, write_json_atomic
@@ -123,6 +124,7 @@ ACTIVSG2000_V7_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v7"
 ACTIVSG2000_V8_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v8"
 ACTIVSG2000_V9_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v9"
 ACTIVSG2000_V10_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v10"
+ACTIVSG2000_V11_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v11"
 ACTIVSG2000_V4_PLUS_EXPERIMENT_IDS = frozenset(
     {
         ACTIVSG2000_V4_EXPERIMENT_ID,
@@ -132,6 +134,7 @@ ACTIVSG2000_V4_PLUS_EXPERIMENT_IDS = frozenset(
         ACTIVSG2000_V8_EXPERIMENT_ID,
         ACTIVSG2000_V9_EXPERIMENT_ID,
         ACTIVSG2000_V10_EXPERIMENT_ID,
+        ACTIVSG2000_V11_EXPERIMENT_ID,
     }
 )
 ACTIVSG2000_V8_PLUS_EXPERIMENT_IDS = frozenset(
@@ -139,6 +142,7 @@ ACTIVSG2000_V8_PLUS_EXPERIMENT_IDS = frozenset(
         ACTIVSG2000_V8_EXPERIMENT_ID,
         ACTIVSG2000_V9_EXPERIMENT_ID,
         ACTIVSG2000_V10_EXPERIMENT_ID,
+        ACTIVSG2000_V11_EXPERIMENT_ID,
     }
 )
 REGISTERED_EXPERIMENTS = {
@@ -241,6 +245,14 @@ REGISTERED_EXPERIMENTS = {
         "policy": (
             "gpu_type_group_primal_plus_cardinality_disjunctive_"
             "replayed_lagrangian_cover_activsg2000_v10"
+        ),
+    },
+    ACTIVSG2000_V11_EXPERIMENT_ID: {
+        "case_name": "ACTIVSg2000",
+        "tag": "experiment-2000-gpu-lagrangian-v11",
+        "policy": (
+            "gpu_secure_incumbent_mip_start_plus_preconditioned_global_cuts_"
+            "and_monotone_sequential_cardinality_cover_activsg2000_v11"
         ),
     },
 }
@@ -451,6 +463,11 @@ ACTIVSG2000_V9_CERTIFICATE_CONTROLLER_FIX = {
         "sparse_nonzero_dual_order_independent_identity_v3"
     ),
 }
+ACTIVSG2000_V11_CERTIFICATE_CONTROLLER_FIX = {
+    **ACTIVSG2000_V9_CERTIFICATE_CONTROLLER_FIX,
+    "comparison_baseline": "activsg2000-gpu-lagrangian-v10",
+    "gpu_cut_lower_bound_used": True,
+}
 ACTIVSG2000_V9_COMPACT_REPLAY_FIX = {
     "comparison_baseline": "activsg2000-gpu-lagrangian-v8",
     "failed_v8_run_preserved": True,
@@ -485,6 +502,29 @@ ACTIVSG2000_V10_CARDINALITY_REFINEMENT = {
         "the_new_cardinality_branch_v2"
     ),
     "certificate": "commitment_upper_cut_lagrangian_dual_replay_v1",
+    "exact_source_pmin_changed": False,
+    "mathematical_original_integer_optimum_changed": False,
+    "cpu_commitment_dispatch_objective_or_bound_seeded": False,
+}
+ACTIVSG2000_V11_NUMERICAL_RUNTIME_FIX = {
+    "comparison_baseline": "activsg2000-gpu-lagrangian-v10",
+    "failed_v10_run_preserved": True,
+    "concurrent_child_contexts": "disabled_after_missing_vector_and_stagnation_failures_v1",
+    "split_transaction": (
+        "two_sequential_bounded_children_preflighted_before_launch_and_rollback_on_deadline_v1"
+    ),
+    "child_certificate": "maximum_of_child_gpu_certificate_and_replayed_parent_certificate_v1",
+    "lagrangian_preconditioning": (
+        "exact_native_positive_row_scaling_for_coupling_and_commitment_cut_subgradients_v1"
+    ),
+    "global_feasibility_cuts": (
+        "replayed_phase_one_binary_benders_cuts_applied_to_every_frontier_region_v1"
+    ),
+    "primal_heuristics": (
+        "always_run_with_independently_verified_gpu_incumbent_as_complete_dimension_matched_start_v1"
+    ),
+    "mip_start": "all_canonical_columns_presolve_off_native_readback_fail_closed_v2",
+    "finalization": "verification_and_serialization_reserve_cannot_be_consumed_by_child_solve_v1",
     "exact_source_pmin_changed": False,
     "mathematical_original_integer_optimum_changed": False,
     "cpu_commitment_dispatch_objective_or_bound_seeded": False,
@@ -559,6 +599,16 @@ ACTIVSG2000_V10_RUNTIME = {
     **ACTIVSG2000_V9_RUNTIME,
     "maximum_frontier_regions": 256,
     "phase_lagrangian_gpu_iterations": 512,
+}
+ACTIVSG2000_V11_RUNTIME = {
+    **ACTIVSG2000_V10_RUNTIME,
+    "parallel_child_solver_contexts": 1,
+    "gpu_primal_seed_seconds": 1.0,
+    "minimum_refinement_launch_seconds": 195.0,
+    "split_transaction_margin_seconds": 15.0,
+    "lagrangian_diagonal_preconditioning": True,
+    "global_feasibility_cuts_in_lagrangian": True,
+    "always_run_gpu_primal_heuristics": True,
 }
 
 
@@ -719,8 +769,12 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
     is_activsg2000_v8 = config.benchmark_id == ACTIVSG2000_V8_EXPERIMENT_ID
     is_activsg2000_v9 = config.benchmark_id == ACTIVSG2000_V9_EXPERIMENT_ID
     is_activsg2000_v10 = config.benchmark_id == ACTIVSG2000_V10_EXPERIMENT_ID
+    is_activsg2000_v11 = config.benchmark_id == ACTIVSG2000_V11_EXPERIMENT_ID
     is_activsg2000_v8_plus = (
-        is_activsg2000_v8 or is_activsg2000_v9 or is_activsg2000_v10
+        is_activsg2000_v8
+        or is_activsg2000_v9
+        or is_activsg2000_v10
+        or is_activsg2000_v11
     )
     is_activsg2000 = (
         is_activsg2000_v1
@@ -733,6 +787,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
         or is_activsg2000_v8
         or is_activsg2000_v9
         or is_activsg2000_v10
+        or is_activsg2000_v11
     )
     if benchmark.get("kind") != "gpu_lagrangian_disjunctive_experiment":
         raise ScopfError("GPU Lagrangian experiment kind changed")
@@ -750,6 +805,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
                 "-v8",
                 "-v9",
                 "-v10",
+                "-v11",
             )
         )
         or is_activsg2000
@@ -861,7 +917,9 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
     if is_activsg2000_v8_plus:
         observed_change = benchmark.get("certificate_controller_fix")
         expected_change = (
-            ACTIVSG2000_V9_CERTIFICATE_CONTROLLER_FIX
+            ACTIVSG2000_V11_CERTIFICATE_CONTROLLER_FIX
+            if is_activsg2000_v11
+            else ACTIVSG2000_V9_CERTIFICATE_CONTROLLER_FIX
             if (is_activsg2000_v9 or is_activsg2000_v10)
             else ACTIVSG2000_V8_CERTIFICATE_CONTROLLER_FIX
         )
@@ -871,7 +929,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
                 f"expected={expected_change}, "
                 f"observed={observed_change}"
             )
-    if is_activsg2000_v9 or is_activsg2000_v10:
+    if is_activsg2000_v9 or is_activsg2000_v10 or is_activsg2000_v11:
         observed_change = benchmark.get("compact_replay_fix")
         if observed_change != ACTIVSG2000_V9_COMPACT_REPLAY_FIX:
             raise ScopfError(
@@ -879,12 +937,20 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
                 f"expected={ACTIVSG2000_V9_COMPACT_REPLAY_FIX}, "
                 f"observed={observed_change}"
             )
-    if is_activsg2000_v10:
+    if is_activsg2000_v10 or is_activsg2000_v11:
         observed_change = benchmark.get("cardinality_refinement")
         if observed_change != ACTIVSG2000_V10_CARDINALITY_REFINEMENT:
             raise ScopfError(
                 "ACTIVSg2000 GPU Lagrangian v10 cardinality identity changed: "
                 f"expected={ACTIVSG2000_V10_CARDINALITY_REFINEMENT}, "
+                f"observed={observed_change}"
+            )
+    if is_activsg2000_v11:
+        observed_change = benchmark.get("numerical_runtime_fix")
+        if observed_change != ACTIVSG2000_V11_NUMERICAL_RUNTIME_FIX:
+            raise ScopfError(
+                "ACTIVSg2000 GPU Lagrangian v11 numerical/runtime identity changed: "
+                f"expected={ACTIVSG2000_V11_NUMERICAL_RUNTIME_FIX}, "
                 f"observed={observed_change}"
             )
     profile = config.raw["platforms"].get("dgx_spark", {})
@@ -902,6 +968,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
                 or is_activsg2000_v8
                 or is_activsg2000_v9
                 or is_activsg2000_v10
+                or is_activsg2000_v11
             )
             else (
                 "power_system_equilibrated_v2"
@@ -921,6 +988,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
                 or is_activsg2000_v8
                 or is_activsg2000_v9
                 or is_activsg2000_v10
+                or is_activsg2000_v11
             )
             else "none"
         ),
@@ -941,6 +1009,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
             or is_activsg2000_v8
             or is_activsg2000_v9
             or is_activsg2000_v10
+            or is_activsg2000_v11
         )
         else (1800.0 if is_activsg2000 else 600.0)
     )
@@ -950,27 +1019,31 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
             f"expected={expected_deadline}, observed={runtime.get('deadline_seconds')}"
         )
     expected_activsg2000_runtime = (
-        ACTIVSG2000_V10_RUNTIME
-        if is_activsg2000_v10
+        ACTIVSG2000_V11_RUNTIME
+        if is_activsg2000_v11
         else (
-            ACTIVSG2000_V9_RUNTIME
-            if is_activsg2000_v9
+            ACTIVSG2000_V10_RUNTIME
+            if is_activsg2000_v10
             else (
-                ACTIVSG2000_V8_RUNTIME
-                if is_activsg2000_v8
+                ACTIVSG2000_V9_RUNTIME
+                if is_activsg2000_v9
                 else (
-                    ACTIVSG2000_V7_RUNTIME
-                    if is_activsg2000_v7
+                    ACTIVSG2000_V8_RUNTIME
+                    if is_activsg2000_v8
                     else (
-                        ACTIVSG2000_V6_RUNTIME
-                        if is_activsg2000_v6
+                        ACTIVSG2000_V7_RUNTIME
+                        if is_activsg2000_v7
                         else (
-                            ACTIVSG2000_V5_RUNTIME
-                            if is_activsg2000_v5
+                            ACTIVSG2000_V6_RUNTIME
+                            if is_activsg2000_v6
                             else (
-                                ACTIVSG2000_V4_RUNTIME
-                                if is_activsg2000_v4
-                                else ACTIVSG2000_V1_RUNTIME
+                                ACTIVSG2000_V5_RUNTIME
+                                if is_activsg2000_v5
+                                else (
+                                    ACTIVSG2000_V4_RUNTIME
+                                    if is_activsg2000_v4
+                                    else ACTIVSG2000_V1_RUNTIME
+                                )
                             )
                         )
                     )
@@ -1003,7 +1076,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
                 f"expected={required_runtime}, observed={observed_runtime}"
             )
     if config.benchmark_id.endswith(
-        ("-v4", "-v5", "-v6", "-v7", "-v8", "-v9", "-v10")
+        ("-v4", "-v5", "-v6", "-v7", "-v8", "-v9", "-v10", "-v11")
     ) or is_activsg2000:
         required_runtime = {
             "maximum_primal_candidate_seconds": (90.0 if is_activsg2000 else 15.0),
@@ -1028,6 +1101,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
                     or is_activsg2000_v8
                     or is_activsg2000_v9
                     or is_activsg2000_v10
+                    or is_activsg2000_v11
                 )
                 else (16 if is_activsg2000 else 8)
             ),
@@ -1043,7 +1117,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
                 f"expected={required_runtime}, observed={observed_runtime}"
             )
         if config.benchmark_id.endswith(
-            ("-v6", "-v7", "-v8", "-v9", "-v10")
+            ("-v6", "-v7", "-v8", "-v9", "-v10", "-v11")
         ) or is_activsg2000:
             expected_precheck = 10.0 if is_activsg2000 else 2.0
             if float(runtime.get("precheck_phase_one_time_limit_seconds", -1.0)) != (
@@ -1062,6 +1136,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
         or is_activsg2000_v8
         or is_activsg2000_v9
         or is_activsg2000_v10
+        or is_activsg2000_v11
     ):
         required_v6_profile = {
             "pdlp_solver_mode_native": 1,
@@ -1785,6 +1860,28 @@ def _solve_region(
         [row_dual[commitment_cut_row_by_id[cut.cut_id]] for cut in commitment_cuts],
         dtype=np.float64,
     )
+    coupling_row_scales: np.ndarray | None = None
+    commitment_cut_scales: np.ndarray | None = None
+    if bool(config.runtime.get("lagrangian_diagonal_preconditioning", False)):
+        _column_scale, lagrangian_row_scale = native_scaling_vectors(
+            master.canonical,
+            mode=str(profile["native_scaling_mode"]),
+            base_mva=float(case.base_mva),
+        )
+        coupling_row_scales = np.asarray(
+            [
+                lagrangian_row_scale[row.row_index]
+                for row in sorted(master.coupling_rows, key=lambda row: row.row_name)
+            ],
+            dtype=np.float64,
+        )
+        commitment_cut_scales = np.asarray(
+            [
+                lagrangian_row_scale[commitment_cut_row_by_id[cut.cut_id]]
+                for cut in commitment_cuts
+            ],
+            dtype=np.float64,
+        )
     polished_row_dual, gpu_evaluation = optimize_lagrangian_bound_cupy(
         master,
         row_dual,
@@ -1794,6 +1891,8 @@ def _solve_region(
         polyak_fraction=float(profile["lagrangian_polyak_fraction"]),
         commitment_cuts=commitment_cuts,
         initial_commitment_cut_dual=initial_commitment_cut_dual,
+        coupling_row_scales=coupling_row_scales,
+        commitment_cut_scales=commitment_cut_scales,
     )
     gpu_evaluation["wall_time_seconds"] = time.perf_counter() - gpu_started
     best_commitment_cut_dual = np.asarray(
@@ -2314,8 +2413,9 @@ def _solve_fixed_commitment_cost_projection(
         ACTIVSG2000_V8_EXPERIMENT_ID,
         ACTIVSG2000_V9_EXPERIMENT_ID,
         ACTIVSG2000_V10_EXPERIMENT_ID,
+        ACTIVSG2000_V11_EXPERIMENT_ID,
     }:
-        raise ScopfError("The fixed-commitment cost projection is registered only for v7-v10")
+        raise ScopfError("The fixed-commitment cost projection is registered only for v7-v11")
     started = time.perf_counter()
     master = prepared_master
     binary = np.asarray(commitment, dtype=np.int8)
@@ -2939,6 +3039,290 @@ def _capacity_repaired_commitment(
     return commitment
 
 
+def _commitment_upper_cut_record(
+    cut: CommitmentUpperCut, generator_source_rows: np.ndarray
+) -> dict[str, Any]:
+    """Serialize either cut type with one-based public MATPOWER row identity."""
+
+    rows = np.asarray(generator_source_rows, dtype=np.int64)
+    if isinstance(cut, CommitmentFeasibilityCut):
+        return cut.as_dict(rows)
+    return cut.as_dict(rows + 1)
+
+
+def _certificate_dual_arrays(
+    master: ReducedMaster,
+    evaluation: LagrangianEvaluation,
+    commitment_cuts: tuple[CommitmentUpperCut, ...],
+) -> tuple[np.ndarray, np.ndarray]:
+    """Place a replayable certificate into one master's canonical row order."""
+
+    row_by_name = {name: row for row, name in enumerate(master.canonical.row_names)}
+    if len(row_by_name) != master.canonical.num_rows:
+        raise ScopfError("Certificate dual mapping found duplicate canonical row names")
+    row_dual = np.zeros(master.canonical.num_rows, dtype=np.float64)
+    for row_name, value in evaluation.coupling_duals:
+        row = row_by_name.get(row_name)
+        if row is None:
+            raise ScopfError("Certificate dual mapping lost a coupling row")
+        row_dual[row] = float(value)
+    cut_dual_by_id = {
+        str(cut_id): float(value)
+        for cut_id, value in evaluation.commitment_cut_duals
+    }
+    if len(cut_dual_by_id) != len(evaluation.commitment_cut_duals):
+        raise ScopfError("Certificate dual mapping found duplicate commitment cuts")
+    available_ids = {cut.cut_id for cut in commitment_cuts}
+    if not set(cut_dual_by_id).issubset(available_ids):
+        raise ScopfError("Certificate dual mapping references a missing commitment cut")
+    cut_dual = np.asarray(
+        [cut_dual_by_id.get(cut.cut_id, 0.0) for cut in commitment_cuts],
+        dtype=np.float64,
+    )
+    for cut, value in zip(commitment_cuts, cut_dual, strict=True):
+        row = row_by_name.get(cut.cut_id)
+        if row is None:
+            raise ScopfError("Certificate dual mapping lost a commitment-cut row")
+        row_dual[row] = float(value)
+    return row_dual, cut_dual
+
+
+def _lagrangian_precondition_scales(
+    *,
+    master: ReducedMaster,
+    commitment_cuts: tuple[CommitmentUpperCut, ...],
+    config: RunConfig,
+    base_mva: float,
+) -> tuple[np.ndarray | None, np.ndarray | None]:
+    if not bool(config.runtime.get("lagrangian_diagonal_preconditioning", False)):
+        return None, None
+    profile = config.raw["platforms"]["dgx_spark"]
+    _column_scale, row_scale = native_scaling_vectors(
+        master.canonical,
+        mode=str(profile["native_scaling_mode"]),
+        base_mva=float(base_mva),
+    )
+    row_by_name = {name: row for row, name in enumerate(master.canonical.row_names)}
+    coupling = np.asarray(
+        [
+            row_scale[row.row_index]
+            for row in sorted(master.coupling_rows, key=lambda row: row.row_name)
+        ],
+        dtype=np.float64,
+    )
+    cuts = np.asarray(
+        [row_scale[row_by_name[cut.cut_id]] for cut in commitment_cuts],
+        dtype=np.float64,
+    )
+    return coupling, cuts
+
+
+def _refresh_region_with_global_commitment_cuts(
+    *,
+    region: SolvedRegion,
+    global_cuts: tuple[CommitmentFeasibilityCut, ...],
+    case: Any,
+    network: NetworkData,
+    config: RunConfig,
+    dual_target_objective: float,
+) -> SolvedRegion:
+    """Add globally valid cuts and retain the stronger replayable certificate."""
+
+    existing_by_id = {cut.cut_id: cut for cut in region.commitment_cuts}
+    added_globals = tuple(
+        sorted(
+            (
+                cut
+                for cut in global_cuts
+                if cut.cut_id not in existing_by_id
+            ),
+            key=lambda cut: cut.cut_id,
+        )
+    )
+    combined = added_globals + region.commitment_cuts
+    if tuple(cut.cut_id for cut in combined) == tuple(
+        cut.cut_id for cut in region.commitment_cuts
+    ):
+        return region
+    rebuilt = _prepare_region_master(
+        case=case,
+        network=network,
+        config=config,
+        masks=region.masks,
+        initial_pairs=region.security_pairs,
+        commitment_cuts=combined,
+    )
+    _validate_prepared_region_master(
+        rebuilt, region.masks, region.security_pairs, combined
+    )
+    inherited_row_dual, inherited_cut_dual = _certificate_dual_arrays(
+        rebuilt, region.lagrangian, combined
+    )
+    safety = float(region.lagrangian.safety_margin_dollars)
+    inherited = evaluate_lagrangian_bound(
+        rebuilt,
+        inherited_row_dual,
+        region.masks,
+        safety_margin_dollars=safety,
+        commitment_cuts=combined,
+        commitment_cut_dual=inherited_cut_dual,
+    )
+    replay_drift = abs(
+        inherited.conservative_lower_bound
+        - region.lagrangian.conservative_lower_bound
+    )
+    tolerance = float(config.raw["benchmark"]["gpu_cpu_replay_tolerance_dollars"])
+    if replay_drift > tolerance:
+        raise ScopfError(
+            "Adding zero-dual global cuts changed the inherited Lagrangian certificate"
+        )
+    coupling_scales, cut_scales = _lagrangian_precondition_scales(
+        master=rebuilt,
+        commitment_cuts=combined,
+        config=config,
+        base_mva=float(case.base_mva),
+    )
+    started = time.perf_counter()
+    polished_row_dual, gpu = optimize_lagrangian_bound_cupy(
+        rebuilt,
+        inherited_row_dual,
+        region.masks,
+        relaxation_primal_objective=float(dual_target_objective),
+        iterations=int(config.runtime["phase_lagrangian_gpu_iterations"]),
+        polyak_fraction=float(
+            config.raw["platforms"]["dgx_spark"]["lagrangian_polyak_fraction"]
+        ),
+        commitment_cuts=combined,
+        initial_commitment_cut_dual=inherited_cut_dual,
+        coupling_row_scales=coupling_scales,
+        commitment_cut_scales=cut_scales,
+    )
+    polished_cut_dual = np.asarray(
+        gpu.get("best_commitment_cut_dual", np.zeros(len(combined))),
+        dtype=np.float64,
+    )
+    polished = evaluate_lagrangian_bound(
+        rebuilt,
+        polished_row_dual,
+        region.masks,
+        safety_margin_dollars=safety,
+        commitment_cuts=combined,
+        commitment_cut_dual=polished_cut_dual,
+    )
+    selected_polished = bool(
+        polished.conservative_lower_bound >= inherited.conservative_lower_bound
+    )
+    selected = polished if selected_polished else inherited
+    selected_row_dual = polished_row_dual if selected_polished else inherited_row_dual
+    selected_cut_dual = polished_cut_dual if selected_polished else inherited_cut_dual
+    gpu.update(
+        {
+            "wall_time_seconds": time.perf_counter() - started,
+            "polished_cpu_replay_difference_dollars": abs(
+                float(gpu["best_raw_lower_bound"]) - polished.raw_lower_bound
+            ),
+            "global_commitment_cut_refresh": True,
+            "global_feasibility_cut_count": len(global_cuts),
+            "inherited_conservative_lower_bound": inherited.conservative_lower_bound,
+            "polished_conservative_lower_bound": polished.conservative_lower_bound,
+            "selected_certificate_source": (
+                "preconditioned_gpu_polish"
+                if selected_polished
+                else "inherited_zero_new_cut_duals"
+            ),
+            "selected_certificate_monotone": True,
+            "best_raw_lower_bound": selected.raw_lower_bound,
+            "best_minimizing_commitment": selected.minimizing_commitment,
+            "best_commitment_cut_dual": selected_cut_dual,
+            "cpu_replay_difference_dollars": 0.0,
+        }
+    )
+    return replace(
+        region,
+        master=rebuilt,
+        canonical_row_dual=np.asarray(selected_row_dual, dtype=np.float64),
+        lagrangian=selected,
+        gpu_lagrangian=gpu,
+        commitment_cuts=combined,
+        commitment_cut_row_by_id={
+            cut.cut_id: rebuilt.canonical.row_names.index(cut.cut_id)
+            for cut in combined
+        },
+    )
+
+
+def _enforce_monotone_child_certificate(
+    *,
+    parent: SolvedRegion,
+    child: SolvedRegion,
+    replay_tolerance_dollars: float,
+) -> SolvedRegion:
+    """A child is a subset of its parent, so its inherited bound cannot fall."""
+
+    inherited_row_dual, inherited_cut_dual = _certificate_dual_arrays(
+        child.master, parent.lagrangian, child.commitment_cuts
+    )
+    inherited = evaluate_lagrangian_bound(
+        child.master,
+        inherited_row_dual,
+        child.masks,
+        safety_margin_dollars=float(parent.lagrangian.safety_margin_dollars),
+        commitment_cuts=child.commitment_cuts,
+        commitment_cut_dual=inherited_cut_dual,
+    )
+    if (
+        inherited.conservative_lower_bound
+        + float(replay_tolerance_dollars)
+        < parent.lagrangian.conservative_lower_bound
+    ):
+        raise ScopfError("Inherited child certificate regressed below its parent")
+    use_inherited = bool(
+        inherited.conservative_lower_bound
+        > child.lagrangian.conservative_lower_bound
+    )
+    audit = {
+        **child.gpu_lagrangian,
+        "parent_inherited_certificate": {
+            "parent_region_id": parent.region_id,
+            "parent_conservative_lower_bound": (
+                parent.lagrangian.conservative_lower_bound
+            ),
+            "child_native_conservative_lower_bound": (
+                child.lagrangian.conservative_lower_bound
+            ),
+            "inherited_child_conservative_lower_bound": (
+                inherited.conservative_lower_bound
+            ),
+            "selected": use_inherited,
+            "monotonicity_passed": True,
+        },
+    }
+    if not use_inherited:
+        return replace(child, gpu_lagrangian=audit)
+    inherited_cut_by_id = dict(inherited.commitment_cut_duals)
+    audit.update(
+        {
+            "best_raw_lower_bound": inherited.raw_lower_bound,
+            "best_minimizing_commitment": inherited.minimizing_commitment,
+            "best_commitment_cut_dual": np.asarray(
+                [
+                    inherited_cut_by_id.get(cut.cut_id, 0.0)
+                    for cut in child.commitment_cuts
+                ],
+                dtype=np.float64,
+            ),
+            "selected_certificate_source": "replayed_parent_on_child_region",
+            "selected_certificate_monotone": True,
+        }
+    )
+    return replace(
+        child,
+        canonical_row_dual=inherited_row_dual,
+        lagrangian=inherited,
+        gpu_lagrangian=audit,
+    )
+
+
 def _region_record(
     region: SolvedRegion, *, compact_lagrangian_certificate: bool = False
 ) -> dict[str, Any]:
@@ -2961,7 +3345,9 @@ def _region_record(
         "security_row_equivalence": _security_row_equivalence_record(region.master),
         "security_pairs": [security_pair_record(pair) for pair in region.security_pairs],
         "commitment_upper_cuts": [
-            cut.as_dict(region.master.index.generator_source_rows + 1)
+            _commitment_upper_cut_record(
+                cut, region.master.index.generator_source_rows
+            )
             for cut in region.commitment_cuts
         ],
         "gpu_lagrangian_evaluation": {
@@ -3754,12 +4140,186 @@ def verify_lagrangian_certificate_payload(
                 abs(float(observed) - float(pair_record["lodf_value"])),
             )
 
+    validated_global_feasibility_cuts: dict[
+        str, CommitmentFeasibilityCut
+    ] = {}
+    maximum_feasibility_cut_coefficient_replay_difference = 0.0
+    maximum_feasibility_cut_rhs_replay_difference = 0.0
+    maximum_feasibility_cut_portable_strengthening = 0.0
+    for derivation_record in payload.get("commitment_feasibility_cuts", []):
+        serialized_cut = derivation_record.get("cut")
+        if not isinstance(serialized_cut, dict):
+            raise ScopfError("Global feasibility-cut derivation lacks its cut")
+        cut_id = str(serialized_cut.get("cut_id", ""))
+        if not cut_id or cut_id in validated_global_feasibility_cuts:
+            raise ScopfError("Global feasibility-cut derivation identity is duplicated")
+        source_commitment_rows = tuple(
+            int(row)
+            for row in derivation_record.get(
+                "source_commitment_generator_rows", []
+            )
+        )
+        if len(set(source_commitment_rows)) != len(source_commitment_rows):
+            raise ScopfError("Global feasibility-cut source commitment is duplicated")
+        source_row_lookup = {
+            int(row): position for position, row in enumerate(source_rows)
+        }
+        if any(row not in source_row_lookup for row in source_commitment_rows):
+            raise ScopfError("Global feasibility cut fixes an unknown generator")
+        binary = np.zeros(source_rows.size, dtype=np.int8)
+        binary[
+            np.asarray(
+                [source_row_lookup[row] for row in source_commitment_rows],
+                dtype=np.int64,
+            )
+        ] = 1
+        if hashlib.sha256(binary.tobytes()).hexdigest() != serialized_cut.get(
+            "source_commitment_sha256"
+        ):
+            raise ScopfError("Global feasibility-cut source commitment hash mismatch")
+
+        cut_master = build_reduced_master(
+            case,
+            network,
+            segments=10,
+            coefficient_zero_tolerance=float(
+                config.model.get("reduced_coefficient_zero_tolerance", 1e-14)
+            ),
+        )
+        cut_pairs = tuple(
+            security_pair_from_record(
+                pair_record,
+                catalog,
+                lodf_absolute_tolerance=lodf_tolerance,
+            )
+            for pair_record in derivation_record.get("security_pairs", [])
+        )
+        update_lodf_replay_difference(
+            derivation_record.get("security_pairs", []), cut_pairs
+        )
+        add_reduced_security_pairs(cut_master, network, cut_pairs)
+        fix_commitments(cut_master, binary == 0, binary == 1)
+        projection = build_fixed_commitment_projection(cut_master, binary)
+        phase_model = build_phase_one_model(
+            projection.canonical,
+            base_mva=float(case.base_mva),
+            maximum_violation_pu=float(
+                config.runtime["phase_one_maximum_violation_pu"]
+            ),
+        )
+        phase_row_by_semantic = {
+            phase_one_semantic_row_key(name): row
+            for row, name in enumerate(phase_model.row_names)
+        }
+        if len(phase_row_by_semantic) != phase_model.num_rows:
+            raise ScopfError("Global feasibility-cut Phase-I rows are duplicated")
+        phase_dual = np.zeros(phase_model.num_rows, dtype=np.float64)
+        for item in derivation_record.get("nonzero_phase_row_duals", []):
+            semantic = (
+                f"phase1__{str(item['side'])}__{str(item['row_name'])}"
+            )
+            row = phase_row_by_semantic.get(semantic)
+            if row is None or phase_dual[row] != 0.0:
+                raise ScopfError(
+                    "Global feasibility-cut Phase-I dual identity is invalid"
+                )
+            phase_dual[row] = float(item["canonical_row_dual"])
+        recorded_phase_replay = derivation_record.get("phase_one_replay", {})
+        rebuilt_phase_certificate = phase_one_certificate(
+            phase_model,
+            phase_dual,
+            safety_margin_pu=float(recorded_phase_replay["safety_margin_pu"]),
+            infeasibility_threshold_pu=float(
+                recorded_phase_replay["infeasibility_threshold_pu"]
+            ),
+        )
+        rebuilt_phase_replay = replay_phase_one_certificate(
+            phase_model, rebuilt_phase_certificate
+        )
+        if not bool(rebuilt_phase_replay["prune_certified"]):
+            raise ScopfError("Global feasibility-cut source dual is not positive")
+        replay_tolerance = float(config.model["phase_one_replay_tolerance_pu"])
+        phase_replay_differences: dict[str, dict[str, Any]] = {}
+        for key in ("raw_lower_bound_pu", "conservative_lower_bound_pu"):
+            rebuilt_value = float(rebuilt_phase_replay[key])
+            recorded_value = float(recorded_phase_replay[key])
+            if abs(rebuilt_value - recorded_value) > replay_tolerance:
+                phase_replay_differences[key] = {
+                    "rebuilt": rebuilt_value,
+                    "recorded": recorded_value,
+                }
+        for key in (
+            "safety_margin_pu",
+            "infeasibility_threshold_pu",
+            "prune_certified",
+        ):
+            if rebuilt_phase_replay[key] != recorded_phase_replay.get(key):
+                phase_replay_differences[key] = {
+                    "rebuilt": rebuilt_phase_replay[key],
+                    "recorded": recorded_phase_replay.get(key),
+                }
+        if phase_replay_differences:
+            raise ScopfError(
+                "Global feasibility-cut Phase-I replay changed: "
+                f"{phase_replay_differences}"
+            )
+        rebuilt_cut, _rebuilt_cut_audit = derive_commitment_feasibility_cut(
+            master=cut_master,
+            phase_model=phase_model,
+            phase_certificate=rebuilt_phase_certificate,
+            source_commitment=binary,
+            replay_tolerance_pu=float(config.model["phase_one_replay_tolerance_pu"]),
+        )
+        serialized_cut_object = commitment_upper_cut_from_record(
+            serialized_cut, source_rows
+        )
+        if not isinstance(serialized_cut_object, CommitmentFeasibilityCut):
+            raise ScopfError("Global feasibility-cut record changed cut type")
+        source_violation_difference = abs(
+            serialized_cut_object.violation(binary)
+            - serialized_cut_object.conservative_source_violation_pu
+        )
+        if source_violation_difference > replay_tolerance:
+            raise ScopfError("Global feasibility-cut source violation did not replay")
+        coefficient_difference = (
+            serialized_cut_object.coefficients - rebuilt_cut.coefficients
+        )
+        rhs_difference = serialized_cut_object.rhs - rebuilt_cut.rhs
+        # The rebuilt cut already relaxes its raw dual inequality by the
+        # registered Phase-I safety margin.  Bound the worst possible binary
+        # strengthening caused by cross-architecture FP64 reconstruction; if
+        # it fits inside that margin, the serialized inequality is still no
+        # stronger than the independently rebuilt raw dual cut.
+        worst_portable_strengthening = max(
+            0.0,
+            float(np.sum(np.maximum(coefficient_difference, 0.0)))
+            - float(rhs_difference),
+        )
+        safety_margin = float(recorded_phase_replay["safety_margin_pu"])
+        if worst_portable_strengthening > safety_margin:
+            raise ScopfError(
+                "Global feasibility cut consumed its numerical safety margin"
+            )
+        maximum_feasibility_cut_coefficient_replay_difference = max(
+            maximum_feasibility_cut_coefficient_replay_difference,
+            float(np.max(np.abs(coefficient_difference))),
+        )
+        maximum_feasibility_cut_rhs_replay_difference = max(
+            maximum_feasibility_cut_rhs_replay_difference,
+            abs(float(rhs_difference)),
+        )
+        maximum_feasibility_cut_portable_strengthening = max(
+            maximum_feasibility_cut_portable_strengthening,
+            worst_portable_strengthening,
+        )
+        validated_global_feasibility_cuts[cut_id] = serialized_cut_object
+
     active_master_cache: dict[
         str,
         tuple[
             ReducedMaster,
             tuple[SecurityPair, ...],
-            tuple[CommitmentCardinalityCut, ...],
+            tuple[CommitmentUpperCut, ...],
         ],
     ] = {}
     active_master_cache_builds = 0
@@ -3811,9 +4371,22 @@ def verify_lagrangian_certificate_payload(
                 ),
             )
             commitment_cuts = tuple(
-                commitment_cardinality_cut_from_record(cut_record, source_rows)
+                commitment_upper_cut_from_record(cut_record, source_rows)
                 for cut_record in record.get("commitment_upper_cuts", [])
             )
+            for cut in commitment_cuts:
+                if isinstance(cut, CommitmentFeasibilityCut):
+                    validated = validated_global_feasibility_cuts.get(cut.cut_id)
+                    if (
+                        validated is None
+                        or validated.rhs != cut.rhs
+                        or not np.array_equal(
+                            validated.coefficients, cut.coefficients
+                        )
+                    ):
+                        raise ScopfError(
+                            "Frontier certificate uses an unvalidated feasibility cut"
+                        )
             add_commitment_upper_cuts(master, commitment_cuts)
             active_master_cache[cache_key] = (master, pairs, commitment_cuts)
             active_master_cache_builds += 1
@@ -3852,7 +4425,14 @@ def verify_lagrangian_certificate_payload(
         maximum_difference = max(maximum_difference, difference)
         if difference > float(config.raw["benchmark"]["gpu_cpu_replay_tolerance_dollars"]):
             raise ScopfError(f"Independent region {region_id} replay mismatch")
-        leaves[region_id] = (masks, commitment_cuts)
+        leaves[region_id] = (
+            masks,
+            tuple(
+                cut
+                for cut in commitment_cuts
+                if isinstance(cut, CommitmentCardinalityCut)
+            ),
+        )
         replayed_bounds[region_id] = replayed.conservative_lower_bound
     maximum_phase_one_difference = 0.0
     pruned_records = payload.get("pruned_regions", [])
@@ -3890,9 +4470,20 @@ def verify_lagrangian_certificate_payload(
         )
         fix_commitments(master, masks.fixed_off, masks.fixed_on)
         commitment_cuts = tuple(
-            commitment_cardinality_cut_from_record(cut_record, source_rows)
+            commitment_upper_cut_from_record(cut_record, source_rows)
             for cut_record in record.get("commitment_upper_cuts", [])
         )
+        for cut in commitment_cuts:
+            if isinstance(cut, CommitmentFeasibilityCut):
+                validated = validated_global_feasibility_cuts.get(cut.cut_id)
+                if (
+                    validated is None
+                    or validated.rhs != cut.rhs
+                    or not np.array_equal(validated.coefficients, cut.coefficients)
+                ):
+                    raise ScopfError(
+                        "Pruned certificate uses an unvalidated feasibility cut"
+                    )
         add_commitment_upper_cuts(master, commitment_cuts)
         cleanup_comparison = _replay_cleanup_audit_comparison(
             record["coefficient_cleanup_audit"],
@@ -3938,7 +4529,14 @@ def verify_lagrangian_certificate_payload(
             config.model["phase_one_replay_tolerance_pu"]
         ):
             raise ScopfError(f"Independent Phase-I replay failed for region {region_id}")
-        leaves[region_id] = (masks, commitment_cuts)
+        leaves[region_id] = (
+            masks,
+            tuple(
+                cut
+                for cut in commitment_cuts
+                if isinstance(cut, CommitmentCardinalityCut)
+            ),
+        )
     cover_passed = verify_cardinality_disjunctive_cover(
         source_rows,
         payload["disjunctive_splits"],
@@ -3959,6 +4557,18 @@ def verify_lagrangian_certificate_payload(
         "frontier_region_count": len(leaves),
         "active_frontier_region_count": len(replayed_bounds),
         "phase_one_pruned_region_count": len(pruned_records),
+        "validated_global_feasibility_cut_count": len(
+            validated_global_feasibility_cuts
+        ),
+        "maximum_feasibility_cut_coefficient_replay_difference": (
+            maximum_feasibility_cut_coefficient_replay_difference
+        ),
+        "maximum_feasibility_cut_rhs_replay_difference": (
+            maximum_feasibility_cut_rhs_replay_difference
+        ),
+        "maximum_feasibility_cut_portable_strengthening": (
+            maximum_feasibility_cut_portable_strengthening
+        ),
         "disjunctive_cover_passed": cover_passed,
         "replayed_global_lower_bound": global_bound,
         "recorded_global_lower_bound": recorded_global,
@@ -4245,7 +4855,8 @@ def run_gpu_lagrangian_experiment(
         payload["root_lagrangian_verification"] = payload["lagrangian_replay_history"][-1]
         cardinality_subsets = (
             commitment_branch_subsets(root.master)
-            if config.benchmark_id == ACTIVSG2000_V10_EXPERIMENT_ID
+            if config.benchmark_id
+            in {ACTIVSG2000_V10_EXPERIMENT_ID, ACTIVSG2000_V11_EXPERIMENT_ID}
             else ()
         )
         payload["cardinality_refinement_policy"] = (
@@ -4265,12 +4876,14 @@ def run_gpu_lagrangian_experiment(
                 "phase_one_precheck_enabled": False,
                 "cpu_solution_data_used": False,
             }
-            if config.benchmark_id == ACTIVSG2000_V10_EXPERIMENT_ID
+            if config.benchmark_id
+            in {ACTIVSG2000_V10_EXPERIMENT_ID, ACTIVSG2000_V11_EXPERIMENT_ID}
             else {"enabled": False}
         )
         save()
 
         best_primal: dict[str, Any] | None = None
+        global_feasibility_cuts: dict[str, CommitmentFeasibilityCut] = {}
         tried_commitments: set[str] = set()
         last_tried_commitment: np.ndarray | None = None
         pending_primal_candidates: deque[
@@ -4289,6 +4902,7 @@ def run_gpu_lagrangian_experiment(
                         "-v8",
                         "-v9",
                         "-v10",
+                        "-v11",
                     )
                 )
                 or config.benchmark_id
@@ -4303,6 +4917,7 @@ def run_gpu_lagrangian_experiment(
                     ACTIVSG2000_V8_EXPERIMENT_ID,
                     ACTIVSG2000_V9_EXPERIMENT_ID,
                     ACTIVSG2000_V10_EXPERIMENT_ID,
+                    ACTIVSG2000_V11_EXPERIMENT_ID,
                 }
             )
             else None
@@ -4311,7 +4926,7 @@ def run_gpu_lagrangian_experiment(
             PrimalCandidatePolicy.from_config(config, scope="disjunctive_region")
             if (
                 config.benchmark_id.endswith(
-                    ("-v4", "-v5", "-v6", "-v7", "-v8", "-v9", "-v10")
+                    ("-v4", "-v5", "-v6", "-v7", "-v8", "-v9", "-v10", "-v11")
                 )
                 or config.benchmark_id
                 in {
@@ -4325,6 +4940,7 @@ def run_gpu_lagrangian_experiment(
                     ACTIVSG2000_V8_EXPERIMENT_ID,
                     ACTIVSG2000_V9_EXPERIMENT_ID,
                     ACTIVSG2000_V10_EXPERIMENT_ID,
+                    ACTIVSG2000_V11_EXPERIMENT_ID,
                 }
             )
             else None
@@ -4365,7 +4981,7 @@ def run_gpu_lagrangian_experiment(
         )
         payload["parallel_child_policy"] = (
             {
-                "enabled": True,
+                "enabled": int(config.runtime["parallel_child_solver_contexts"]) > 1,
                 "solver_contexts": int(config.runtime["parallel_child_solver_contexts"]),
                 "minimum_frontier_regions": int(
                     config.runtime["parallel_child_minimum_frontier_regions"]
@@ -4373,6 +4989,9 @@ def run_gpu_lagrangian_experiment(
                 "independent_cupy_screeners": True,
                 "native_log_capture": (
                     "console_only_for_concurrent_contexts_file_backed_for_sequential_contexts"
+                ),
+                "sequential_v11_numerical_guard": (
+                    config.benchmark_id == ACTIVSG2000_V11_EXPERIMENT_ID
                 ),
             }
             if config.benchmark_id in ACTIVSG2000_V4_PLUS_EXPERIMENT_IDS
@@ -4397,6 +5016,7 @@ def run_gpu_lagrangian_experiment(
                         ACTIVSG2000_V8_EXPERIMENT_ID,
                         ACTIVSG2000_V9_EXPERIMENT_ID,
                         ACTIVSG2000_V10_EXPERIMENT_ID,
+                        ACTIVSG2000_V11_EXPERIMENT_ID,
                     }
                 ),
                 "phase_one_source_primal_warm_starts_cost_lp": (
@@ -4407,6 +5027,7 @@ def run_gpu_lagrangian_experiment(
                         ACTIVSG2000_V8_EXPERIMENT_ID,
                         ACTIVSG2000_V9_EXPERIMENT_ID,
                         ACTIVSG2000_V10_EXPERIMENT_ID,
+                        ACTIVSG2000_V11_EXPERIMENT_ID,
                     }
                 ),
                 "v6_child_policy": (
@@ -4418,6 +5039,7 @@ def run_gpu_lagrangian_experiment(
                         ACTIVSG2000_V8_EXPERIMENT_ID,
                         ACTIVSG2000_V9_EXPERIMENT_ID,
                         ACTIVSG2000_V10_EXPERIMENT_ID,
+                        ACTIVSG2000_V11_EXPERIMENT_ID,
                     }
                     else None
                 ),
@@ -4444,6 +5066,7 @@ def run_gpu_lagrangian_experiment(
                         ACTIVSG2000_V8_EXPERIMENT_ID,
                         ACTIVSG2000_V9_EXPERIMENT_ID,
                         ACTIVSG2000_V10_EXPERIMENT_ID,
+                        ACTIVSG2000_V11_EXPERIMENT_ID,
                     }
                 ),
                 "cost_polish_uses_exact_convex_pwl_epigraph_projection": (
@@ -4453,6 +5076,7 @@ def run_gpu_lagrangian_experiment(
                         ACTIVSG2000_V8_EXPERIMENT_ID,
                         ACTIVSG2000_V9_EXPERIMENT_ID,
                         ACTIVSG2000_V10_EXPERIMENT_ID,
+                        ACTIVSG2000_V11_EXPERIMENT_ID,
                     }
                 ),
                 "cost_polish_uses_mapped_native_row_dual_start": (
@@ -4463,6 +5087,7 @@ def run_gpu_lagrangian_experiment(
                         ACTIVSG2000_V8_EXPERIMENT_ID,
                         ACTIVSG2000_V9_EXPERIMENT_ID,
                         ACTIVSG2000_V10_EXPERIMENT_ID,
+                        ACTIVSG2000_V11_EXPERIMENT_ID,
                     }
                 ),
                 "cpu_commitment_or_dispatch_seeded": False,
@@ -4478,6 +5103,7 @@ def run_gpu_lagrangian_experiment(
                 ACTIVSG2000_V8_EXPERIMENT_ID,
                 ACTIVSG2000_V9_EXPERIMENT_ID,
                 ACTIVSG2000_V10_EXPERIMENT_ID,
+                ACTIVSG2000_V11_EXPERIMENT_ID,
             }
             else {"enabled": False}
         )
@@ -4622,6 +5248,10 @@ def run_gpu_lagrangian_experiment(
                         **candidate_payload,
                         "commitment": candidate.copy(),
                         "pricing": pricing,
+                        "_source_master": source_master,
+                        "_source_values": np.asarray(
+                            source_values, dtype=np.float64
+                        ).copy(),
                     }
                     payload["solution"] = candidate_payload["solution"]
                     payload["objective"] = objective
@@ -4672,6 +5302,7 @@ def run_gpu_lagrangian_experiment(
                     ACTIVSG2000_V8_EXPERIMENT_ID,
                     ACTIVSG2000_V9_EXPERIMENT_ID,
                     ACTIVSG2000_V10_EXPERIMENT_ID,
+                    ACTIVSG2000_V11_EXPERIMENT_ID,
                 }:
                     if candidate_policy is None:
                         raise ScopfError("ACTIVSg2000 v2 requires a bounded candidate policy")
@@ -4727,6 +5358,7 @@ def run_gpu_lagrangian_experiment(
                         ACTIVSG2000_V8_EXPERIMENT_ID,
                         ACTIVSG2000_V9_EXPERIMENT_ID,
                         ACTIVSG2000_V10_EXPERIMENT_ID,
+                        ACTIVSG2000_V11_EXPERIMENT_ID,
                     }:
                         attempt["cost_polish"] = {
                             "status": "running",
@@ -4886,6 +5518,7 @@ def run_gpu_lagrangian_experiment(
                         payload["commitment_feasibility_cuts"].append(
                             exc.commitment_feasibility_cut_record
                         )
+                    global_feasibility_cuts[cut.cut_id] = cut
                     cut_repairs = generate_commitment_cut_repairs(
                         cut=cut,
                         commitment=candidate,
@@ -5039,14 +5672,19 @@ def run_gpu_lagrangian_experiment(
             save()
             return True
 
-        def drain_primal_candidate_queue() -> None:
-            while pending_primal_candidates and best_primal is None:
+        def drain_primal_candidate_queue(*, stop_after_first_secure: bool = True) -> None:
+            while pending_primal_candidates and (
+                not stop_after_first_secure or best_primal is None
+            ):
                 parent, proposed, origin, generation_audit = pending_primal_candidates.popleft()
                 try_primal(parent, proposed, origin, generation_audit)
 
         target_gap = float(config.model["mip_relative_gap_tolerance"])
         gpu_heuristic_candidate: tuple[np.ndarray, str, dict[str, Any]] | None = None
-        if config.benchmark_id == ACTIVSG2000_V10_EXPERIMENT_ID:
+        if config.benchmark_id in {
+            ACTIVSG2000_V10_EXPERIMENT_ID,
+            ACTIVSG2000_V11_EXPERIMENT_ID,
+        }:
             grouped_candidate, grouped_audit = exact_type_group_rounding(
                 root.master, root.commitment
             )
@@ -5059,19 +5697,23 @@ def run_gpu_lagrangian_experiment(
                 )
             )
             drain_primal_candidate_queue()
-        if best_primal is None and config.benchmark_id in {
+        if (
+            best_primal is None
+            or bool(config.runtime.get("always_run_gpu_primal_heuristics", False))
+        ) and config.benchmark_id in {
             ACTIVSG2000_V6_EXPERIMENT_ID,
             ACTIVSG2000_V7_EXPERIMENT_ID,
             ACTIVSG2000_V8_EXPERIMENT_ID,
             ACTIVSG2000_V9_EXPERIMENT_ID,
             ACTIVSG2000_V10_EXPERIMENT_ID,
+            ACTIVSG2000_V11_EXPERIMENT_ID,
         }:
             heuristic_pipeline_started = time.perf_counter()
             payload["gpu_primal_heuristics"] = {
                 "status": "running",
                 "policy": (
-                    "reduced_gpu_seed_then_sparse_full_gpu_improvement_with_"
-                    "complete_feasible_start_v1"
+                    "short_reduced_gpu_seed_then_sparse_full_gpu_improvement_with_"
+                    "independently_verified_complete_gpu_start_v2"
                 ),
                 "mip_heuristics_only": True,
                 "dual_bound_used": False,
@@ -5197,7 +5839,20 @@ def run_gpu_lagrangian_experiment(
 
             payload["active_stage"] = "gpu_heuristics_sparse_full_model_build"
             sparse_build_started = time.perf_counter()
-            if seed_values is not None and seed_commitment is not None:
+            secure_gpu_start_used = bool(
+                config.benchmark_id == ACTIVSG2000_V11_EXPERIMENT_ID
+                and best_primal is not None
+            )
+            if secure_gpu_start_used:
+                assert best_primal is not None
+                heuristic_master, seed_start_values = reconstruct_full_values(
+                    case,
+                    network,
+                    best_primal["_source_master"],
+                    best_primal["_source_values"],
+                    exact_commitment=best_primal["commitment"],
+                )
+            elif seed_values is not None and seed_commitment is not None:
                 heuristic_master, seed_start_values = reconstruct_full_values(
                     case,
                     network,
@@ -5220,7 +5875,7 @@ def run_gpu_lagrangian_experiment(
                 heuristic_master.canonical,
                 heuristic_master.index,
                 network,
-                root.security_pairs,
+                tuple(sorted(global_pairs.values())),
             )
             redundant_bounds = derive_rate_a_angle_bounds(
                 network,
@@ -5258,7 +5913,15 @@ def run_gpu_lagrangian_experiment(
                 "columns": heuristic_master.canonical.num_columns,
                 "rows": heuristic_master.canonical.num_rows,
                 "nonzeros": int(heuristic_master.canonical.matrix_csr().nnz),
-                "security_pair_count": len(root.security_pairs),
+                "security_pair_count": len(global_pairs),
+                "complete_start_source": (
+                    "independently_verified_gpu_secure_incumbent"
+                    if secure_gpu_start_used
+                    else "reduced_gpu_heuristic_seed"
+                    if seed_start_values is not None
+                    else None
+                ),
+                "cpu_solution_data_used": False,
                 "redundant_angle_bounds": {
                     **redundant_bounds.audit,
                     "tightened_column_count": int(tightened_columns.size),
@@ -5294,6 +5957,11 @@ def run_gpu_lagrangian_experiment(
                         "error": str(exc),
                         "native_solver_called": False,
                     }
+                    if secure_gpu_start_used:
+                        raise ScopfError(
+                            "Independently verified GPU incumbent failed the exact full "
+                            "MIP-start dimensional/feasibility contract"
+                        ) from exc
                     seed_start_values = None
             heuristic_model_record["complete_start_precheck"] = start_audit
             payload["gpu_primal_heuristics"]["sparse_full_model"] = (
@@ -5480,45 +6148,100 @@ def run_gpu_lagrangian_experiment(
             )
             save()
 
-        initial_candidates: list[
-            tuple[np.ndarray, str, dict[str, Any] | None]
-        ] = []
         if gpu_heuristic_candidate is not None:
-            initial_candidates.append(gpu_heuristic_candidate)
-        initial_candidates.extend(
-            (
-            (
-                np.rint(root.commitment),
-                "root_pdlp_rounding",
-                None,
-            ),
-            (
-                np.asarray(
-                    root.gpu_lagrangian["best_minimizing_commitment"],
-                    dtype=np.float64,
+            # The GPU heuristic is an incumbent-improvement attempt even when
+            # the type-rounded pipeline already found a secure dispatch.  Do
+            # not let stale fallback candidates consume its bounded budget.
+            pending_primal_candidates.clear()
+            try_primal(root, *gpu_heuristic_candidate)
+            pending_primal_candidates.clear()
+        if best_primal is None:
+            initial_candidates = [
+                (
+                    np.rint(root.commitment),
+                    "root_pdlp_rounding",
+                    None,
                 ),
-                "root_gpu_lagrangian_minimizer",
-                None,
-            ),
-            (
-                np.asarray(root.commitment >= 0.25, dtype=np.float64),
-                "root_pdlp_threshold_0p25",
-                None,
-            ),
-            (
-                np.ones(source_rows.size, dtype=np.float64),
-                "all_online_fallback",
-                None,
-            ),
+                (
+                    np.asarray(
+                        root.gpu_lagrangian["best_minimizing_commitment"],
+                        dtype=np.float64,
+                    ),
+                    "root_gpu_lagrangian_minimizer",
+                    None,
+                ),
+                (
+                    np.asarray(root.commitment >= 0.25, dtype=np.float64),
+                    "root_pdlp_threshold_0p25",
+                    None,
+                ),
+                (
+                    np.ones(source_rows.size, dtype=np.float64),
+                    "all_online_fallback",
+                    None,
+                ),
+            ]
+            for proposed, origin, generation_audit in initial_candidates:
+                pending_primal_candidates.append(
+                    (root, proposed, origin, generation_audit)
+                )
+            drain_primal_candidate_queue()
+
+        if (
+            config.benchmark_id == ACTIVSG2000_V11_EXPERIMENT_ID
+            and best_primal is not None
+        ):
+            payload["active_stage"] = "global_feasibility_cut_lagrangian_refresh"
+            global_cuts = tuple(
+                global_feasibility_cuts[cut_id]
+                for cut_id in sorted(global_feasibility_cuts)
             )
-        )
-        for proposed, origin, generation_audit in initial_candidates:
-            pending_primal_candidates.append(
-                (root, proposed, origin, generation_audit)
+            root = _refresh_region_with_global_commitment_cuts(
+                region=root,
+                global_cuts=global_cuts,
+                case=case,
+                network=network,
+                config=config,
+                dual_target_objective=float(best_primal["objective"]),
             )
-        drain_primal_candidate_queue()
+            frontier[root.region_id] = root
+            all_region_records[0] = serialize_region(root)
+            payload["global_feasibility_cut_lagrangian_policy"] = {
+                "enabled": True,
+                "cut_count": len(global_cuts),
+                "all_frontier_descendants_inherit_cuts": True,
+                "diagonal_preconditioning": True,
+                "cpu_solution_data_used": False,
+            }
+            persist_region_evidence()
+            replay_and_checkpoint_frontier(
+                "independent_root_replay_after_global_feasibility_cuts"
+            )
 
         maximum_regions = int(config.runtime["maximum_frontier_regions"])
+        if config.benchmark_id == ACTIVSG2000_V11_EXPERIMENT_ID:
+            required_split_budget = (
+                2.0 * float(config.runtime["maximum_region_attempt_seconds"])
+                + float(config.runtime["split_transaction_margin_seconds"])
+            )
+            if float(config.runtime["minimum_refinement_launch_seconds"]) < (
+                required_split_budget
+            ):
+                raise ScopfError(
+                    "v11 split preflight does not cover two bounded sequential children"
+                )
+            payload["split_transaction_policy"] = {
+                "child_solver_contexts": 1,
+                "maximum_seconds_per_child": float(
+                    config.runtime["maximum_region_attempt_seconds"]
+                ),
+                "controller_margin_seconds": float(
+                    config.runtime["split_transaction_margin_seconds"]
+                ),
+                "minimum_launch_budget_seconds": required_split_budget,
+                "rollback_on_deadline": True,
+                "verification_reserve_is_excluded": True,
+            }
         failed_split_positions: dict[str, set[int]] = {}
         failed_cardinality_cut_ids: dict[str, set[str]] = {}
         split_attempt_number = 0
@@ -5561,7 +6284,10 @@ def run_gpu_lagrangian_experiment(
                 ),
             ):
                 try:
-                    if config.benchmark_id == ACTIVSG2000_V10_EXPERIMENT_ID:
+                    if config.benchmark_id in {
+                        ACTIVSG2000_V10_EXPERIMENT_ID,
+                        ACTIVSG2000_V11_EXPERIMENT_ID,
+                    }:
                         candidate_cardinality_split: CardinalitySplit | None = None
                         candidate_position: int | None = None
                         try:
@@ -5598,7 +6324,11 @@ def run_gpu_lagrangian_experiment(
                     continue
                 parent = candidate_parent
                 if (
-                    config.benchmark_id == ACTIVSG2000_V10_EXPERIMENT_ID
+                    config.benchmark_id
+                    in {
+                        ACTIVSG2000_V10_EXPERIMENT_ID,
+                        ACTIVSG2000_V11_EXPERIMENT_ID,
+                    }
                     and candidate_cardinality_split is not None
                 ):
                     cardinality_split = candidate_cardinality_split
@@ -5824,7 +6554,10 @@ def run_gpu_lagrangian_experiment(
                             else "phase_one_zero_violation_primal_v1"
                         )
                     save()
-                elif config.benchmark_id == ACTIVSG2000_V10_EXPERIMENT_ID:
+                elif config.benchmark_id in {
+                    ACTIVSG2000_V10_EXPERIMENT_ID,
+                    ACTIVSG2000_V11_EXPERIMENT_ID,
+                }:
                     prepared_master = _prepare_region_master(
                         case=case,
                         network=network,
@@ -5847,7 +6580,42 @@ def run_gpu_lagrangian_experiment(
                     # unstable residual trajectories in cuOpt.  Preserve the
                     # compatible row-dual state, but start each child primal cold.
                     phase_warm_start = None
-                    if parent.solve.native_row_dual is not None:
+                    if config.benchmark_id == ACTIVSG2000_V11_EXPERIMENT_ID:
+                        parent_canonical_dual, _parent_cut_dual = (
+                            _certificate_dual_arrays(
+                                parent.master,
+                                parent.lagrangian,
+                                parent.commitment_cuts,
+                            )
+                        )
+                        _parent_column_scale, parent_row_scale = (
+                            native_scaling_vectors(
+                                parent.master.canonical,
+                                mode=str(
+                                    config.raw["platforms"]["dgx_spark"][
+                                        "native_scaling_mode"
+                                    ]
+                                ),
+                                base_mva=float(case.base_mva),
+                            )
+                        )
+                        parent_native_certificate_dual = (
+                            parent_canonical_dual / parent_row_scale
+                        )
+                        phase_dual_warm_start, dual_mapping = (
+                            _map_native_row_dual_by_identity(
+                                parent.master.canonical,
+                                prepared_master.canonical,
+                                parent_native_certificate_dual,
+                                scaling_mode=str(
+                                    config.raw["platforms"]["dgx_spark"][
+                                        "native_scaling_mode"
+                                    ]
+                                ),
+                                base_mva=float(case.base_mva),
+                            )
+                        )
+                    elif parent.solve.native_row_dual is not None:
                         phase_dual_warm_start, dual_mapping = (
                             _map_native_row_dual_by_identity(
                                 parent.master.canonical,
@@ -5866,7 +6634,13 @@ def run_gpu_lagrangian_experiment(
                     else:
                         dual_mapping = None
                     warm_start_origin = (
-                        "parent_row_name_mapped_dual_only_v2"
+                        "parent_replayable_certificate_mapped_dual_only_v3"
+                        if (
+                            phase_dual_warm_start is not None
+                            and config.benchmark_id
+                            == ACTIVSG2000_V11_EXPERIMENT_ID
+                        )
+                        else "parent_row_name_mapped_dual_only_v2"
                         if phase_dual_warm_start is not None
                         else None
                     )
@@ -5883,7 +6657,10 @@ def run_gpu_lagrangian_experiment(
                         "parent_dual_mapping": (
                             dual_mapping
                             if config.benchmark_id
-                            == ACTIVSG2000_V10_EXPERIMENT_ID
+                            in {
+                                ACTIVSG2000_V10_EXPERIMENT_ID,
+                                ACTIVSG2000_V11_EXPERIMENT_ID,
+                            }
                             else None
                         ),
                     }
@@ -5932,6 +6709,7 @@ def run_gpu_lagrangian_experiment(
                 and len(child_specs) == 2
             )
             cost_outcomes: dict[str, tuple[SolvedRegion | None, RegionAttemptRejected | None]] = {}
+            transaction_deadline_error: DeadlineExceeded | None = None
 
             def solve_child_cost(
                 spec: dict[str, Any],
@@ -5939,31 +6717,40 @@ def run_gpu_lagrangian_experiment(
                 child_screener: ContingencyScreener,
                 concurrent_context: bool,
                 progress_callback: Callable[[dict[str, Any]], None],
+                certificate_parent: SolvedRegion = parent,
             ) -> tuple[SolvedRegion | None, RegionAttemptRejected | None]:
                 try:
-                    return (
-                        _solve_region(
-                            region_id=str(spec["child_id"]),
-                            masks=spec["masks"],
-                            case=case,
-                            network=network,
-                            catalog=catalog,
-                            config=config,
-                            deadline=deadline,
-                            initial_pairs=spec["initial_pairs"],
-                            screener=child_screener,
-                            checkpoint=lambda: None,
-                            progress=progress_callback,
-                            candidate_policy=region_attempt_policy,
-                            prepared_master=spec["prepared_master"],
-                            initial_native_primal=spec["initial_native_primal"],
-                            initial_native_row_dual=spec["initial_native_row_dual"],
-                            initial_warm_start_origin=spec["initial_warm_start_origin"],
-                            concurrent_solver_context=concurrent_context,
-                            commitment_cuts=spec["commitment_cuts"],
-                        ),
-                        None,
+                    child = _solve_region(
+                        region_id=str(spec["child_id"]),
+                        masks=spec["masks"],
+                        case=case,
+                        network=network,
+                        catalog=catalog,
+                        config=config,
+                        deadline=deadline,
+                        initial_pairs=spec["initial_pairs"],
+                        screener=child_screener,
+                        checkpoint=lambda: None,
+                        progress=progress_callback,
+                        candidate_policy=region_attempt_policy,
+                        prepared_master=spec["prepared_master"],
+                        initial_native_primal=spec["initial_native_primal"],
+                        initial_native_row_dual=spec["initial_native_row_dual"],
+                        initial_warm_start_origin=spec["initial_warm_start_origin"],
+                        concurrent_solver_context=concurrent_context,
+                        commitment_cuts=spec["commitment_cuts"],
                     )
+                    if config.benchmark_id == ACTIVSG2000_V11_EXPERIMENT_ID:
+                        child = _enforce_monotone_child_certificate(
+                            parent=certificate_parent,
+                            child=child,
+                            replay_tolerance_dollars=float(
+                                config.raw["benchmark"][
+                                    "gpu_cpu_replay_tolerance_dollars"
+                                ]
+                            ),
+                        )
+                    return child, None
                 except RegionAttemptRejected as error:
                     return None, error
 
@@ -6022,15 +6809,34 @@ def run_gpu_lagrangian_experiment(
                 )
                 save()
             else:
-                for spec in child_specs:
-                    child_id = str(spec["child_id"])
-                    payload["active_stage"] = f"disjunctive_region_{child_id}"
-                    cost_outcomes[child_id] = solve_child_cost(
-                        spec,
-                        child_screener=screener,
-                        concurrent_context=False,
-                        progress_callback=save_region_progress,
-                    )
+                try:
+                    for spec in child_specs:
+                        child_id = str(spec["child_id"])
+                        payload["active_stage"] = f"disjunctive_region_{child_id}"
+                        cost_outcomes[child_id] = solve_child_cost(
+                            spec,
+                            child_screener=screener,
+                            concurrent_context=False,
+                            progress_callback=save_region_progress,
+                        )
+                except DeadlineExceeded as exc:
+                    transaction_deadline_error = exc
+
+            if transaction_deadline_error is not None:
+                payload["failed_disjunctive_split_attempts"].append(
+                    {
+                        **split_record,
+                        "status": "rolled_back_transaction_deadline_guard",
+                        "parent_certificate_retained": True,
+                        "error_type": type(transaction_deadline_error).__name__,
+                        "error": str(transaction_deadline_error),
+                    }
+                )
+                payload.pop("pending_disjunctive_split", None)
+                payload.pop("active_region_progress", None)
+                payload["status"] = "incomplete_refinement_budget_reserve_reached"
+                persist_region_evidence()
+                break
 
             for spec in child_specs:
                 child_id = str(spec["child_id"])
