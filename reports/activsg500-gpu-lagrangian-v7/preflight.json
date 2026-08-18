@@ -1,0 +1,81 @@
+{
+  "schema_version": "1.0.0",
+  "experiment_suite_id": "activsg500-gpu-lagrangian-v7",
+  "status": "ready_to_freeze_awaiting_replacement_run_approval",
+  "recorded_at_utc": "2026-08-18T03:02:29.4624853Z",
+  "implementation_commit": "a2840de8b5e80d4a87cc3199cfbe304457c2e99d",
+  "configuration": {
+    "path": "configs/activsg500-gpu-lagrangian-v7.json",
+    "sha256": "d7f85a85af3a89b1ba04d744319d9b45e085c6c0fdc39ce7e1fc1beff951217a",
+    "case_sha256": "8ca6d54ea5179eeb03fe29d7b645618e7a86338c172247e81687476660f6dcbe",
+    "contingency_sha256": "f6b2e7e38fd1cf5e09e877cf04233b4d0487d6d0e99903070d519eade12b76a9",
+    "raw_inputs_equal_to_v6": true,
+    "mathematical_model_equal_to_v6": true,
+    "runtime_equal_to_v6": true,
+    "dgx_profile_equal_to_v6": true,
+    "phase_one_first_controller_equal_to_v6": true,
+    "exact_source_pmin_changed": false
+  },
+  "registered_delta_from_v6": {
+    "prepared_region_commitment_column_mapping": "generator_source_row_key_to_canonical_commitment_column_v1",
+    "failed_v6_run_preserved": true
+  },
+  "laptop_validation": {
+    "full_activsg500_solve_performed": false,
+    "full_tiny_fixture_test_suite": "passed_with_expected_gpu_only_skips",
+    "ruff": "passed",
+    "json_loading_and_fail_closed_registration": "passed",
+    "shell_syntax_validation": "passed",
+    "github_actions": {
+      "status": "passed",
+      "run_id": 32093927389,
+      "job_id": 95581475478
+    },
+    "activsg500_read_only_model_build": {
+      "optimization_performed": false,
+      "eligible_generator_count": 56,
+      "all_source_row_to_commitment_column_mappings_validated": true,
+      "first_generator_source_rows": [0, 1, 2, 3, 4, 5, 7, 8, 9, 10],
+      "first_commitment_columns": [0, 12, 24, 36, 48, 60, 72, 84, 96, 108]
+    },
+    "regression_fixture": {
+      "eligible_generator_source_row": 1,
+      "canonical_commitment_column": 0,
+      "mapping_validation_passed": true
+    }
+  },
+  "dgx_spark_validation": {
+    "full_v7_activsg500_run_count": 0,
+    "all_v7_one_shot_paths_absent": true,
+    "host_repository_commit": "a2840de8b5e80d4a87cc3199cfbe304457c2e99d",
+    "configuration_sha256_matches_laptop": true,
+    "build_script_sha256": "e45ce68374a88415db0e196aa01d7786803132bc4f065654765b50ab7ec87d26",
+    "run_script_sha256": "d7960aef3c5fbdfde5c7e77f10a0ffc8dca465efbe8756940f089e9e625e2ca2",
+    "smoke_image_id": "sha256:8c8cc79f1386e6e2ef3c80d45039f848b8a00a68d594e4fc9a7e622ffec41d5b",
+    "smoke_source_commit": "a2840de8b5e80d4a87cc3199cfbe304457c2e99d",
+    "gpu_tiny_fixture_solve_runs": 1,
+    "gpu_tiny_fixture": {
+      "cuopt_version": "26.6.0",
+      "device": "NVIDIA GB10",
+      "activsg500_prepared_region_source_row_mapping_validated": true,
+      "infeasible_child_phase_one_prune_certified": true,
+      "infeasible_child_conservative_lower_bound_pu": 0.051666653216322564,
+      "feasible_child_capacity_gate_passed": true,
+      "feasible_child_phase_one_zero_violation_primal_retained": true,
+      "feasible_child_cost_lp_primal_warm_started": true,
+      "phase_one_row_dual_transferred": false,
+      "feasible_child_final_security_violation_pu": 0.0
+    }
+  },
+  "replacement_run_gate": {
+    "required_tag": "experiment-500-gpu-lagrangian-v7",
+    "explicit_user_approval_received": false,
+    "full_run_count_allowed_before_approval": 0,
+    "deadline_seconds_if_approved": 600.0,
+    "requested_relative_gap": 0.001,
+    "integer_solver": "none",
+    "branch_and_bound": false,
+    "custom_cuda_kernel": false,
+    "automatic_retry": false
+  }
+}
