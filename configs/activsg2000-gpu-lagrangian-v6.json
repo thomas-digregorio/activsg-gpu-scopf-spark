@@ -57,7 +57,7 @@
     "parallel_child_minimum_frontier_regions": 2,
     "root_canonical_residual_refinement_attempts": 1,
     "root_canonical_residual_refinement_optimality_tolerance": 1e-10,
-    "gpu_primal_heuristics_seconds": 300.0,
+    "gpu_primal_heuristics_seconds": 105.0,
     "gpu_primal_seed_seconds": 75.0,
     "phase_lagrangian_gpu_iterations": 2048
   },
@@ -102,6 +102,7 @@
       "best_primal_retention": true,
       "primal_generator": "reduced_gpu_heuristics_then_sparse_full_gpu_heuristics_with_complete_gpu_feasible_start_v3",
       "primal_native_conditioning": "rate_a_redundant_finite_angle_bounds_v1",
+      "primal_budget_policy": "75_second_seed_with_105_second_pipeline_cap_v1",
       "primal_dual_bound_imported": false,
       "child_bound_engine": "phase_one_feasible_point_plus_parent_inherited_gpu_lagrangian_dual_v1",
       "ordinary_child_cost_lp_removed": true,

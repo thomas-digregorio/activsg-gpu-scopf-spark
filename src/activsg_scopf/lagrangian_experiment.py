@@ -317,6 +317,7 @@ ACTIVSG2000_V6_NUMERICAL_AND_RUNTIME_FIX = {
         "with_complete_gpu_feasible_start_v3"
     ),
     "primal_native_conditioning": "rate_a_redundant_finite_angle_bounds_v1",
+    "primal_budget_policy": "75_second_seed_with_105_second_pipeline_cap_v1",
     "primal_dual_bound_imported": False,
     "child_bound_engine": (
         "phase_one_feasible_point_plus_parent_inherited_gpu_lagrangian_dual_v1"
@@ -379,7 +380,7 @@ ACTIVSG2000_V6_RUNTIME = {
     "maximum_pdlp_round_seconds": 180.0,
     "maximum_frontier_regions": 128,
     "maximum_failed_split_attempts": 64,
-    "gpu_primal_heuristics_seconds": 300.0,
+    "gpu_primal_heuristics_seconds": 105.0,
     "gpu_primal_seed_seconds": 75.0,
     "phase_lagrangian_gpu_iterations": 2048,
 }
@@ -2031,6 +2032,12 @@ def _region_record(region: SolvedRegion) -> dict[str, Any]:
         "region_id": region.region_id,
         **region.masks.as_dict(region.master.index.generator_source_rows + 1),
         "lp_objective": region.solve.primal_objective,
+        "relaxation_solution_role": region.solve.statistics.get(
+            "relaxation_solution_role", "cost_lp_solution"
+        ),
+        "ordinary_cost_lp_solved": region.solve.statistics.get(
+            "ordinary_cost_lp_solved", True
+        ),
         "lp_commitment_fractional_count": int(
             np.count_nonzero(np.abs(region.commitment - np.rint(region.commitment)) > 1e-6)
         ),

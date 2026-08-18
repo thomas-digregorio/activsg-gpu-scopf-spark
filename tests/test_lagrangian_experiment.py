@@ -249,7 +249,7 @@ def test_registered_activsg2000_v6_numerical_runtime_fix_is_fail_closed() -> Non
     assert v6.raw["raw_inputs"] == v5.raw["raw_inputs"]
     assert v6.model == v5.model
     assert v6.runtime["deadline_seconds"] == 990.0
-    assert v6.runtime["gpu_primal_heuristics_seconds"] == 300.0
+    assert v6.runtime["gpu_primal_heuristics_seconds"] == 105.0
     assert v6.runtime["gpu_primal_seed_seconds"] == 75.0
     assert v6.raw["platforms"]["dgx_spark"]["pdlp_solver_mode_native"] == 1
     assert v6.raw["platforms"]["dgx_spark"]["save_best_primal_so_far"] is True
