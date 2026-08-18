@@ -1,0 +1,154 @@
+Setting parameter time_limit to 1.500000e+01
+Setting parameter mip_relative_gap to 1.000000e-03
+Setting parameter random_seed to 0
+Setting parameter log_to_console to true
+Setting parameter presolve to 0
+Setting parameter method to 1
+Setting parameter pdlp_solver_mode to 4
+Setting parameter pdlp_precision to 1
+Setting parameter mip_batch_pdlp_strong_branching to 1
+Setting parameter mip_batch_pdlp_reliability_branching to 1
+Setting parameter mip_reliability_branching to 1
+Setting parameter log_file to /tmp/activsg-cuopt-native-hmzwu1z_.log
+cuOpt version: 26.6.0, git hash: df5fe0d1, host arch: aarch64, device archs: 75-real,80-real,86-real,90a-real,100f-real,120a-real,120
+CPU: Unknown, threads (physical/logical): 1/20, RAM: 107.74 GiB
+CUDA 13.0, device: NVIDIA GB10 (ID 0), VRAM: 121.69 GiB
+CUDA device UUID: 9041e1da-22a0-b23a-76f1-06935470d0de
+
+Solving a problem with 8961 constraints, 11214 variables (430 integers), and 33526 nonzeros
+Problem scaling:
+Objective coefficents range:          [4e+02, 9e+03]
+Constraint matrix coefficients range: [7e-04, 6e+00]
+Constraint rhs / bounds range:        [0e+00, 2e+01]
+Variable bounds range:                [1e-03, 4e+01]
+
+MIP row scaling completed
+Presolve is disabled, skipping
+Objective offset 0.000000 scaling_factor 1.000000
+Model fingerprint: 0xc9ded527
+Graph construction time 0.002599
+Automorphism group size 2.06661*10^207, 581 dejavu generators (0 move variables)
+Dejavu time 0.007497
+Projected 0 generators onto 11214 binary variables (581 skipped non-binary), 0 stored
+Total symmetry detection time 0.010152
+No exploitable symmetry found (0 generators, 0 non-trivial orbits, max orbit size 0)
+Probing implied bounds: 0 zero entries, 0 one entries
+Reduced cost strengthening enabled: 2
+10310 variable upper bounds in 0.00 seconds
+4010 variable lower bounds in 0.00 seconds
+
+Solving LP root relaxation in concurrent mode
+Skipping column scaling
+Dual Simplex Phase 1
+Dual feasible solution found.
+Dual Simplex Phase 2
+ Iter     Objective           Num Inf.  Sum Inf.     Perturb  Time
+    0 +0.0000000000000000e+00    5313 3.93835860e+05 0.00e+00 0.42
+    1 +0.0000000000000000e+00    5313 3.83492971e+05 0.00e+00 0.42
+ 1000 +0.0000000000000000e+00    4668 1.52100249e+05 0.00e+00 0.43
+ 2000 +0.0000000000000000e+00    4092 6.78904143e+05 0.00e+00 0.48
+ 3000 +3.4791486183281092e+05    5735 9.75311185e+04 0.00e+00 0.55
+ 4000 +6.4645583951776021e+05    6084 6.85268265e+06 5.21e-07 0.60
+ 5000 +6.6661091953968187e+05    5780 1.82930534e+06 2.36e-07 0.74
+ 6000 +6.7943728690086072e+05    4621 9.65584222e+05 1.11e-07 0.95
+ 7000 +7.0125481550552417e+05    3521 7.86412033e+05 0.00e+00 1.18
+ 8000 +7.4801542279401678e+05    2488 3.76798425e+05 0.00e+00 1.37
+ 9000 +7.7743933748949447e+05    2793 5.05668603e+10 0.00e+00 1.59
+10000 +7.9812315200923732e+05     600 1.47370717e+05 0.00e+00 1.86
+Removed perturbation of 6.65e-04.
+
+
+Root relaxation solution found in 10848 iterations and 1.73s by Dual Simplex
+Root relaxation objective +1.12757436e+06
+
+
+ | Explored | Unexplored |    Objective    |     Bound     | IntInf | Depth | Iter/Node | Gap    |  Time  |
+           0            0             +inf    +1.127610e+06       17      0   1.1e+04        -        2.17
+           0            0             +inf    +1.127743e+06       16      0   1.1e+04        -        2.21
+Gomory         cuts : 1
+MIR            cuts : 2
+Knapsack       cuts : 0
+Strong CG      cuts : 0
+Clique         cuts : 0
+Implied Bounds cuts : 0
+Flow Cover     cuts : 0
+Cut generation time: 0.09 seconds
+Cut pool size  : 4
+Size with cuts : 8961 constraints, 20175 variables, 42498 nonzeros
+Strong branching using 19 threads and 16 fractional variables
+Cooperative batch PDLP and Dual Simplex for strong branching
+Strong branching completed in 0.15s
+Exploring the B&B tree using 19 threads
+
+ | Explored | Unexplored |    Objective    |     Bound     | IntInf | Depth | Iter/Node |   Gap    |  Time  |
+D        302          248    +1.160294e+06    +1.127912e+06        0    118   5.6e+01       2.8%      3.22
+D        443          371    +1.154857e+06    +1.127912e+06        0    136   5.2e+01       2.3%      3.51
+D        659          567    +1.142375e+06    +1.127912e+06        0    162   4.1e+01       1.3%      3.79
+        1000          636    +1.142375e+06    +1.128911e+06       12     17   3.2e+01       1.2%      4.17
+D       1685         1229    +1.138880e+06    +1.128911e+06        0    118   2.3e+01       0.9%      4.75
+D       1919         1426    +1.133353e+06    +1.128911e+06        0    132   2.1e+01       0.4%      5.00
+        2069         1340    +1.133353e+06    +1.129332e+06       13     26   2.1e+01       0.4%      5.18
+        3089         1916    +1.133353e+06    +1.129332e+06       14     25   1.7e+01       0.4%      6.30
+        4204         2534    +1.133353e+06    +1.129332e+06       14     28   1.5e+01       0.4%      7.33
+Adding initial solution success! feas 1 objective 1133479.385501 excess 0.000000
+        5273         3135    +1.133353e+06    +1.129334e+06       11     30   1.4e+01       0.4%      8.33
+        6319         3713    +1.133353e+06    +1.129334e+06       14     26   1.4e+01       0.4%      9.42
+        7319         4219    +1.133353e+06    +1.129334e+06        7     64   1.3e+01       0.4%     10.43
+        8324         4766    +1.133353e+06    +1.129344e+06       11     23   1.3e+01       0.4%     11.51
+        9342         5302    +1.133353e+06    +1.129344e+06        8     66   1.3e+01       0.4%     12.60
+       10357         5879    +1.133353e+06    +1.129344e+06       11     42   1.3e+01       0.4%     13.64
+       11359         6401    +1.133353e+06    +1.129352e+06        9     57   1.2e+01       0.4%     14.69
+Time limit reached. Stopping the solver...
+Explored 11638 nodes in 15.52s.
+Absolute Gap 4.001556e+03 Objective 1.1333534396384622e+06 Lower Bound 1.1293518837756442e+06
+Solution objective: 1133353.439638 , relative_mip_gap 0.003531 solution_bound 1129351.883776 presolve_time 0.000000 total_solve_time 15.520926 max constraint violation 0.000000 max int violation 0.000000 max var bounds violation 0.000000 nodes 11638 simplex_iterations 143560
+{
+  "canonical_feasibility": {
+    "maximum_column_bound_violation": 5.994036200718256e-08,
+    "maximum_column_bound_violation_name": "pg_g0352",
+    "maximum_integrality_violation": 3.319566843629218e-14,
+    "maximum_integrality_violation_name": "u_g0420",
+    "maximum_row_violation": 2.420986220386112e-07,
+    "maximum_row_violation_name": "dc_flow_l1756",
+    "objective_difference": 6.984919309616089e-10,
+    "objective_expected": 1133479.3855011363,
+    "objective_recalculated": 1133479.3855011356
+  },
+  "diagnostic": "exact_v8_round2_known_secure_full_start",
+  "expected_native_columns": 11214,
+  "passed": true,
+  "schema_version": "1.0.0",
+  "secure_result_sha256": "5573425a8e625c0c964b2c61d33ca80666de74a350e9431a96e5ce9b90e02e3f",
+  "solve": {
+    "bound": 1129351.8837756442,
+    "has_incumbent": true,
+    "mip_gap": 0.003530721946801452,
+    "mip_start_native_contract": {
+      "contract_passed": true,
+      "eliminated_submitted_canonical_columns": 5,
+      "explicit_eliminated_columns": 5,
+      "explicit_free_split_columns": 1999,
+      "native_log_contract_passed": true,
+      "native_rejection_detected": false,
+      "native_translated_vector_readback": true,
+      "policy": "presolve_off_explicit_free_split_readback_v2",
+      "presolve_parameter_readback": 0,
+      "submitted": true,
+      "submitted_canonical_columns": 9220,
+      "submitted_columns": 11214,
+      "submitted_native_columns": 11214
+    },
+    "native_columns_translated": 11214,
+    "native_log_audit": {
+      "barrier_numerical_warning_count": 0,
+      "bytes": 6167,
+      "free_variable_warning_count": 0,
+      "mip_start_rejection_count": 0,
+      "presolve_disabled_message_count": 1,
+      "sha256": "f53add2b9c3ae7d81926406b8e3ef8e004a1148586cf98f001f616fb4317a318"
+    },
+    "objective": 1133353.4396384622,
+    "solve_time_seconds": 15.52092598,
+    "status": "FeasibleFound"
+  }
+}

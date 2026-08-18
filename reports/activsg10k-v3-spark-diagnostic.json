@@ -1,0 +1,156 @@
+{
+  "schema_version": "1.0.0",
+  "run": {
+    "case_name": "ACTIVSg10k",
+    "benchmark_id": "activsg10k-v3",
+    "classification": "explicitly_authorized_nonofficial_single_run_diagnostic",
+    "official": false,
+    "attempt_count": 1,
+    "retry_count": 0,
+    "execution_commit": "533c8d5c66057fbe4a5067f06b758f874099ef7c",
+    "execution_tag": "benchmark-10k-v3-spark-diagnostic",
+    "result_frozen_identity_tag": "unfrozen-nonofficial",
+    "config_sha256": "3f3bcbfec96a7c018d062c385d8867c907dfe69a14dd4b2d3603175e985a6fb8",
+    "seeded_security_pairs": 0,
+    "solver_session_mode": "rebuild_each_round",
+    "prior_commitment_mip_start_used_on_spark": false,
+    "laptop_partial_commitment_mip_start_preserved": true
+  },
+  "environment": {
+    "host": "spark-829a",
+    "gpu": "NVIDIA GB10",
+    "gpu_compute_capability": "12.1",
+    "logical_cpu_count": 20,
+    "unified_memory_bytes": 130663165952,
+    "python": "3.14.5",
+    "cuopt": "26.06.00",
+    "cupy_cuda13x": "14.1.1",
+    "numpy": "2.4.6",
+    "scipy": "1.17.1",
+    "base_container_image": "nvidia/cuopt@sha256:0faac7182b32f5be747e30f081427e80e8dfeccd8f49613814d3d217167fe1ad",
+    "derived_container_image_sha256": "e93564a8545d2d392499d6404cbd32559561579464ddff12bb6d6407a6dd9726"
+  },
+  "source": {
+    "case_sha256": "ead10b25fecc4dcc02f88bacdfb3526fe8b8985b81f7e539c95abddb32575590",
+    "contingency_sha256": "7e1681a960b0a2a99d824766e0e94cc291fa36a7ec33b6dee24bf12ac67ddef7",
+    "buses": 10000,
+    "branches": 12706,
+    "generators": 2485,
+    "source_online_generators": 1937,
+    "source_offline_generators": 548,
+    "valid_nonislanding_branch_outages": 8371,
+    "excluded_branch_outages": 3435,
+    "pwl_segments": 10,
+    "maximum_pwl_absolute_error": 2.587250178001341
+  },
+  "result": {
+    "status": "deadline_budget_exhausted",
+    "total_wall_time_seconds": 253.75025063099747,
+    "payload_elapsed_seconds": 252.716847787,
+    "active_stage": "exhaustive_contingency_screen",
+    "active_round": 2,
+    "error_type": "DeadlineExceeded",
+    "error": "No solver budget remains before verification reserve",
+    "last_solver_status": "Optimal",
+    "last_objective": 2224250.1766364602,
+    "last_bound": 2224050.063924797,
+    "last_mip_gap": 0.00008996861673445877,
+    "required_mip_gap": 0.000001,
+    "commitment_count": 1575,
+    "added_security_pair_count": 328,
+    "independent_verification": null,
+    "acceptance_passed": false,
+    "failure_gates": [
+      "six new violated contingency pairs remained after round 2 and required another restricted-master solve",
+      "the reported round-2 gap exceeded the configured 1e-6 tolerance despite the cuOpt Optimal status label",
+      "independent verification was not reached"
+    ]
+  },
+  "end_to_end_timing_seconds": {
+    "raw_input_loading": 0.06665096200595144,
+    "model_and_factor_build": 2.0531935330072884,
+    "screen_workspace_build": 0.3385701069928473,
+    "solver_session_build": 0.0000173439912032336,
+    "solver_rounds": 247.68738660699455,
+    "screening": 1.9722235259832814,
+    "result_serialization": 0.02680773299653083
+  },
+  "round_1": {
+    "rows": 33913,
+    "solver_budget_seconds": 247.19510733700008,
+    "adapter_wall_time_seconds": 48.230052668994176,
+    "native_solve_time_seconds": 47.681931682,
+    "status": "Optimal",
+    "objective": 2201957.0404536254,
+    "bound": 2201955.8687005336,
+    "mip_gap": 5.321416672892551e-7,
+    "mip_nodes": 13184,
+    "simplex_iterations": 63402,
+    "presolve_time_seconds": 3.911586395,
+    "maximum_constraint_violation": 6.547792850142287e-7,
+    "screen": {
+      "wall_time_seconds": 1.492291568996734,
+      "evaluated_sides": 171488782,
+      "new_violated_pairs": 322,
+      "maximum_violation_pu": 8.286999999999784,
+      "maximum_pair_id": "c9537_m10258_lower"
+    }
+  },
+  "round_2": {
+    "rows": 34235,
+    "solver_budget_seconds": 197.33638192700164,
+    "adapter_wall_time_seconds": 199.45733393800037,
+    "native_solve_time_seconds": 199.144001069,
+    "status": "Optimal",
+    "objective": 2224250.1766364602,
+    "bound": 2224050.063924797,
+    "mip_gap": 0.00008996861673445877,
+    "mip_nodes": 50076,
+    "simplex_iterations": 1152011,
+    "presolve_time_seconds": 3.855091396,
+    "maximum_constraint_violation": 1.0880739864660427e-8,
+    "screen": {
+      "wall_time_seconds": 0.47993195698654745,
+      "evaluated_sides": 171488782,
+      "new_violated_pairs": 6,
+      "maximum_violation_pu": 0.15751948698870266,
+      "maximum_pair_id": "c8726_m8049_lower",
+      "new_pair_ids": [
+        "c6608_m7783_upper",
+        "c7375_m7972_upper",
+        "c7375_m7974_lower",
+        "c8372_m8903_upper",
+        "c8372_m8904_lower",
+        "c8726_m8049_lower"
+      ]
+    }
+  },
+  "peak_memory": {
+    "process_rss_bytes": 5039640576,
+    "cupy_pool_used_bytes": 850997760,
+    "cuda_device_memory_delta_bytes": 12205293568
+  },
+  "comparison_with_laptop_v3": {
+    "comparison_type": "diagnostic_system_to_system_not_pure_gpu_speedup",
+    "same_config_sha256": true,
+    "same_model_and_runtime_source": true,
+    "source_and_config_diff_between_commits": false,
+    "laptop_total_wall_time_seconds": 283.6480296000009,
+    "spark_total_wall_time_seconds": 253.75025063099747,
+    "wall_time_difference_seconds": 29.89777896900341,
+    "laptop_to_spark_wall_time_ratio": 1.1178236431083595,
+    "spark_wall_time_percent_less": 10.540450082154676,
+    "laptop_result_status": "incomplete_restricted_master_not_optimal",
+    "spark_result_status": "deadline_budget_exhausted",
+    "both_passed_acceptance": false,
+    "comparability_limits": [
+      "the laptop used HiGHS and a persistent incremental session with a partial commitment MIP start",
+      "the Spark used cuOpt and rebuilt the model each round without a prior commitment MIP start",
+      "the two systems ended with different incumbents, gaps, and provisional violation sets"
+    ]
+  },
+  "evidence_sha256": {
+    "raw_result": "5730ba04f0a8ac3e36f9af6fa7f8770d63fb4ee8f71e5b7fc8d852104db8966a",
+    "checkpoint": "b4da631bf40066c52dd13581d1f3343b43ae1c59f46bbe6861bc5463159592ec"
+  }
+}

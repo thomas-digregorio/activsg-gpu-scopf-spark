@@ -1,0 +1,124 @@
+{
+  "schema_version": "1.0.0",
+  "benchmark_id": "activsg2000-gpu-lp-certificate-v15",
+  "status": "lp_relaxation_exhaustive_bound_insufficient",
+  "frozen_identity": {
+    "commit": "50ff750ff5e320a14b556fedc77bbf3d7dbe66f6",
+    "tag": "experiment-2000-gpu-lp-certificate-v15",
+    "config_sha256": "fdff8d3a1573bf1a724d124c0075aeb8841b42bff06266197303bf8f645819ba"
+  },
+  "total_wall_time_seconds": 129.38518856099108,
+  "continuous_solver_time_seconds": 126.87186984205619,
+  "fractional_screening_time_seconds": 1.17793599300785,
+  "round_count": 3,
+  "added_security_pair_count": 104,
+  "final_lp": {
+    "solver_status": "Optimal",
+    "primal_objective": 1128529.2340572644,
+    "reported_dual_objective": 1128529.2334318494,
+    "reconstructed_dual_objective": 1128529.2334231636,
+    "conservative_numerical_lower_bound": 1128529.1205702403,
+    "reported_reconstructed_dual_difference": 0.000008685747161507607,
+    "numerical_dual_certificate_passed": true
+  },
+  "reference_integer_incumbent": {
+    "objective": 1133047.8684341211,
+    "requested_relative_gap": 0.001,
+    "required_lower_bound": 1131914.820565687,
+    "verified_lp_lower_bound": 1128529.1205702403,
+    "relative_gap": 0.003988135002738905,
+    "bound_shortfall": 3385.6999954467174,
+    "certified": false
+  },
+  "rounds": [
+    {
+      "round": 1,
+      "rows_before_solve": 8788,
+      "solver_budget_seconds": 480.0,
+      "solve_time_seconds": 1.326914461,
+      "primal_objective": 1118296.7001868375,
+      "reported_dual_objective": 1118296.700186647,
+      "reconstructed_dual_objective": 1118296.7001847117,
+      "dual_certificate_passed": true,
+      "warm_start_submitted": false,
+      "new_security_pairs": 84,
+      "maximum_security_violation_pu": 1.5669193435515445
+    },
+    {
+      "round": 2,
+      "rows_before_solve": 8872,
+      "solver_budget_seconds": 480.0,
+      "solve_time_seconds": 43.344189687,
+      "primal_objective": 1127661.4017315137,
+      "reported_dual_objective": 1127661.4017378108,
+      "reconstructed_dual_objective": 1127661.401718968,
+      "dual_certificate_passed": true,
+      "warm_start_submitted": true,
+      "zero_extended_dual_rows": 84,
+      "new_security_pairs": 20,
+      "maximum_security_violation_pu": 0.23488301773371803
+    },
+    {
+      "round": 3,
+      "rows_before_solve": 8892,
+      "solver_budget_seconds": 480.0,
+      "solve_time_seconds": 81.673646402,
+      "primal_objective": 1128529.2340572644,
+      "reported_dual_objective": 1128529.2334318494,
+      "reconstructed_dual_objective": 1128529.2334231636,
+      "dual_certificate_passed": true,
+      "warm_start_submitted": true,
+      "zero_extended_dual_rows": 20,
+      "new_security_pairs": 0,
+      "maximum_security_violation_pu": 2.4301129997184034e-11
+    }
+  ],
+  "final_exhaustive_gpu_screen": {
+    "passed": true,
+    "valid_outages": 2740,
+    "evaluated_sides": 17563400,
+    "new_violated_pairs": 0,
+    "maximum_violation_pu": 2.4301129997184034e-11,
+    "maximum_pair_id": "c1888_m1906_lower"
+  },
+  "post_run_independent_verification": {
+    "inside_measured_boundary": false,
+    "passed": true,
+    "checked_valid_outages": 2740,
+    "checked_security_sides": 17563400,
+    "maximum_security_violation_pu": 4.355041198778054e-9,
+    "maximum_model_residual_pu": 1.0310115612810477e-7,
+    "objective_recalculation_difference": 4.656612873077393e-10,
+    "fractional_online_commitments": 53
+  },
+  "fractional_commitment": {
+    "source_online_generator_count": 432,
+    "fractional_commitment_count": 53,
+    "near_zero_count": 85,
+    "near_one_count": 294,
+    "sum_fractional_commitments": 328.6912240731871,
+    "maximum_distance_from_binary": 0.4935682746040922
+  },
+  "fix_audit": {
+    "presolve_parameter_readback": 0,
+    "presolver_log_markers": 0,
+    "dual_agreement_required": true,
+    "time_limit_vector_recovery_smoke_passed": true,
+    "pdlp_primal_dual_warm_start_readback_passed": true,
+    "branch_and_bound_performed": false,
+    "custom_cuda_kernels_used": false,
+    "exact_source_pmin_changed": false
+  },
+  "peak_memory": {
+    "process_rss_bytes": 1321668608,
+    "cuda_device_memory_delta_bytes": 869404672,
+    "cupy_pool_used_bytes": 70301696
+  },
+  "artifact_sha256": {
+    "result_json": "80032f42288f80725632e837d434bf6fc2c7a993db193aac63758f2bf971c7cf",
+    "run_registry": "63447fdc6ea885b745c8d4350fa630ebd41975e01da6170c7878ecf4dd682422",
+    "launcher_console": "1f2874a06f0f30543820fbe9ee80ca16e23f61d3282d680fb18b9f9954c82487",
+    "worker_console": "2b2766d75bd83eb1f0ff7067eea10fa0e62e01beaf6401da7d3d0405c1c4d2dd",
+    "post_run_verification": "a660a4109b64d0eaf83a268d9d045ea03378fdb246b9776039a44431405645b5"
+  }
+}

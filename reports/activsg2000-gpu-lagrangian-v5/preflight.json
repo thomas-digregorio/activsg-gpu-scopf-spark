@@ -1,0 +1,97 @@
+{
+  "schema_version": "1.0.0",
+  "experiment_suite_id": "activsg2000-gpu-lagrangian-v5",
+  "status": "ready_to_freeze_user_authorized",
+  "recorded_at_utc": "2026-08-18T19:35:52.6288794Z",
+  "implementation_commit": "0a5bf58270a87d399994cbd2ef246662cd6d6b48",
+  "authorization": {
+    "user_instruction": "fix numerical issues and then do another run",
+    "full_run_count_allowed": 1,
+    "deadline_seconds": 1800.0,
+    "automatic_retry": false
+  },
+  "configuration": {
+    "path": "configs/activsg2000-gpu-lagrangian-v5.json",
+    "sha256": "085e4c919da395b71e2496d5ae6d4bb8ab8c84b63f95898ba2cc498cedb8f298",
+    "build_script_sha256": "62c7a6c847496ac4d2925fbe65a7d3e1d345e98619885a9057df6e1c25e6cbba",
+    "run_script_sha256": "039cd1de2d1d5754c11852f11442915965340047152ccea01538e062f0258402",
+    "safe_residual_smoke_script_sha256": "30420b61e7d294cbe38a5a2e37169692dce312efc8ac9a4dab36c02fe3f91d77",
+    "case_sha256": "8d00618de8fd10bf35a599f59d2deebfecd0d86e28fcff73219ad7c4ebab860b",
+    "contingency_sha256": "198b39f0381925a4ddacbe2148973cb1d93ddfe220303829cf87b16d45190bba",
+    "exact_source_pmin_retained": true,
+    "requested_relative_gap": 0.001,
+    "model_residual_tolerance_pu": 0.000001,
+    "security_violation_tolerance_pu": 0.00001,
+    "deadline_seconds": 1800.0,
+    "integer_solver": "none",
+    "branch_and_bound": false,
+    "cpu_commitment_or_dispatch_seeded": false
+  },
+  "v4_failure_preserved": {
+    "frozen_tag": "experiment-2000-gpu-lagrangian-v4",
+    "status": "failed_exception",
+    "classification": "canonical_residual_acceptance_failure_not_model_infeasibility",
+    "observed_canonical_residual_pu": 0.000002110661,
+    "registered_tolerance_pu": 0.000001,
+    "automatic_retry_performed": false,
+    "evidence_sha256": "49686e1b37f1e045ca00a688be4759c85e1142f71b858b41a7c498e81cd2aef4"
+  },
+  "v5_numerical_corrections": {
+    "safe_native_scaling": {
+      "policy": "power_system_equilibrated_safe_v3",
+      "positive_diagonal_reformulation": true,
+      "never_reduces_power_system_per_unit_v1_row_scale": true,
+      "activsg2000_root_v1_minimum_row_scale": 0.01,
+      "activsg2000_root_v2_minimum_row_scale": 0.000014554089619136124,
+      "activsg2000_root_safe_v3_minimum_row_scale": 0.01,
+      "v2_rows_below_v1_scale": 5522,
+      "safe_v3_rows_below_v1_scale": 0
+    },
+    "canonical_residual_gate": {
+      "independent_canonical_fp64_check_required_before_screening": true,
+      "one_same_master_refinement_for_borderline_optimal_root": true,
+      "refinement_optimality_tolerance": 1e-10,
+      "prior_native_primal_warm_started": true,
+      "prior_native_row_dual_warm_started": true,
+      "fail_closed_if_refinement_does_not_pass": true
+    },
+    "residual_attribution": {
+      "worst_row_index_and_name": true,
+      "worst_row_side_activity_and_bound": true,
+      "canonical_violation_and_native_row_scale": true
+    },
+    "warm_start_safety": {
+      "presolve_disabled": true,
+      "same_master_new_constraint_duals_zero_extended": true,
+      "phase_one_to_cost_dual_mapping_uses_semantic_row_identity_and_scale_ratio": true,
+      "warm_starts_never_used_as_certificates": true
+    },
+    "nearly_dependent_row_policy": {
+      "only_proven_exact_duplicate_security_rows_removed": true,
+      "tolerance_based_nearly_dependent_rows_removed": false
+    },
+    "mathematical_feasible_set_changed": false,
+    "exact_source_pmin_changed": false
+  },
+  "validation": {
+    "local_tests_passed": 206,
+    "local_tests_skipped_expected": 23,
+    "local_tests_failed": 0,
+    "ruff_passed": true,
+    "shell_syntax_passed": true,
+    "github_ci_passed": true,
+    "dgx_safe_residual_smoke_passed": true,
+    "dgx_smoke_first_canonical_residual_pu": 0.0,
+    "dgx_smoke_refined_canonical_residual_pu": 0.0,
+    "dgx_smoke_primal_and_dual_warm_starts_accepted": true,
+    "full_activsg2000_v5_optimization_performed": false
+  },
+  "run_gate": {
+    "required_tag": "experiment-2000-gpu-lagrangian-v5",
+    "explicit_user_authorization_received": true,
+    "full_run_count_allowed": 1,
+    "deadline_seconds": 1800.0,
+    "automatic_retry": false,
+    "all_one_shot_paths_confirmed_absent": true
+  }
+}

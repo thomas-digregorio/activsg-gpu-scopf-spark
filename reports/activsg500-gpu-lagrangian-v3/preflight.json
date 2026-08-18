@@ -1,0 +1,40 @@
+{
+  "schema_version": "1.0.0",
+  "experiment_suite_id": "activsg500-gpu-lagrangian-v3",
+  "source_code_commit": "8ab08abd9dde29fdb66d5c048dc97cdb6bd668fb",
+  "full_model_execution_started": false,
+  "laptop_validation": {
+    "tests_collected": 188,
+    "tests_passed": 174,
+    "tests_skipped": 14,
+    "ruff_passed": true,
+    "activsg500_source_online_generator_count": 56,
+    "activsg500_nonzero_source_pmin_count": 56,
+    "activsg500_minimum_source_pmin_mw": 0.3,
+    "base_reduced_master_rows": 1811,
+    "base_reduced_master_columns": 672,
+    "coefficient_cleanup_relaxation_proof_passed": true
+  },
+  "dgx_tiny_fixture_smoke": {
+    "status": "passed",
+    "image_sha256": "87f67ceaf22519cbe39730a8296d4a2361b261d824f9092e7fc1dd963e44b39d",
+    "cuopt_version": "26.6.0",
+    "gpu": "NVIDIA GB10",
+    "cold_pdlp_iterations": 1100,
+    "cold_pdlp_native_seconds": 0.154,
+    "warm_appended_row_pdlp_iterations": 10,
+    "warm_appended_row_pdlp_native_seconds": 0.008,
+    "warm_start_dual_zero_extended_count": 1,
+    "native_integer_columns": 0,
+    "numeric_dual_certificate_passed": true,
+    "gpu_cpu_lagrangian_replay_difference_dollars": 0.0,
+    "activsg500_native_minimum_nonzero_coefficient": 0.0000014316216159517395,
+    "coefficient_cleanup_relaxation_proof_passed": true
+  },
+  "controller_unit_gates": {
+    "dual_divergence_rejection_passed": true,
+    "two_round_residual_stagnation_rejection_passed": true,
+    "same_master_primal_dual_warm_start_passed": true,
+    "unexpected_adapter_error_remains_fatal": true
+  }
+}

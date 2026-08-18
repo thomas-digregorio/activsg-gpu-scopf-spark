@@ -1,0 +1,269 @@
+{
+  "absolute_gap": 2237.4818816215266,
+  "added_security_pairs": 187,
+  "bound": 1130841.0465015096,
+  "campaign": "activsg2000-gpu-gap-sensitivity-v7",
+  "commitment_count": 330,
+  "commitment_flips_from_v6": 32,
+  "comparison_to_v6": {
+    "commitment_count": 330,
+    "commitment_flips_from_v6": 32,
+    "dispatch_l1_difference_from_v6_mw": 5744.037171946011,
+    "dispatch_total_mw": 67109.2100000002,
+    "maximum_dispatch_difference_from_v6_mw": -684.1999999999998,
+    "maximum_dispatch_difference_source_id": "gen-row-0457",
+    "v6_added_security_pairs": 191,
+    "v6_bound": 1130615.3757110643,
+    "v6_mip_gap": 0.002027446366104175,
+    "v6_objective": 1132912.2946259205,
+    "v6_off_v7_on": 17,
+    "v6_on_v7_off": 15,
+    "v6_solver_rounds_seconds": 899.6521732409892,
+    "v6_wall_seconds": 902.8866017719847,
+    "v7_added_security_pairs": 187,
+    "v7_bound": 1130841.0465015096,
+    "v7_minus_v6_bound": 225.67079044529237,
+    "v7_minus_v6_mip_gap": -5.275368102371659e-05,
+    "v7_minus_v6_objective": 166.2337572106626,
+    "v7_mip_gap": 0.0019746926850804586,
+    "v7_objective": 1133078.5283831311,
+    "v7_solver_allowance_overrun_seconds": 2.31905111001106,
+    "v7_solver_rounds_seconds": 1802.319051110011,
+    "v7_wall_seconds": 1805.7492032420123
+  },
+  "constraint_generation_rounds": [
+    {
+      "adapter_status": "FeasibleFound",
+      "adapter_wall_seconds": 5.571357592009008,
+      "batch_pdlp_reliability_branching_readback": 1,
+      "batch_pdlp_strong_branching_readback": 1,
+      "bound": 1118297.105971293,
+      "mip_gap": 0.00012989371852447946,
+      "mip_reliability_branching_readback": 1,
+      "native_solve_seconds": 5.167919391,
+      "native_status": "FeasibleFound",
+      "num_nodes": 196,
+      "num_simplex_iterations": 7727,
+      "objective": 1118442.384611587,
+      "partial_integer_mip_start_columns": 0,
+      "pdlp_method_readback": 1,
+      "pdlp_method_requested": 1,
+      "pdlp_mode_readback": 4,
+      "pdlp_mode_requested": 4,
+      "pdlp_precision_readback": 1,
+      "pdlp_precision_requested": 1,
+      "requested_gap_certified": true,
+      "round": 1,
+      "rows_before_solve": 8788,
+      "screen_evaluated_sides": 17563400,
+      "screen_maximum_violation_pu": 2.0459100279296125,
+      "screen_new_violated_pairs": 173,
+      "screen_seconds": 1.0330792639870197,
+      "solver_budget_seconds": 1799.3424461180111
+    },
+    {
+      "adapter_status": "Optimal",
+      "adapter_wall_seconds": 39.215407362993574,
+      "batch_pdlp_reliability_branching_readback": 1,
+      "batch_pdlp_strong_branching_readback": 1,
+      "bound": 1130850.4158005253,
+      "mip_gap": 0.0008340196041061662,
+      "mip_reliability_branching_readback": 1,
+      "native_solve_seconds": 39.120634996,
+      "native_status": "Optimal",
+      "num_nodes": 19492,
+      "num_simplex_iterations": 332853,
+      "objective": 1131794.354479981,
+      "partial_integer_mip_start_columns": 432,
+      "pdlp_method_readback": 1,
+      "pdlp_method_requested": 1,
+      "pdlp_mode_readback": 4,
+      "pdlp_mode_requested": 4,
+      "pdlp_precision_readback": 1,
+      "pdlp_precision_requested": 1,
+      "requested_gap_certified": true,
+      "round": 2,
+      "rows_before_solve": 8961,
+      "screen_evaluated_sides": 17563400,
+      "screen_maximum_violation_pu": 0.15172240166566325,
+      "screen_new_violated_pairs": 14,
+      "screen_seconds": 0.03692697800579481,
+      "solver_budget_seconds": 1792.6839013780118
+    },
+    {
+      "adapter_status": "FeasibleFound",
+      "adapter_wall_seconds": 1757.5322861550085,
+      "batch_pdlp_reliability_branching_readback": 1,
+      "batch_pdlp_strong_branching_readback": 1,
+      "bound": 1130841.0465015096,
+      "mip_gap": 0.0019746926850804586,
+      "mip_reliability_branching_readback": 1,
+      "native_solve_seconds": 1756.348184979,
+      "native_status": "FeasibleFound",
+      "num_nodes": 1373905,
+      "num_simplex_iterations": 18286699,
+      "objective": 1133078.5283831311,
+      "partial_integer_mip_start_columns": 432,
+      "pdlp_method_readback": 1,
+      "pdlp_method_requested": 1,
+      "pdlp_mode_readback": 4,
+      "pdlp_mode_requested": 4,
+      "pdlp_precision_readback": 1,
+      "pdlp_precision_requested": 1,
+      "requested_gap_certified": false,
+      "round": 3,
+      "rows_before_solve": 8975,
+      "screen_evaluated_sides": 17563400,
+      "screen_maximum_violation_pu": 2.842170943040401e-16,
+      "screen_new_violated_pairs": 0,
+      "screen_seconds": 0.04674428602447733,
+      "solver_budget_seconds": 1753.3795592890237
+    }
+  ],
+  "controller_acceptance_gates": {
+    "final_exhaustive_screen_maximum_violation_pu": 2.842170943040401e-16,
+    "final_exhaustive_screen_new_violations": 0,
+    "final_exhaustive_screen_round": 3,
+    "final_exhaustive_screen_tolerance_pu": 1e-05,
+    "final_exhaustive_screen_zero_above_tolerance": true,
+    "independent_verification_passed": false,
+    "requested_mip_gap_certified": false,
+    "requested_mip_gap_tolerance": 0.001
+  },
+  "dispatch_l1_difference_from_v6_mw": 5744.037171946011,
+  "dispatch_total_mw": 67109.2100000002,
+  "dispatch_total_pu": 671.092100000002,
+  "failure_gate": "requested_mip_gap_not_certified",
+  "final_model_dimensions": {
+    "columns": 9220,
+    "nonzeros": 27148,
+    "rows": 8975
+  },
+  "frozen_identity": {
+    "commit": "6a387441d688333c425df8efd8cc6c71a2eb48d8",
+    "config_sha256": "53fbdede4dbde3725e1842f2bf4ee697629b280b6336de621105a0baec5486b9",
+    "tag": "experiment-2000-gpu-gap-v7"
+  },
+  "initialization": {
+    "external_cpu_mip_start": false,
+    "later_rounds": "prior_gpu_integer_commitment_only",
+    "round_1": "cold"
+  },
+  "maximum_dispatch_difference_from_v6_mw": -684.1999999999998,
+  "maximum_dispatch_difference_source_id": "gen-row-0457",
+  "mip_gap": 0.0019746926850804586,
+  "native_log_confirmation": "Cooperative batch PDLP and Dual Simplex for strong branching",
+  "objective": 1133078.5283831311,
+  "observed_mip_start_status": "submitted_by_adapter_but_rejected_by_cuopt_in_rounds_2_and_3",
+  "outer_boundary_passed": true,
+  "outer_boundary_seconds": 1935.0,
+  "pdlp_parameters_requested_and_read_back": {
+    "method": 1,
+    "mip_batch_pdlp_reliability_branching": 1,
+    "mip_batch_pdlp_strong_branching": 1,
+    "mip_reliability_branching": 1,
+    "pdlp_precision": 1,
+    "pdlp_solver_mode": 4
+  },
+  "pdlp_profile": {
+    "batch_reliability_branching": true,
+    "batch_strong_branching": true,
+    "method": "pdlp",
+    "precision": "fp64",
+    "reliability_branching_factor": 1,
+    "solver_mode": "stable3"
+  },
+  "peak_memory": {
+    "cuda_device_memory_delta_bytes": 22324244480,
+    "cupy_pool_used_bytes": 70301696,
+    "process_rss_bytes": 16035786752
+  },
+  "post_run_independent_verification": {
+    "checked_security_sides": 17563400,
+    "checked_valid_outages": 2740,
+    "details": {
+      "base_limit_violation_pu": 0.0,
+      "conditional_pmin_pmax_violation_pu": 1.0231815394945442e-14,
+      "dc_flow_equation_residual_pu": 1.6138437786139548e-09,
+      "dispatch_definition_violation_pu": 7.389644451905042e-15,
+      "global_balance_residual_pu": 1.7416823538951576e-12,
+      "independent_base_dc_solution_residual_pu": 7.921835276647471e-10,
+      "nodal_balance_residual_pu": 2.5642066248110495e-12,
+      "reference_angle_residual_rad": 0.0,
+      "segment_bound_violation_pu": 3.0908609005564358e-15
+    },
+    "elapsed_seconds": 0.5255429619865026,
+    "maximum_angle_limit_violation_rad": 0.0,
+    "maximum_integrality_violation": 1.6031398430982335e-11,
+    "maximum_model_residual_pu": 1.6138437786139548e-09,
+    "maximum_security_violation_pu": 5.9819171838171314e-12,
+    "objective_difference": 1.3969838619232178e-09,
+    "objective_recalculated": 1133078.5283831297,
+    "passed": true,
+    "security_check_method": "independent raw-input FP64 sparse factorization, chunked LODF exhaustive screen, and selected explicit post-outage DC solves"
+  },
+  "pricing_status": "withheld_mip_gap_not_certified",
+  "raw_evidence": {
+    "config": {
+      "bytes": 2659,
+      "sha256": "53fbdede4dbde3725e1842f2bf4ee697629b280b6336de621105a0baec5486b9"
+    },
+    "event_log": {
+      "bytes": 5772,
+      "sha256": "4a9cc2b25135a0aadbebc3d1df427dca1fae25aca47f87293ad26126cf88e574"
+    },
+    "gpu_result": {
+      "bytes": 1819647,
+      "sha256": "6cd435164133e7506af2bd0f2943a648b4f80b465acaf2fb9852f8eb446f7883"
+    },
+    "independent_verification": {
+      "bytes": 1132,
+      "sha256": "e8f4f18d72de180aa93b105e386d6842d302ccb57f6f61339541f228c516c641"
+    },
+    "launcher_console": {
+      "bytes": 148,
+      "sha256": "a285be430f6ad0195041b317f470d94e6e1938d701c74de2a0738c87588013e1"
+    },
+    "run_registry": {
+      "bytes": 1013,
+      "sha256": "9cbc76a041ca8e7c4a1c0d2f8b29433ccdb4447ea23b91ba06c6dee20c97d9de"
+    },
+    "v6_evidence": {
+      "bytes": 10030,
+      "sha256": "fb7f9946394b0f020d52d51a8a2dc575e4eb0bf12a7ab346dfa9810bcabb23c6"
+    },
+    "worker_console": {
+      "bytes": 165725,
+      "sha256": "9c77364c9e1be0e0bd45b5e7f0023018a9d3dc2d3d85a0313c725ed2c2a01619"
+    }
+  },
+  "requested_mip_gap": 0.001,
+  "schema_version": "1.0.0",
+  "solver_allowance_overrun_seconds": 2.31905111001106,
+  "solver_allowance_seconds": 1800.0,
+  "source_identity": {
+    "case_file": "case_ACTIVSg2000.m",
+    "case_sha256": "8d00618de8fd10bf35a599f59d2deebfecd0d86e28fcff73219ad7c4ebab860b",
+    "contingency_file": "contab_ACTIVSg2000.m",
+    "contingency_sha256": "198b39f0381925a4ddacbe2148973cb1d93ddfe220303829cf87b16d45190bba",
+    "row_identity_convention": {
+      "branch": "branch-row-NNNN is the immutable one-based mpc.branch source row",
+      "contingency_change": "source_row is the immutable one-based chgtab row",
+      "generator": "gen-row-NNNN is the immutable one-based mpc.gen source row"
+    }
+  },
+  "status": "incomplete_restricted_master_gap_not_certified",
+  "success": false,
+  "timings_seconds": {
+    "model_and_factor_build": 0.2799416799971368,
+    "raw_input_loading": 0.015734149026684463,
+    "result_serialization": 0.009519636980257928,
+    "screen_workspace_build": 0.03917965799337253,
+    "screening": 1.1167505280172918,
+    "solver_rounds": 1802.319051110011,
+    "solver_session_build": 3.724798443727195e-05
+  },
+  "total_wall_time_seconds": 1805.7492032420123,
+  "v6_off_v7_on": 17,
+  "v6_on_v7_off": 15
+}

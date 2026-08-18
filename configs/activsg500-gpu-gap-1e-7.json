@@ -1,0 +1,57 @@
+{
+  "$schema": "../schemas/config.schema.json",
+  "schema_version": "1.0.0",
+  "case_name": "ACTIVSg500",
+  "raw_inputs": {
+    "case_file": "data/raw/matpower-8.1/case_ACTIVSg500.m",
+    "case_sha256": "8ca6d54ea5179eeb03fe29d7b645618e7a86338c172247e81687476660f6dcbe",
+    "contingency_file": "data/raw/matpower-8.1/contab_ACTIVSg500.m",
+    "contingency_sha256": "f6b2e7e38fd1cf5e09e877cf04233b4d0487d6d0e99903070d519eade12b76a9"
+  },
+  "model": {
+    "interval_hours": 1.0,
+    "pwl_segments": 10,
+    "mip_relative_gap_tolerance": 1e-7,
+    "model_residual_tolerance_pu": 1e-6,
+    "security_violation_tolerance_pu": 1e-5,
+    "lodf_validation_tolerance_pu": 1e-9,
+    "lodf_validation_columns": 3,
+    "lodf_build_chunk_columns": 256,
+    "screen_chunk_columns": 256
+  },
+  "runtime": {
+    "deadline_seconds": 1800.0,
+    "verification_reserve_seconds": 120.0,
+    "serialization_reserve_seconds": 15.0,
+    "maximum_constraint_generation_rounds": 100
+  },
+  "platforms": {
+    "dgx_spark": {
+      "solver": "cuopt",
+      "screening": "cupy",
+      "solver_threads": 0,
+      "solver_session": "rebuild_each_round_with_partial_mip_start",
+      "pricing_solver": "highs",
+      "highspy_version": "1.15.1",
+      "container_image": "nvidia/cuopt@sha256:0faac7182b32f5be747e30f081427e80e8dfeccd8f49613814d3d217167fe1ad",
+      "cuopt_version": "26.06.00",
+      "diagnostics": {
+        "enabled": true,
+        "mip_logging_interval_seconds": 10.0
+      }
+    }
+  },
+  "benchmark": {
+    "id": "activsg500-gpu-gap-v1-1e-7",
+    "required_git_tag": "experiment-500-gpu-gap-v1",
+    "official": false,
+    "kind": "gap_sensitivity_experiment",
+    "experiment_suite_id": "activsg500-gpu-gap-sensitivity-v1",
+    "gap_label": "1e-7",
+    "pricing": {
+      "enabled": true,
+      "solver": "highs",
+      "maximum_constraint_generation_rounds": 100
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{"canonical_columns": 9220, "canonical_rows": 8961, "diagnostic_event": "full_cpu_start_audit_passed", "maximum_row_violation": 2.420986220386112e-07, "maximum_security_violation_pu": 7.875883056840393e-10, "mip_start_columns": 9220, "security_rows": 173}
+Setting parameter time_limit to 1.657607e+03
+Setting parameter mip_relative_gap to 1.000000e-03
+Setting parameter random_seed to 0
+Setting parameter log_to_console to true
+cuOpt version: 26.6.0, git hash: df5fe0d1, host arch: aarch64, device archs: 75-real,80-real,86-real,90a-real,100f-real,120a-real,120
+CPU: Unknown, threads (physical/logical): 1/20, RAM: 108.03 GiB
+CUDA 13.0, device: NVIDIA GB10 (ID 0), VRAM: 121.69 GiB
+CUDA device UUID: 9041e1da-22a0-b23a-76f1-06935470d0de
+
+{"output": "/workspace/results/diagnostics/activsg2000-gpu-round2-cpu-seed-diagnostic-v1-dgx-spark.json", "status": "diagnostic_no_incumbent_from_verified_full_start"}
+{"output": "/workspace/results/diagnostics/activsg2000-gpu-round2-cpu-seed-diagnostic-v1-dgx-spark.json", "status": "diagnostic_no_incumbent_from_verified_full_start"}

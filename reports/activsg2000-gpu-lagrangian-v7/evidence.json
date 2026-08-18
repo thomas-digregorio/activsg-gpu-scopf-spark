@@ -1,0 +1,67 @@
+{
+  "schema_version": "1.0.0",
+  "benchmark_id": "activsg2000-gpu-lagrangian-v7",
+  "frozen_identity": {
+    "commit": "436dbaa068eac240a0bd616c8ea403e6a86203df",
+    "tag": "experiment-2000-gpu-lagrangian-v7",
+    "config_sha256": "ebc6474f3eab030a1696a63f3e64aa7407b9764144a11889f9adafe1aed90cf1"
+  },
+  "raw_artifacts": {
+    "result_path": "/home/dgxsparktd/activsg-gpu-scopf-spark/results/experiments/activsg2000-gpu-lagrangian-v7-dgx-spark.json",
+    "result_bytes": 54995815,
+    "result_sha256": "2e148c985b41b19b377d196880776ed53623f1cb46535224c38599502173adac",
+    "launcher_log_sha256": "a4b4c317c317878355ae4344620a45ac46192c754f743f836457ba8dcec6e19b",
+    "worker_console_log_sha256": "b39eea2fa43ce65f6fa473e7b8b1fe37f367fd0df3baa74f74d9d44cbb82c596"
+  },
+  "outcome": {
+    "status": "deadline_budget_exhausted",
+    "error_type": "DeadlineExceeded",
+    "error": "No solver budget remains before verification reserve",
+    "deadline_seconds": 990.0,
+    "elapsed_seconds": 923.2218037830025,
+    "total_wall_time_seconds": 924.8363179540029,
+    "objective": null,
+    "relative_gap": null,
+    "secure_primal": false,
+    "success_gate_passed": false
+  },
+  "lower_bound": {
+    "value": 1128529.2124109394,
+    "status": "independently_replayed_current_frontier",
+    "replay_passed": true,
+    "replay_difference_dollars": 0.0,
+    "frontier_minimum": 1128529.2124109394,
+    "frontier_maximum": 1142774.2474378317
+  },
+  "work_counts": {
+    "solved_regions": 41,
+    "frontier_regions": 21,
+    "phase_one_prechecks": 42,
+    "phase_one_pruned_regions": 0,
+    "failed_splits": 2,
+    "attempted_commitments": 12,
+    "skipped_repair_limit_commitments": 45
+  },
+  "numerical_audit": {
+    "native_mip_start_rejections": 0,
+    "native_barrier_warnings": 0,
+    "stable2_none_length_exception": false,
+    "minimum_positive_fixed_commitment_phase_one_violation_pu": 0.0014754097912082827
+  },
+  "gpu_heuristics": {
+    "status": "FeasibleFound",
+    "returned_commitment_count": 341,
+    "reduced_stage_adapter_wall_seconds": 76.56860648099973,
+    "full_stage_adapter_wall_seconds": 28.210674700007075
+  },
+  "peak_memory": {
+    "cuda_device_memory_delta_bytes": 12260433920,
+    "cupy_pool_used_bytes": 70301696,
+    "process_rss_bytes": 12034875392
+  },
+  "cpu_boundary": {
+    "laptop_end_to_end_seconds": 1007.3702709000063,
+    "gpu_finished_inside_cpu_time_boundary": true,
+    "comparable_successful_solution": false
+  }
+}

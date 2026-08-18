@@ -1,0 +1,25 @@
+{
+  "experiment_suite_id": "activsg2000-gpu-commitment-trace-v11",
+  "runs": {
+    "1e-3": {
+      "bound": 1130541.7285763328,
+      "checkpoint": "/workspace/results/checkpoints/activsg2000-gpu-commitment-trace-v11-1e-3-dgx_spark.json",
+      "finished_at_utc": "2026-08-15T13:31:47.238913+00:00",
+      "frozen_identity": {
+        "commit": "67d64dff6efcb62dcf38182c05b90e374a7df439",
+        "config_sha256": "d1a400173df43e827a731ee11150b7ad402a73ed5a7a891d44209689a162c7b1",
+        "tag": "experiment-2000-gpu-commitment-trace-v11"
+      },
+      "host": "07682785b4cd",
+      "mip_gap": 0.0022118569988128695,
+      "mip_relative_gap_tolerance": 0.001,
+      "objective": 1133047.8684341211,
+      "output": "/workspace/results/experiments/activsg2000-gpu-commitment-trace-v11-1e-3-dgx-spark.json",
+      "pricing_status": null,
+      "started_at_utc": "2026-08-15T13:21:44.102821+00:00",
+      "status": "incomplete_restricted_master_gap_not_certified",
+      "total_wall_time_seconds": 603.0986240600178
+    }
+  },
+  "schema_version": "1.0.0"
+}

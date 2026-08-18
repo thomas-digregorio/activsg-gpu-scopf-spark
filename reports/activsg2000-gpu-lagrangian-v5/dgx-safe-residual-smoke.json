@@ -1,0 +1,47 @@
+{
+  "schema_version": "1.0.0",
+  "policy": "safe_scaling_plus_same_master_primal_dual_refinement_smoke_v1",
+  "status": "passed",
+  "full_activsg2000_run": false,
+  "solver_workflow_count": 1,
+  "solve_count_inside_workflow": 2,
+  "dgx": {
+    "gpu": "NVIDIA GB10",
+    "cuopt_version": "26.6.0",
+    "cuda_version": "13.0"
+  },
+  "artifact_identity": {
+    "source_code_commit_in_image": "508bc6d1073b37cffe2629e4188f7087eae4f6cd",
+    "smoke_script_commit": "0a0810018c89a9840ced5242c84d36d066f46dde",
+    "container_image_sha256": "958ac2aa498cc681833e3f26d0e4cf944ba1e6a8b80c730918e5cf12eb96dab3"
+  },
+  "problem": {
+    "rows": 1,
+    "columns": 128,
+    "nonzeros": 128,
+    "baseline_row_scale": 0.01,
+    "v2_row_scale": 0.00016129032258064516,
+    "safe_v3_row_scale": 0.01,
+    "safe_v3_never_weakens_baseline": true
+  },
+  "initial_solve": {
+    "optimality_tolerance": 1e-8,
+    "status": "Optimal",
+    "native_iterations": 610,
+    "native_solve_seconds": 0.144373559,
+    "canonical_residual_pu": 0.0,
+    "dual_certificate_passed": true
+  },
+  "warm_refinement": {
+    "optimality_tolerance": 1e-10,
+    "status": "Optimal",
+    "native_iterations": 10,
+    "native_solve_seconds": 0.004816219,
+    "canonical_residual_pu": 0.0,
+    "dual_certificate_passed": true,
+    "initial_primal_submitted": true,
+    "initial_dual_submitted": true
+  },
+  "adapter_wall_seconds": 0.9399936150002759,
+  "passed": true
+}

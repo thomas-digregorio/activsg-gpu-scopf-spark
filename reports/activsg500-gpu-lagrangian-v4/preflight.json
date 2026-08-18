@@ -1,0 +1,65 @@
+{
+  "schema_version": "1.0.0",
+  "experiment_suite_id": "activsg500-gpu-lagrangian-v4",
+  "status": "ready_to_freeze",
+  "recorded_at_utc": "2026-08-17T23:38:18.3483696Z",
+  "implementation_commit": "724f20739e2aea2953e6664be66fc64f04ce311b",
+  "configuration": {
+    "path": "configs/activsg500-gpu-lagrangian-v4.json",
+    "sha256": "12f00b5065bef38a51a0f2dd0e449324721850261afd491cfba2ee5a9b854ef2",
+    "case_sha256": "8ca6d54ea5179eeb03fe29d7b645618e7a86338c172247e81687476660f6dcbe",
+    "contingency_sha256": "f6b2e7e38fd1cf5e09e877cf04233b4d0487d6d0e99903070d519eade12b76a9"
+  },
+  "laptop_validation": {
+    "full_activsg500_solve_performed": false,
+    "pytest": {
+      "passed": 182,
+      "skipped_gpu_only": 15,
+      "failed": 0,
+      "elapsed_seconds": 0.82
+    },
+    "ruff": "passed"
+  },
+  "dgx_spark_validation": {
+    "full_activsg500_run_count": 0,
+    "one_shot_paths_absent": true,
+    "host_repository_commit": "724f20739e2aea2953e6664be66fc64f04ce311b",
+    "final_smoke_image_id": "sha256:a3deaf83da599931b4b49f698c28f4cf667c2fb55396c1e7416d3a06dc20d6f0",
+    "smoke_script_sha256": "df33470769d635cec032c0c3d68d963045a42a6fc0670bddd1bcec7f85b3773e",
+    "cuopt_version": "26.6.0",
+    "cuda_version": "13.0",
+    "gpu": "NVIDIA GB10",
+    "final_tiny_fixture_smoke": {
+      "status": "passed",
+      "continuous_lp_status": "Optimal",
+      "continuous_lp_objective": 743.9999999999997,
+      "native_integer_columns": 0,
+      "warm_start_dual_zero_extended_count": 1,
+      "gpu_cpu_lagrangian_replay_difference": 0.0,
+      "exact_duplicate_security_rows_removed": 1,
+      "logical_security_pair_identities_retained": 2,
+      "phase_one_box_derived_upper_bound_pu": 1.0000000000000002,
+      "phase_one_conservative_lower_bound_pu": 0.051666653216322564,
+      "phase_one_infeasibility_threshold_pu": 0.000001,
+      "phase_one_prune_certified": true,
+      "phase_one_large_bound_range_warning_absent": true
+    },
+    "superseded_tiny_fixture_smokes": [
+      {
+        "implementation_commit": "4b6815e",
+        "status": "passed",
+        "reason_superseded": "replaced_fixed_1e6_phase_one_variable_bound_with_box_derived_bound",
+        "full_activsg500_run": false
+      }
+    ]
+  },
+  "frozen_run_policy": {
+    "required_tag": "experiment-500-gpu-lagrangian-v4",
+    "full_run_count_allowed": 1,
+    "deadline_seconds": 600.0,
+    "requested_relative_gap": 0.001,
+    "integer_solver": "none",
+    "branch_and_bound": false,
+    "exact_source_pmin_changed": false
+  }
+}

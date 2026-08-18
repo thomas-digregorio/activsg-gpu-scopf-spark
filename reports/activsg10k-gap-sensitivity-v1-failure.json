@@ -1,0 +1,52 @@
+{
+  "schema_version": "1.0.0",
+  "experiment_suite_id": "activsg10k-gap-sensitivity-v1",
+  "gap_label": "1e-3",
+  "requested_mip_gap": 0.001,
+  "status": "failed_exception",
+  "error_type": "ScopfError",
+  "error": "HiGHS solve failed with HighsStatus.kError",
+  "failure_stage": "restricted_master_solve",
+  "failure_round": 2,
+  "total_wall_time_seconds": 22.687124699994456,
+  "frozen_identity": {
+    "commit": "dce44dee1b6c0da34f1e09478de61bf17147ba2f",
+    "tag": "experiment-10k-gap-v1",
+    "config_sha256": "fefff168bc773519dcba5b6b55db9350c14c3592b50a6090ad657b0ca803421c"
+  },
+  "last_completed_master": {
+    "round": 1,
+    "status": "Optimal",
+    "objective": 2202010.10335201,
+    "bound": 2201934.8644689173,
+    "mip_gap": 0.000034168273332625226,
+    "commitment_count": 1520,
+    "dispatch_sum_mw": 150916.88000002244,
+    "dispatch_sum_pu": 1509.1688000002193,
+    "new_security_pairs": 333,
+    "maximum_security_violation_pu": 8.286999999999903
+  },
+  "failure_attribution": {
+    "partial_commitment_start_was_attempted": true,
+    "incremental_rows_added": 333,
+    "incremental_row_load_wall_time_seconds": 0.017975700000533834,
+    "highs_message": "Highs::optimizeModel() error trying to find feasible solution",
+    "interpretation": "HiGHS returned an internal error while processing the partial start; this did not establish infeasibility of the round-2 restricted master"
+  },
+  "acceptance": {
+    "optimal_secure_solution": false,
+    "independent_verification_reached": false,
+    "pricing_available": false
+  },
+  "evidence_sha256": {
+    "raw_result": "41c80f21921c32c297e1391ccde5f03f9756a84397c6062495f45bb8a3c8f5e8",
+    "checkpoint": "7143e7170f8d7251c795b29b4bf0bb4c560e572344c7091595b6eb1c3ec8795e",
+    "event_log": "4090261ce4e0cc4d23d0bf5a33480fe8a27c8e0775b75ab916e490c0583d3889",
+    "native_highs_log": "c9e795e1c6b6eeb44e7cc08c67760d23717512b2c0d853f1a7884cb98455b388"
+  },
+  "replacement": {
+    "authorized": true,
+    "suite_id": "activsg10k-gap-sensitivity-v2",
+    "policy": "retain partial MIP starts and rebuild the identical restricted master cold only if HiGHS returns the classified internal start-processing error"
+  }
+}

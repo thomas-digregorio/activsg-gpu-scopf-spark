@@ -1,0 +1,2 @@
+status,objective,bound,absolute_gap,mip_gap,requested_mip_gap,gap_certified,final_screen_zero_violations,independent_verification_passed,commitment_count,pricing_status,wall_seconds
+incomplete_restricted_master_gap_not_certified,1133240.316366717,1130745.8782881377,2494.43807857926,0.0022011554323924207,0.001,False,True,True,330,withheld_mip_gap_not_certified,1668.4942001500021

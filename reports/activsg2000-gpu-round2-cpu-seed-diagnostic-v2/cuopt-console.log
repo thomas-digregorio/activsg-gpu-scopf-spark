@@ -1,0 +1,88 @@
+{"bound_projection_count": 79, "canonical_columns": 9220, "canonical_rows": 8961, "diagnostic_event": "full_cpu_start_audit_passed", "maximum_row_violation": 2.420986220386112e-07, "maximum_security_violation_pu": 1.246871761395596e-09, "mip_start_bound_policy": "project_numerical_excess_to_exact_bound", "mip_start_columns": 9220, "security_rows": 173}
+Setting parameter time_limit to 1.657607e+03
+Setting parameter mip_relative_gap to 1.000000e-03
+Setting parameter random_seed to 0
+Setting parameter log_to_console to true
+cuOpt version: 26.6.0, git hash: df5fe0d1, host arch: aarch64, device archs: 75-real,80-real,86-real,90a-real,100f-real,120a-real,120
+CPU: Unknown, threads (physical/logical): 1/20, RAM: 107.98 GiB
+CUDA 13.0, device: NVIDIA GB10 (ID 0), VRAM: 121.69 GiB
+CUDA device UUID: 9041e1da-22a0-b23a-76f1-06935470d0de
+
+Solving a problem with 8961 constraints, 9220 variables (432 integers), and 27120 nonzeros
+Problem scaling:
+Objective coefficents range:          [7e+00, 9e+03]
+Constraint matrix coefficients range: [2e-03, 1e+05]
+Constraint rhs / bounds range:        [0e+00, 2e+03]
+Variable bounds range:                [1e-01, 4e+03]
+Warning: input problem contains a large range of coefficients: consider reformulating to avoid numerical difficulties.
+
+MIP row scaling completed
+Presolve is disabled, skipping
+Objective offset 0.000000 scaling_factor 1.000000
+Model fingerprint: 0xc537b62f
+Free variable found! Make sure the correct bounds are given.
+Unused variables detected, eliminating them! Unused var count 5
+Starting cuOpt presolve
+Running probing cache with 19 tasks
+Unused variables detected, eliminating them! Unused var count 303
+After cuOpt presolve: 8656 constraints, 10911 variables, objective offset 0.000000.
+cuOpt presolve time: 0.86
+Graph construction time 0.002820
+Automorphism group size 4.13323*10^207, 582 dejavu generators (0 move variables)
+Dejavu time 0.007332
+Projected 0 generators onto 10911 binary variables (582 skipped non-binary), 0 stored
+Total symmetry detection time 0.010168
+No exploitable symmetry found (0 generators, 0 non-trivial orbits, max orbit size 0)
+Probing implied bounds: 227 zero entries, 227 one entries
+Reduced cost strengthening enabled: 2
+10575 variable upper bounds in 0.00 seconds
+4275 variable lower bounds in 0.00 seconds
+
+Solving LP root relaxation in concurrent mode
+Skipping column scaling
+Dual Simplex Phase 1
+Dual feasible solution found.
+Dual Simplex Phase 2
+ Iter     Objective           Num Inf.  Sum Inf.     Perturb  Time
+    0 +0.0000000000000000e+00    4107 3.86559168e+09 0.00e+00 1.29
+    1 +0.0000000000000000e+00    4107 3.96822386e+09 0.00e+00 1.29
+ 1000 +0.0000000000000000e+00    3618 4.78068280e+11 1.00e-07 1.32
+ 2000 +0.0000000000000000e+00    2551 6.50505201e+11 1.00e-07 1.37
+ 3000 +0.0000000000000000e+00    2895 8.31361461e+10 4.24e-09 1.50
+ 4000 +0.0000000000000000e+00    2799 1.20088873e+14 0.00e+00 1.71
+ 5000 +0.0000000000000000e+00    2414 2.46961849e+11 0.00e+00 1.95
+Failed to factorize basis. Iteration 5459
+Successfully repaired basis. Iteration 5459
+Failed to factorize basis. Iteration 5802
+Successfully repaired basis. Iteration 5802
+Failed to factorize basis. Iteration 5868
+Successfully repaired basis. Iteration 5868
+Failed to factorize basis. Iteration 5940
+Failed to repair basis. Iteration 5940. 3 deficient columns.
+Successfully repaired basis. Iteration 5940
+ 6000 +4.1767895386747182e+26    2100 5.54791299e+13 3.69e+47 2.36
+ 7000 +4.1767895386747182e+26    2122 7.72827523e+12 1.00e-07 2.60
+ 8000 +4.1767895386747182e+26    2387 2.34446483e+12 0.00e+00 2.83
+ 9000 +4.1767895386747182e+26    2131 1.70662422e+12 9.99e+31 3.05
+10000 +4.1767895386747182e+26    1789 3.12891119e+12 2.58e+28 3.28
+11000 +4.1767895386747182e+26    1101 4.45070839e+10 1.00e-07 3.51
+No entering variable found. Iter 11084
+Scaled infeasibility 5.295074e+10
+Dual infeasibility after removing perturbation 1.269989e+07
+Failed to remove perturbation of 1.09e+50.
+Dual infeasibility 0.000000e+00
+Primal infeasibility 4.110060e+09
+Updates 16
+Steepest edge 5.295074e+10
+Adding initial solution success! feas 1 objective 1133479.385501 excess 0.000002
+New solution from primal heuristics. Objective +1.133479e+06. Gap -36849276591193240633344.00%. Time 29.92
+Barrier Solve status A numerical error was encountered.
+
+
+Root relaxation returned: INFEASIBLE
+
+
+MIP Infeasible
+Solution objective: 1133479.385501 , relative_mip_gap inf solution_bound -inf presolve_time 0.861326 total_solve_time 1657.746821 max constraint violation 0.000000 max int violation 0.000000 max var bounds violation 0.000000 nodes 98 simplex_iterations 47
+{"output": "/workspace/results/diagnostics/activsg2000-gpu-round2-cpu-seed-diagnostic-v2-dgx-spark.json", "status": "diagnostic_incumbent_returned_but_acceptance_gate_failed"}
+{"output": "/workspace/results/diagnostics/activsg2000-gpu-round2-cpu-seed-diagnostic-v2-dgx-spark.json", "status": "diagnostic_incumbent_returned_but_acceptance_gate_failed"}

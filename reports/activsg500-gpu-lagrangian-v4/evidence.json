@@ -1,0 +1,192 @@
+{
+  "schema_version": "1.0.0",
+  "experiment_suite_id": "activsg500-gpu-lagrangian-v4",
+  "frozen_identity": {
+    "commit": "dee8d9b614cd57111a7d7f2f7972db546fb47a7f",
+    "tag": "experiment-500-gpu-lagrangian-v4",
+    "config_sha256": "12f00b5065bef38a51a0f2dd0e449324721850261afd491cfba2ee5a9b854ef2",
+    "case_sha256": "8ca6d54ea5179eeb03fe29d7b645618e7a86338c172247e81687476660f6dcbe",
+    "contingency_sha256": "f6b2e7e38fd1cf5e09e877cf04233b4d0487d6d0e99903070d519eade12b76a9"
+  },
+  "run": {
+    "status": "failed_exception",
+    "error_type": "ScopfError",
+    "error": "Phase-I certificate row identity mismatch",
+    "started_at_utc": "2026-08-17T23:39:29.804311+00:00",
+    "finished_at_utc": "2026-08-17T23:40:08.922608+00:00",
+    "worker_elapsed_seconds": 38.59075205500267,
+    "total_wall_time_seconds": 39.08728479099955,
+    "deadline_seconds": 600.0,
+    "objective": 79410.65143217964,
+    "bound": 77996.45965698606,
+    "recorded_stale_relative_gap": 0.02540630552705028,
+    "derived_current_relative_gap": 0.01780859053147761,
+    "requested_relative_gap": 0.001,
+    "bound_required_for_requested_gap": 79331.24078074747,
+    "bound_shortfall_dollars": 1334.7811237614078,
+    "commitment_count": 50,
+    "eligible_source_online_generator_count": 56,
+    "integer_solver_used": false,
+    "branch_and_bound_performed": false,
+    "custom_cuda_kernel_used": false,
+    "exact_source_pmin_changed": false
+  },
+  "secure_incumbent": {
+    "status": "independently_verified",
+    "origin": "root_pdlp_threshold_0p25",
+    "commitment_sha256": "2e8d25c99f2f1c4e35039adb1f7d5509918dbf2b96cc0e2431b7ecc9cca2c638",
+    "objective": 79410.65143217964,
+    "commitment_count": 50,
+    "complete_commitment_dispatch_pu_and_pricing_serialized": true,
+    "price_definition": "fixed-commitment cuOpt PDLP demand-derivative dual; not a MILP dual",
+    "checked_valid_outages": 337,
+    "checked_security_sides": 401704,
+    "maximum_security_violation_pu_dgx": 9.67020241660066e-12,
+    "maximum_security_violation_pu_laptop_replay": 9.629275155020878e-12,
+    "maximum_model_residual_pu": 5.456968210637569e-13,
+    "conditional_pmin_pmax_violation_pu": 5.684341886080802e-16,
+    "maximum_integrality_violation": 0.0,
+    "objective_recalculation_difference": 0.0
+  },
+  "root_region": {
+    "lp_objective": 77393.1301558362,
+    "conservative_lagrangian_lower_bound": 77393.1201597916,
+    "fractional_commitment_count": 9,
+    "constraint_generation_rounds": 2,
+    "logical_security_pair_count": 167,
+    "distinct_solver_security_row_count": 164,
+    "exact_duplicate_security_row_count": 3,
+    "final_exhaustive_violation_pu": 1.400187557010213e-9,
+    "pdlp_adapter_seconds": 1.475462656999298,
+    "gpu_screen_seconds": 0.984040482006094,
+    "gpu_lagrangian_seconds": 1.9830963990025339
+  },
+  "committed_split": {
+    "parent_region_id": "r",
+    "generator_source_row": 16,
+    "off_child_region_id": "r_s001_0",
+    "on_child_region_id": "r_s001_1",
+    "transaction_attempt": 1,
+    "failed_split_count": 0
+  },
+  "phase_one_pruned_off_child": {
+    "region_id": "r_s001_0",
+    "source_attempt_rejection": "cold_restart_failed_dual_objective_divergence",
+    "source_constraint_generation_rounds": 3,
+    "source_adapter_seconds": 10.602301509999961,
+    "phase_one_status": "Optimal",
+    "phase_one_columns": 673,
+    "phase_one_rows": 2033,
+    "box_derived_violation_upper_bound_pu": 77.5066,
+    "phase_one_native_solve_seconds": 0.102842238,
+    "phase_one_adapter_seconds": 0.12673391700081993,
+    "raw_lower_bound_pu": 0.054864240309150686,
+    "conservative_lower_bound_pu": 0.054864230309150684,
+    "infeasibility_threshold_pu": 1e-6,
+    "prune_certified": true
+  },
+  "active_on_child": {
+    "region_id": "r_s001_1",
+    "lp_objective": 77996.46965697763,
+    "conservative_lagrangian_lower_bound": 77996.45965698606,
+    "fractional_commitment_count": 8,
+    "constraint_generation_rounds": 1,
+    "logical_security_pair_count": 169,
+    "distinct_solver_security_row_count": 165,
+    "exact_duplicate_security_row_count": 4,
+    "final_exhaustive_violation_pu": 9.360974217997864e-12,
+    "pdlp_adapter_seconds": 0.5394278919993667,
+    "gpu_screen_seconds": 0.003055724999285303,
+    "gpu_lagrangian_seconds": 0.3403119710055762
+  },
+  "primal_candidate_queue": [
+    {
+      "origin": "root_pdlp_rounding",
+      "status": "rejected",
+      "commitment_count": 49,
+      "wall_time_seconds": 10.152702118000889
+    },
+    {
+      "origin": "root_gpu_lagrangian_minimizer",
+      "status": "rejected",
+      "commitment_count": 48,
+      "wall_time_seconds": 10.154669490999368
+    },
+    {
+      "origin": "root_pdlp_threshold_0p25",
+      "status": "secure_fixed_commitment_pdlp",
+      "commitment_count": 50,
+      "objective": 79410.65143217964,
+      "wall_time_seconds": 1.0209616699939943
+    }
+  ],
+  "postrun_corrections": {
+    "certificate_replay_fix_commit": "d35059ad38fb770731453ec475c8b7d4cd361e4f",
+    "replay_utility_commit": "44adaa6ea10af338609a0a673f9498991fb11c3a",
+    "phase_one_identity_policy": "semantic_source_row_and_side_order_independent_v1",
+    "relative_gap_refresh_added": true,
+    "full_local_tests_passed": 185,
+    "gpu_only_tests_skipped": 15,
+    "ruff_passed": true
+  },
+  "corrected_independent_replay": {
+    "dgx_same_platform": {
+      "passed": true,
+      "primal_passed": true,
+      "lower_bound_passed": true,
+      "disjunctive_cover_passed": true,
+      "active_frontier_region_count": 1,
+      "phase_one_pruned_region_count": 1,
+      "replayed_global_lower_bound": 77996.45965698606,
+      "global_bound_difference_dollars": 0.0,
+      "maximum_region_replay_difference_dollars": 0.0,
+      "maximum_phase_one_replay_difference_pu": 0.0,
+      "maximum_lodf_replay_difference": 0.0,
+      "maximum_cleanup_audit_replay_difference": 0.0
+    },
+    "laptop_cross_architecture": {
+      "passed": true,
+      "primal_passed": true,
+      "lower_bound_passed": true,
+      "disjunctive_cover_passed": true,
+      "replayed_global_lower_bound": 77996.459656986,
+      "global_bound_difference_dollars": 5.820766091346741e-11,
+      "maximum_region_replay_difference_dollars": 5.820766091346741e-11,
+      "maximum_phase_one_replay_difference_pu": 6.522560269672795e-16,
+      "maximum_lodf_replay_difference": 7.993605777301127e-15,
+      "registered_lodf_replay_tolerance": 1e-12,
+      "maximum_cleanup_audit_replay_difference": 3.59125593536402e-11,
+      "maximum_cleanup_dust_count_difference": 602,
+      "cleanup_proof_invariants_passed": true
+    }
+  },
+  "cpu_comparison": {
+    "status": "optimal_verified",
+    "objective": 79410.651432182,
+    "bound": 79410.651432182,
+    "relative_gap": 0.0,
+    "commitment_count": 50,
+    "total_wall_time_seconds": 2.702380099988659,
+    "incomplete_gpu_to_laptop_wall_time_ratio": 14.464021841769625,
+    "comparison_kind": "system_to_system_failed_run_not_pure_gpu_speedup"
+  },
+  "peak_memory": {
+    "process_rss_bytes": 1316110336,
+    "cupy_pool_used_bytes": 1614848,
+    "cuda_device_memory_delta_bytes": 885678080
+  },
+  "acceptance_gates": {
+    "secure_incumbent_independently_verified": true,
+    "complete_disjunctive_cover_replayed_after_correction": true,
+    "requested_gap_certified": false,
+    "frozen_run_completed_without_exception": false,
+    "overall_success": false
+  },
+  "artifacts": {
+    "result_json_sha256": "658db4bb809cd6ea71964a551d96f34d49a5003009117ff8c3405946c0ebba5d",
+    "run_registry_sha256": "99b0bdca087306ce3d468e3f3b13196f337291493027d565a7fa19ee98de6233",
+    "last_checkpoint_sha256": "6ba1ddedaa84b556d60326c16801cb98812860b9269e2fd94be6e40302d089a5",
+    "worker_console_sha256": "864b793e79a57a70d800bcf790a3fab9f9d1088ca1a88597094c4e901e4bf65f",
+    "launcher_log_sha256": "3aa0b86b217281016532d012f842028cc39090ccf516c917ac2d1faf4341d371"
+  }
+}
