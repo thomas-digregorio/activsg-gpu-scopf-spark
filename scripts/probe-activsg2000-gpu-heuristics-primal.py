@@ -27,6 +27,7 @@ from activsg_scopf.reduced import (
 )
 from activsg_scopf.screening import ContingencyScreener, add_security_pairs
 from activsg_scopf.solvers.cuopt import solve_cuopt
+from activsg_scopf.solvers.cuopt_lp import derive_rate_a_angle_bounds
 
 
 def main() -> None:
@@ -34,7 +35,7 @@ def main() -> None:
     parser.add_argument(
         "--config",
         type=Path,
-        default=Path("/workspace/configs/activsg2000-gpu-lagrangian-v5.json"),
+        default=Path("/workspace/configs/activsg2000-gpu-lagrangian-v6.json"),
     )
     parser.add_argument(
         "--gpu-evidence",
@@ -46,7 +47,6 @@ def main() -> None:
     )
     parser.add_argument("--seconds", type=float, default=60.0)
     parser.add_argument("--formulation", choices=("reduced", "full"), default="full")
-    parser.add_argument("--gpu-root-rounding-start", action="store_true")
     args = parser.parse_args()
 
     config = load_config(args.config)
@@ -89,23 +89,21 @@ def main() -> None:
     else:
         master = build_master(case, network, segments=int(config.model["pwl_segments"]))
         add_security_pairs(master.canonical, master.index, network, pairs)
-    profile = config.raw["platforms"]["dgx_spark"]
-    mip_start_values = None
-    if args.gpu_root_rounding_start:
-        candidate = next(
-            record
-            for record in evidence["primal_candidate_queue"]
-            if record["origin"] == "root_pdlp_rounding"
+        redundant_bounds = derive_rate_a_angle_bounds(
+            network,
+            master.index.theta_by_bus,
+            total_columns=master.canonical.num_columns,
         )
-        committed_rows = {
-            int(row) for row in candidate["committed_generator_source_rows"]
-        }
-        mip_start_values = np.zeros(master.canonical.num_columns, dtype=np.float64)
-        for generator in master.index.generator_source_rows:
-            source_row = int(generator) + 1
-            mip_start_values[
-                master.index.commitment_by_generator[int(generator)]
-            ] = float(source_row in committed_rows)
+        _, original_lower, original_upper, _ = master.canonical.column_arrays()
+        tightened_lower = np.maximum(original_lower, redundant_bounds.lower)
+        tightened_upper = np.minimum(original_upper, redundant_bounds.upper)
+        for column in np.flatnonzero(
+            (tightened_lower > original_lower) | (tightened_upper < original_upper)
+        ):
+            position = int(column)
+            master.canonical.column_lower[position] = float(tightened_lower[position])
+            master.canonical.column_upper[position] = float(tightened_upper[position])
+    profile = config.raw["platforms"]["dgx_spark"]
     result = solve_cuopt(
         master.canonical,
         time_limit_seconds=float(args.seconds),
@@ -115,7 +113,6 @@ def main() -> None:
         log_to_console=True,
         track_incumbent_commitments=True,
         mip_heuristics_only=True,
-        mip_start_values=mip_start_values,
     )
     trace = result.statistics["incumbent_commitment_trace"]
     payload: dict[str, object] = {
@@ -147,7 +144,7 @@ def main() -> None:
         "cpu_solution_data_read": False,
         "diagnostic_only": True,
         "formulation": args.formulation,
-        "gpu_root_rounding_start_submitted": bool(args.gpu_root_rounding_start),
+        "mip_start_submitted": False,
         "mip_start_contract": result.statistics["mip_start_native_contract"],
     }
     if result.values is not None:
