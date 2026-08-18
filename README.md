@@ -139,6 +139,26 @@ the [v1 failure report](reports/activsg500-gpu-lagrangian-v1/README.md) preserve
 the first attempt without calling its primal-infeasible PDLP iterate a model
 infeasibility.
 
+## ACTIVSg2000 GPU Lagrangian v2 experiment
+
+The ACTIVSg2000 v2 bugfix keeps the v1 mathematical model, exact source PMIN,
+runtime limits, GPU lower-bound method, and no-branch-and-bound policy. For a
+binary candidate, its feasibility-first PDLP now uses the exact projection onto
+free committed-generator dispatch: fixed commitment columns, off-unit dispatch,
+and local PWL segment bookkeeping are omitted. Every retained dispatch keeps its
+source PMIN/PMAX interval, and every active network or security coupling row is
+copied exactly after fixed dispatch is substituted. A zero-violation projected
+dispatch is lifted into the unchanged ten-segment model and independently
+verified before it warm-starts the ordinary cost LP. If cost polishing fails,
+the verified secure dispatch remains the incumbent, with pricing explicitly
+unavailable unless the cost LP succeeds. See the
+[v2 contract](docs/gpu-lagrangian-2000-v2.md).
+
+```bash
+bash scripts/spark-build-2000-gpu-lagrangian-v2.sh
+bash scripts/spark-run-2000-gpu-lagrangian-v2.sh
+```
+
 ## MIP-gap sensitivity experiments
 
 The separately registered `activsg10k-gap-sensitivity-v2` experiment runs the
