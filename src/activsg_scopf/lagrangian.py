@@ -10,7 +10,11 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 
-from .commitment_cuts import CommitmentFeasibilityCut
+from .commitment_cuts import (
+    CommitmentCardinalityCut,
+    CommitmentUpperCut,
+    build_commitment_cardinality_cut,
+)
 from .errors import ScopfError
 from .reduced import ReducedMaster
 
@@ -81,7 +85,7 @@ class LagrangianEvaluation:
         rows = np.asarray(generator_source_rows, dtype=np.int64)
         certificate: dict[str, Any] = {
             "certificate_kind": (
-                "separable_binary_generator_lagrangian_with_feasibility_cuts_v2"
+                "separable_binary_generator_lagrangian_with_commitment_upper_cuts_v3"
                 if self.commitment_cut_duals
                 else "separable_binary_generator_lagrangian_v1"
             ),
@@ -93,7 +97,7 @@ class LagrangianEvaluation:
                 {"row_name": name, "canonical_row_dual": value}
                 for name, value in self.coupling_duals
             ],
-            "commitment_feasibility_cut_duals": [
+            "commitment_cut_duals": [
                 {"cut_id": cut_id, "canonical_row_dual": value}
                 for cut_id, value in self.commitment_cut_duals
             ],
@@ -149,7 +153,7 @@ def evaluate_lagrangian_bound_cupy(
     row_dual: npt.ArrayLike,
     region: RegionMasks,
     *,
-    commitment_cuts: tuple[CommitmentFeasibilityCut, ...] = (),
+    commitment_cuts: tuple[CommitmentUpperCut, ...] = (),
     commitment_cut_dual: npt.ArrayLike | None = None,
 ) -> dict[str, Any]:
     """Evaluate all exact generator subproblems with CuPy FP64 primitives."""
@@ -242,7 +246,7 @@ def optimize_lagrangian_bound_cupy(
     relaxation_primal_objective: float,
     iterations: int,
     polyak_fraction: float,
-    commitment_cuts: tuple[CommitmentFeasibilityCut, ...] = (),
+    commitment_cuts: tuple[CommitmentUpperCut, ...] = (),
     initial_commitment_cut_dual: npt.ArrayLike | None = None,
 ) -> tuple[FloatArray, dict[str, Any]]:
     """Polish coupling multipliers while all numerical state remains on GPU.
@@ -432,7 +436,7 @@ def evaluate_lagrangian_bound(
     region: RegionMasks,
     *,
     safety_margin_dollars: float,
-    commitment_cuts: tuple[CommitmentFeasibilityCut, ...] = (),
+    commitment_cuts: tuple[CommitmentUpperCut, ...] = (),
     commitment_cut_dual: npt.ArrayLike | None = None,
 ) -> LagrangianEvaluation:
     """Evaluate a valid lower bound over the exact binary generator sets.
@@ -540,7 +544,7 @@ def replay_lagrangian_certificate(
     certificate: dict[str, Any],
     region: RegionMasks,
     *,
-    commitment_cuts_by_id: dict[str, CommitmentFeasibilityCut] | None = None,
+    commitment_cuts_by_id: dict[str, CommitmentUpperCut] | None = None,
 ) -> LagrangianEvaluation:
     by_name = {
         str(record["row_name"]): float(record["canonical_row_dual"])
@@ -583,7 +587,10 @@ def replay_lagrangian_certificate(
     row_dual = np.zeros(master.canonical.num_rows, dtype=np.float64)
     for row in master.coupling_rows:
         row_dual[row.row_index] = by_name.get(row.row_name, 0.0)
-    cut_records = certificate.get("commitment_feasibility_cut_duals", [])
+    cut_records = certificate.get(
+        "commitment_cut_duals",
+        certificate.get("commitment_feasibility_cut_duals", []),
+    )
     available = commitment_cuts_by_id or {}
     if len({str(record["cut_id"]) for record in cut_records}) != len(cut_records):
         raise ScopfError("Lagrangian certificate contains duplicate feasibility cuts")
@@ -709,3 +716,81 @@ def verify_disjunctive_cover(
         and np.array_equal(active[name].fixed_on, region.fixed_on)
         for name, region in leaf_regions.items()
     )
+
+
+def verify_cardinality_disjunctive_cover(
+    generator_source_rows: npt.ArrayLike,
+    split_records: list[dict[str, Any]],
+    leaf_regions: dict[
+        str, tuple[RegionMasks, tuple[CommitmentCardinalityCut, ...]]
+    ],
+) -> bool:
+    """Verify binary/cardinality splits form one disjoint exhaustive cover."""
+
+    rows = np.asarray(generator_source_rows, dtype=np.int64)
+    if rows.ndim != 1 or len(set(int(row) for row in rows)) != int(rows.size):
+        return False
+    by_row = {int(row): position for position, row in enumerate(rows)}
+    active: dict[
+        str, tuple[RegionMasks, tuple[CommitmentCardinalityCut, ...]]
+    ] = {"r": (RegionMasks.root(rows.size), ())}
+    for record in split_records:
+        parent_id = str(record["parent_region_id"])
+        off_id = str(record["off_child_region_id"])
+        on_id = str(record["on_child_region_id"])
+        if parent_id not in active or off_id in active or on_id in active:
+            return False
+        masks, cuts = active.pop(parent_id)
+        split_kind = str(record.get("split_kind", "binary_commitment_v1"))
+        if split_kind == "binary_commitment_v1":
+            try:
+                off_masks, on_masks = masks.split(int(record["generator_position"]))
+            except (ScopfError, KeyError, TypeError, ValueError):
+                return False
+            active[off_id] = (off_masks, cuts)
+            active[on_id] = (on_masks, cuts)
+            continue
+        if split_kind != "binary_commitment_cardinality_sum_v1":
+            return False
+        try:
+            subset_rows = tuple(int(row) for row in record["subset_source_rows"])
+            positions = np.asarray([by_row[row] for row in subset_rows], dtype=np.int64)
+            floor_value = int(record["floor_value"])
+            ceil_value = int(record["ceil_value"])
+            if ceil_value != floor_value + 1:
+                return False
+            at_most = build_commitment_cardinality_cut(
+                generator_source_rows=rows,
+                subset_positions=positions,
+                subset_id=str(record["subset_id"]),
+                branch_side="at_most",
+                integer_threshold=floor_value,
+            )
+            at_least = build_commitment_cardinality_cut(
+                generator_source_rows=rows,
+                subset_positions=positions,
+                subset_id=str(record["subset_id"]),
+                branch_side="at_least",
+                integer_threshold=ceil_value,
+            )
+        except (ScopfError, KeyError, TypeError, ValueError):
+            return False
+        if (
+            record.get("at_most_cut_id") != at_most.cut_id
+            or record.get("at_least_cut_id") != at_least.cut_id
+        ):
+            return False
+        active[off_id] = (masks, cuts + (at_most,))
+        active[on_id] = (masks, cuts + (at_least,))
+    if set(active) != set(leaf_regions):
+        return False
+    for region_id, (expected_masks, expected_cuts) in active.items():
+        observed_masks, observed_cuts = leaf_regions[region_id]
+        if not (
+            np.array_equal(expected_masks.fixed_off, observed_masks.fixed_off)
+            and np.array_equal(expected_masks.fixed_on, observed_masks.fixed_on)
+            and tuple(cut.cut_id for cut in expected_cuts)
+            == tuple(cut.cut_id for cut in observed_cuts)
+        ):
+            return False
+    return True

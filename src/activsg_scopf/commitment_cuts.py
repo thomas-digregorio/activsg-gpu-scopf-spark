@@ -11,6 +11,7 @@ floating-point safety margin as the underlying Phase-I certificate.
 from __future__ import annotations
 
 import hashlib
+import json
 from dataclasses import dataclass
 from math import fsum, isfinite
 from typing import Any
@@ -83,6 +84,184 @@ class CommitmentFeasibilityCut:
             ),
             "exact_source_pmin_pmax_changed": False,
         }
+
+
+@dataclass(frozen=True)
+class CommitmentCardinalityCut:
+    """One branch inequality on an integer-valued commitment subset.
+
+    Every source commitment is binary, so ``sum(u[g] for g in S)`` is an
+    integer for any deterministic subset ``S``.  A fractional LP value ``v``
+    therefore admits the exhaustive disjunction ``sum(u[S]) <= floor(v)`` or
+    ``sum(u[S]) >= ceil(v)``.  The lower branch is stored in the common upper
+    inequality form by negating its coefficients and RHS.
+    """
+
+    cut_id: str
+    coefficients: FloatArray
+    rhs: float
+    subset_id: str
+    subset_source_rows: tuple[int, ...]
+    branch_side: str
+    integer_threshold: int
+
+    def validate(self, generator_count: int) -> None:
+        if self.coefficients.shape != (generator_count,) or not np.all(
+            np.isfinite(self.coefficients)
+        ):
+            raise ScopfError("Commitment cardinality cut has invalid coefficients")
+        if self.branch_side not in {"at_most", "at_least"}:
+            raise ScopfError("Commitment cardinality cut has an invalid branch side")
+        nonzero = np.flatnonzero(self.coefficients != 0.0)
+        if nonzero.size == 0:
+            raise ScopfError("Commitment cardinality cut has an empty subset")
+        expected_sign = 1.0 if self.branch_side == "at_most" else -1.0
+        if not np.all(self.coefficients[nonzero] == expected_sign):
+            raise ScopfError("Commitment cardinality cut coefficients are not unit signed")
+        if len(self.subset_source_rows) != int(nonzero.size):
+            raise ScopfError("Commitment cardinality cut subset identity is inconsistent")
+        if tuple(sorted(self.subset_source_rows)) != self.subset_source_rows:
+            raise ScopfError("Commitment cardinality cut source rows are not sorted")
+        if len(set(self.subset_source_rows)) != len(self.subset_source_rows):
+            raise ScopfError("Commitment cardinality cut source rows are duplicated")
+        expected_rhs = (
+            float(self.integer_threshold)
+            if self.branch_side == "at_most"
+            else -float(self.integer_threshold)
+        )
+        if not isfinite(self.rhs) or self.rhs != expected_rhs:
+            raise ScopfError("Commitment cardinality cut RHS is inconsistent")
+
+    def as_dict(self, generator_source_rows: npt.ArrayLike) -> dict[str, Any]:
+        rows = np.asarray(generator_source_rows, dtype=np.int64)
+        self.validate(rows.size)
+        nonzero = np.flatnonzero(self.coefficients != 0.0)
+        observed_rows = tuple(int(row) for row in rows[nonzero])
+        if observed_rows != self.subset_source_rows:
+            raise ScopfError("Commitment cardinality cut source-row replay mismatch")
+        return {
+            "certificate_kind": "binary_commitment_cardinality_branch_v1",
+            "cut_id": self.cut_id,
+            "subset_id": self.subset_id,
+            "subset_source_rows": list(self.subset_source_rows),
+            "branch_side": self.branch_side,
+            "integer_threshold": self.integer_threshold,
+            "rhs": self.rhs,
+            "coefficient_sha256": hashlib.sha256(
+                self.coefficients.tobytes()
+            ).hexdigest(),
+            "validity": "integer_sum_disjunction_over_source_binary_commitments",
+            "exact_source_pmin_pmax_changed": False,
+        }
+
+
+type CommitmentUpperCut = CommitmentFeasibilityCut | CommitmentCardinalityCut
+
+
+def build_commitment_cardinality_cut(
+    *,
+    generator_source_rows: npt.ArrayLike,
+    subset_positions: npt.ArrayLike,
+    subset_id: str,
+    branch_side: str,
+    integer_threshold: int,
+) -> CommitmentCardinalityCut:
+    """Build a deterministic upper-form cardinality branch inequality."""
+
+    rows = np.asarray(generator_source_rows, dtype=np.int64)
+    positions = np.asarray(subset_positions, dtype=np.int64)
+    if rows.ndim != 1 or positions.ndim != 1 or positions.size == 0:
+        raise ScopfError("Commitment cardinality subset has an invalid shape")
+    positions = np.unique(positions)
+    if positions[0] < 0 or positions[-1] >= rows.size:
+        raise ScopfError("Commitment cardinality subset position is out of range")
+    if branch_side not in {"at_most", "at_least"}:
+        raise ScopfError("Commitment cardinality branch side is invalid")
+    selected_rows = tuple(sorted(int(row) for row in rows[positions]))
+    coefficients = np.zeros(rows.size, dtype=np.float64)
+    sign = 1.0 if branch_side == "at_most" else -1.0
+    coefficients[positions] = sign
+    rhs = float(integer_threshold) if branch_side == "at_most" else -float(
+        integer_threshold
+    )
+    identity = json.dumps(
+        {
+            "subset_id": subset_id,
+            "subset_source_rows": selected_rows,
+            "branch_side": branch_side,
+            "integer_threshold": int(integer_threshold),
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    cut = CommitmentCardinalityCut(
+        cut_id="cc_" + hashlib.sha256(identity).hexdigest()[:24],
+        coefficients=coefficients,
+        rhs=rhs,
+        subset_id=str(subset_id),
+        subset_source_rows=selected_rows,
+        branch_side=branch_side,
+        integer_threshold=int(integer_threshold),
+    )
+    cut.validate(rows.size)
+    return cut
+
+
+def commitment_cardinality_cut_from_record(
+    record: dict[str, Any], generator_source_rows: npt.ArrayLike
+) -> CommitmentCardinalityCut:
+    """Rebuild one serialized cardinality cut from stable source-row identity."""
+
+    rows = np.asarray(generator_source_rows, dtype=np.int64)
+    by_row = {int(row): position for position, row in enumerate(rows)}
+    serialized_rows = tuple(int(row) for row in record["subset_source_rows"])
+    if any(row not in by_row for row in serialized_rows):
+        raise ScopfError("Serialized cardinality cut references an unknown generator")
+    cut = build_commitment_cardinality_cut(
+        generator_source_rows=rows,
+        subset_positions=np.asarray([by_row[row] for row in serialized_rows]),
+        subset_id=str(record["subset_id"]),
+        branch_side=str(record["branch_side"]),
+        integer_threshold=int(record["integer_threshold"]),
+    )
+    expected = cut.as_dict(rows)
+    for key in (
+        "certificate_kind",
+        "cut_id",
+        "subset_id",
+        "subset_source_rows",
+        "branch_side",
+        "integer_threshold",
+        "rhs",
+        "coefficient_sha256",
+        "validity",
+        "exact_source_pmin_pmax_changed",
+    ):
+        if record.get(key) != expected[key]:
+            raise ScopfError("Serialized cardinality cut identity mismatch")
+    return cut
+
+
+def add_commitment_upper_cuts(
+    master: ReducedMaster, cuts: tuple[CommitmentUpperCut, ...]
+) -> dict[str, int]:
+    """Append commitment-only upper inequalities to a reduced master."""
+
+    source_rows = np.asarray(master.index.generator_source_rows, dtype=np.int64)
+    row_by_cut: dict[str, int] = {}
+    for cut in cuts:
+        cut.validate(source_rows.size)
+        if cut.cut_id in row_by_cut:
+            raise ScopfError("Duplicate commitment upper-cut id")
+        coefficients = {
+            master.index.commitment_by_generator[int(source_rows[position])]: float(value)
+            for position, value in enumerate(cut.coefficients)
+            if value != 0.0
+        }
+        row_by_cut[cut.cut_id] = master.canonical.add_row(
+            cut.cut_id, coefficients, upper=float(cut.rhs)
+        )
+    return row_by_cut
 
 
 def _phase_dual_by_source_side(

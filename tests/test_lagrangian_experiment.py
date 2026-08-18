@@ -17,6 +17,7 @@ from activsg_scopf.lagrangian_experiment import (
     ACTIVSG2000_V7_EXPERIMENT_ID,
     ACTIVSG2000_V8_EXPERIMENT_ID,
     ACTIVSG2000_V9_EXPERIMENT_ID,
+    ACTIVSG2000_V10_EXPERIMENT_ID,
     EXPERIMENT_ID,
     EXPERIMENT_TAG,
     PrimalCandidatePolicy,
@@ -361,6 +362,36 @@ def test_registered_activsg2000_v9_compact_replay_fix_is_fail_closed() -> None:
     v9.raw["benchmark"]["compact_replay_fix"]["failed_v8_run_preserved"] = False
     with pytest.raises(ScopfError, match="compact-replay identity changed"):
         validate_lagrangian_experiment_config(v9)
+
+
+def test_registered_activsg2000_v10_cardinality_refinement_is_fail_closed() -> None:
+    v9 = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v9.json")
+    v10 = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v10.json")
+    registration = validate_lagrangian_experiment_config(v10)
+
+    assert v10.benchmark_id == ACTIVSG2000_V10_EXPERIMENT_ID
+    assert registration["benchmark"]["required_git_tag"] == (
+        "experiment-2000-gpu-lagrangian-v10"
+    )
+    assert v10.raw["raw_inputs"] == v9.raw["raw_inputs"]
+    assert v10.model == v9.model
+    assert v10.runtime["maximum_frontier_regions"] == 256
+    assert v10.runtime["phase_lagrangian_gpu_iterations"] == 512
+    assert registration["benchmark"]["cardinality_refinement"]["child_phase_one"] == (
+        "disabled_after_zero_of_83_v9_prunes"
+    )
+    assert registration["benchmark"]["cardinality_refinement"]["child_warm_start"] == (
+        "row_name_mapped_parent_dual_only_because_parent_primal_violates_"
+        "the_new_cardinality_branch_v2"
+    )
+    assert registration["benchmark"]["cardinality_refinement"][
+        "cpu_commitment_dispatch_objective_or_bound_seeded"
+    ] is False
+    v10.raw["benchmark"]["cardinality_refinement"][
+        "mathematical_original_integer_optimum_changed"
+    ] = True
+    with pytest.raises(ScopfError, match="cardinality identity changed"):
+        validate_lagrangian_experiment_config(v10)
 
 
 def test_phase_one_native_dual_maps_lower_upper_and_equality_rows() -> None:

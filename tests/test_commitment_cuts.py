@@ -112,7 +112,7 @@ def test_phase_one_dual_lifts_to_global_exact_pmin_pmax_commitment_cut() -> None
         RegionMasks.root(2),
         commitment_cuts_by_id={cut.cut_id: cut},
     )
-    assert serialized["certificate_kind"].endswith("feasibility_cuts_v2")
+    assert serialized["certificate_kind"].endswith("commitment_upper_cuts_v3")
     assert replayed.raw_lower_bound == pytest.approx(evaluation.raw_lower_bound)
     np.testing.assert_array_equal(
         replayed.minimizing_commitment, evaluation.minimizing_commitment
