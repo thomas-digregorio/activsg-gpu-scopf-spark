@@ -124,8 +124,24 @@ def test_phase_one_dual_lifts_to_global_exact_pmin_pmax_commitment_cut() -> None
         RegionMasks.root(2),
         commitment_cuts_by_id={cut.cut_id: cut},
     )
-    assert compact["serialization"] == "sparse_nonzero_dual_identity_hashed_v2"
+    assert compact["serialization"] == (
+        "sparse_nonzero_dual_order_independent_identity_v3"
+    )
     assert "generator_subproblems" not in compact
+    assert "effective_dispatch_coefficient_sha256" not in compact
     assert compact_replayed.conservative_lower_bound == pytest.approx(
+        evaluation.conservative_lower_bound
+    )
+
+    original_order = [row.row_name for row in master.coupling_rows]
+    master.coupling_rows.reverse()
+    assert [row.row_name for row in master.coupling_rows] != original_order
+    reordered_replay = replay_lagrangian_certificate(
+        master,
+        compact,
+        RegionMasks.root(2),
+        commitment_cuts_by_id={cut.cut_id: cut},
+    )
+    assert reordered_replay.conservative_lower_bound == pytest.approx(
         evaluation.conservative_lower_bound
     )

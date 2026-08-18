@@ -119,10 +119,12 @@ class LagrangianEvaluation:
         coupling_names = [name for name, _value in self.coupling_duals]
         certificate.update(
             {
-                "serialization": "sparse_nonzero_dual_identity_hashed_v2",
+                "serialization": (
+                    "sparse_nonzero_dual_order_independent_identity_v3"
+                ),
                 "coupling_row_count": len(coupling_names),
-                "coupling_row_name_sha256": hashlib.sha256(
-                    "\n".join(coupling_names).encode("utf-8")
+                "coupling_row_name_set_sha256": hashlib.sha256(
+                    "\n".join(sorted(coupling_names)).encode("utf-8")
                 ).hexdigest(),
                 "coupling_row_duals": [
                     {"row_name": name, "canonical_row_dual": value}
@@ -133,18 +135,10 @@ class LagrangianEvaluation:
                 "generator_source_row_sha256": hashlib.sha256(
                     rows.tobytes()
                 ).hexdigest(),
-                "effective_dispatch_coefficient_sha256": hashlib.sha256(
-                    self.effective_dispatch_coefficients.tobytes()
-                ).hexdigest(),
-                "on_subproblem_value_sha256": hashlib.sha256(
-                    self.on_subproblem_values.tobytes()
-                ).hexdigest(),
-                "minimizing_commitment_sha256": hashlib.sha256(
-                    self.minimizing_commitment.tobytes()
-                ).hexdigest(),
                 "minimizing_committed_generator_source_rows": rows[
                     self.minimizing_commitment == 1
                 ].tolist(),
+                "derived_generator_vectors_are_recomputed_not_hash_gated": True,
             }
         )
         return certificate
@@ -171,18 +165,19 @@ def evaluate_lagrangian_bound_cupy(
     dual_host = np.asarray(row_dual, dtype=np.float64)
     if dual_host.shape != (master.canonical.num_rows,):
         raise ScopfError("GPU Lagrangian row dual has the wrong shape")
+    coupling_rows = sorted(master.coupling_rows, key=lambda row: row.row_name)
     coupling_indices = np.asarray(
-        [row.row_index for row in master.coupling_rows], dtype=np.int64
+        [row.row_index for row in coupling_rows], dtype=np.int64
     )
     coupling_dual = cp.asarray(dual_host[coupling_indices], dtype=cp.float64)
     upper_mask = cp.asarray(
-        [row.kind != "balance_equality" for row in master.coupling_rows],
+        [row.kind != "balance_equality" for row in coupling_rows],
         dtype=cp.bool_,
     )
     coupling_dual = cp.where(upper_mask, cp.minimum(coupling_dual, 0.0), coupling_dual)
-    rhs = cp.asarray([row.rhs for row in master.coupling_rows], dtype=cp.float64)
+    rhs = cp.asarray([row.rhs for row in coupling_rows], dtype=cp.float64)
     coefficients = cp.asarray(
-        np.stack([row.generator_coefficients for row in master.coupling_rows]),
+        np.stack([row.generator_coefficients for row in coupling_rows]),
         dtype=cp.float64,
     )
     effective = -(coupling_dual @ coefficients)
@@ -278,18 +273,19 @@ def optimize_lagrangian_bound_cupy(
         np.isfinite(full_dual)
     ):
         raise ScopfError("GPU Lagrangian initial dual has invalid shape or values")
+    coupling_rows = sorted(master.coupling_rows, key=lambda row: row.row_name)
     coupling_indices_host = np.asarray(
-        [row.row_index for row in master.coupling_rows], dtype=np.int64
+        [row.row_index for row in coupling_rows], dtype=np.int64
     )
     upper_host = np.asarray(
-        [row.kind != "balance_equality" for row in master.coupling_rows], dtype=bool
+        [row.kind != "balance_equality" for row in coupling_rows], dtype=bool
     )
     y = cp.asarray(full_dual[coupling_indices_host], dtype=cp.float64)
     upper = cp.asarray(upper_host)
     y = cp.where(upper, cp.minimum(y, 0.0), y)
-    rhs = cp.asarray([row.rhs for row in master.coupling_rows], dtype=cp.float64)
+    rhs = cp.asarray([row.rhs for row in coupling_rows], dtype=cp.float64)
     coefficients = cp.asarray(
-        np.stack([row.generator_coefficients for row in master.coupling_rows]),
+        np.stack([row.generator_coefficients for row in coupling_rows]),
         dtype=cp.float64,
     )
     curves = [master.costs[int(index)] for index in master.index.generator_source_rows]
@@ -461,7 +457,7 @@ def evaluate_lagrangian_bound(
     constant_terms: list[float] = []
     coupling_duals: list[tuple[str, float]] = []
     maximum_sign_violation = 0.0
-    for coupling in master.coupling_rows:
+    for coupling in sorted(master.coupling_rows, key=lambda row: row.row_name):
         observed = float(dual[coupling.row_index])
         if coupling.kind == "balance_equality":
             projected = observed
@@ -554,10 +550,13 @@ def replay_lagrangian_certificate(
         raise ScopfError("Lagrangian certificate contains duplicate coupling rows")
     expected_ordered_names = [row.row_name for row in master.coupling_rows]
     expected_names = set(expected_ordered_names)
-    compact = certificate.get("serialization") == (
+    compact_v2 = certificate.get("serialization") == (
         "sparse_nonzero_dual_identity_hashed_v2"
     )
-    if compact:
+    compact_v3 = certificate.get("serialization") == (
+        "sparse_nonzero_dual_order_independent_identity_v3"
+    )
+    if compact_v2:
         if (
             int(certificate.get("coupling_row_count", -1))
             != len(expected_ordered_names)
@@ -568,6 +567,17 @@ def replay_lagrangian_certificate(
             or not set(by_name).issubset(expected_names)
         ):
             raise ScopfError("Compact Lagrangian certificate row identity mismatch")
+    elif compact_v3:
+        if (
+            int(certificate.get("coupling_row_count", -1))
+            != len(expected_ordered_names)
+            or str(certificate.get("coupling_row_name_set_sha256"))
+            != hashlib.sha256(
+                "\n".join(sorted(expected_ordered_names)).encode("utf-8")
+            ).hexdigest()
+            or not set(by_name).issubset(expected_names)
+        ):
+            raise ScopfError("Compact Lagrangian certificate row-set identity mismatch")
     elif set(by_name) != expected_names:
         raise ScopfError("Lagrangian certificate coupling-row identity mismatch")
     row_dual = np.zeros(master.canonical.num_rows, dtype=np.float64)
@@ -592,7 +602,7 @@ def replay_lagrangian_certificate(
         commitment_cuts=cuts,
         commitment_cut_dual=cut_dual,
     )
-    if compact:
+    if compact_v2:
         source_rows = np.asarray(master.index.generator_source_rows, dtype=np.int64) + 1
         committed_rows = source_rows[replayed.minimizing_commitment == 1].tolist()
         compact_checks = {
@@ -611,6 +621,17 @@ def replay_lagrangian_certificate(
         }
         if any(certificate.get(key) != value for key, value in compact_checks.items()):
             raise ScopfError("Compact Lagrangian generator-subproblem replay mismatch")
+    elif compact_v3:
+        source_rows = np.asarray(master.index.generator_source_rows, dtype=np.int64) + 1
+        if (
+            int(certificate.get("generator_subproblem_count", -1))
+            != int(source_rows.size)
+            or str(certificate.get("generator_source_row_sha256"))
+            != hashlib.sha256(source_rows.tobytes()).hexdigest()
+        ):
+            raise ScopfError(
+                "Compact Lagrangian generator identity replay mismatch"
+            )
     return replayed
 
 

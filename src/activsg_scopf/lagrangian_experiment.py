@@ -111,6 +111,7 @@ ACTIVSG2000_V5_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v5"
 ACTIVSG2000_V6_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v6"
 ACTIVSG2000_V7_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v7"
 ACTIVSG2000_V8_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v8"
+ACTIVSG2000_V9_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v9"
 ACTIVSG2000_V4_PLUS_EXPERIMENT_IDS = frozenset(
     {
         ACTIVSG2000_V4_EXPERIMENT_ID,
@@ -118,7 +119,11 @@ ACTIVSG2000_V4_PLUS_EXPERIMENT_IDS = frozenset(
         ACTIVSG2000_V6_EXPERIMENT_ID,
         ACTIVSG2000_V7_EXPERIMENT_ID,
         ACTIVSG2000_V8_EXPERIMENT_ID,
+        ACTIVSG2000_V9_EXPERIMENT_ID,
     }
+)
+ACTIVSG2000_V8_PLUS_EXPERIMENT_IDS = frozenset(
+    {ACTIVSG2000_V8_EXPERIMENT_ID, ACTIVSG2000_V9_EXPERIMENT_ID}
 )
 REGISTERED_EXPERIMENTS = {
     EXPERIMENT_ID: {
@@ -204,6 +209,14 @@ REGISTERED_EXPERIMENTS = {
         "policy": (
             "gpu_phase_one_benders_commitment_repair_plus_final_only_"
             "replayed_lagrangian_cover_activsg2000_v8"
+        ),
+    },
+    ACTIVSG2000_V9_EXPERIMENT_ID: {
+        "case_name": "ACTIVSg2000",
+        "tag": "experiment-2000-gpu-lagrangian-v9",
+        "policy": (
+            "gpu_phase_one_benders_commitment_repair_plus_order_independent_"
+            "replayed_lagrangian_cover_activsg2000_v9"
         ),
     },
 }
@@ -408,6 +421,24 @@ ACTIVSG2000_V8_CERTIFICATE_CONTROLLER_FIX = {
     "mathematical_feasible_set_changed": False,
     "cpu_commitment_dispatch_objective_or_bound_seeded": False,
 }
+ACTIVSG2000_V9_CERTIFICATE_CONTROLLER_FIX = {
+    **ACTIVSG2000_V8_CERTIFICATE_CONTROLLER_FIX,
+    "lagrangian_certificate_serialization": (
+        "sparse_nonzero_dual_order_independent_identity_v3"
+    ),
+}
+ACTIVSG2000_V9_COMPACT_REPLAY_FIX = {
+    "comparison_baseline": "activsg2000-gpu-lagrangian-v8",
+    "failed_v8_run_preserved": True,
+    "failure": "compact_coupling_row_insertion_order_hash_mismatch",
+    "coupling_row_identity": "sorted_complete_row_name_set_sha256_v1",
+    "lagrangian_accumulation_order": "row_name_sorted_cpu_and_gpu_v1",
+    "derived_fp64_vector_hash_gate_removed": True,
+    "replayed_bound_tolerance_dollars_unchanged": 1e-6,
+    "exact_source_pmin_changed": False,
+    "mathematical_feasible_set_changed": False,
+    "cpu_commitment_dispatch_objective_or_bound_seeded": False,
+}
 ACTIVSG2000_V1_RUNTIME = {
     "deadline_seconds": 1800.0,
     "verification_reserve_seconds": 120.0,
@@ -473,6 +504,7 @@ ACTIVSG2000_V8_RUNTIME = {
     "compact_lagrangian_certificates": True,
     "minimum_refinement_launch_seconds": 20.0,
 }
+ACTIVSG2000_V9_RUNTIME = dict(ACTIVSG2000_V8_RUNTIME)
 
 
 @dataclass
@@ -628,6 +660,8 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
     is_activsg2000_v6 = config.benchmark_id == ACTIVSG2000_V6_EXPERIMENT_ID
     is_activsg2000_v7 = config.benchmark_id == ACTIVSG2000_V7_EXPERIMENT_ID
     is_activsg2000_v8 = config.benchmark_id == ACTIVSG2000_V8_EXPERIMENT_ID
+    is_activsg2000_v9 = config.benchmark_id == ACTIVSG2000_V9_EXPERIMENT_ID
+    is_activsg2000_v8_plus = is_activsg2000_v8 or is_activsg2000_v9
     is_activsg2000 = (
         is_activsg2000_v1
         or is_activsg2000_v2
@@ -637,6 +671,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
         or is_activsg2000_v6
         or is_activsg2000_v7
         or is_activsg2000_v8
+        or is_activsg2000_v9
     )
     if benchmark.get("kind") != "gpu_lagrangian_disjunctive_experiment":
         raise ScopfError("GPU Lagrangian experiment kind changed")
@@ -644,7 +679,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
         raise ScopfError("GPU Lagrangian frozen tag changed")
     coefficient_cleanup_experiment = (
         config.benchmark_id.endswith(
-            ("-v2", "-v3", "-v4", "-v5", "-v6", "-v7", "-v8")
+            ("-v2", "-v3", "-v4", "-v5", "-v6", "-v7", "-v8", "-v9")
         )
         or is_activsg2000
     )
@@ -752,12 +787,25 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
                 f"expected={ACTIVSG2000_V7_NUMERICAL_ROBUSTNESS_FIX}, "
                 f"observed={observed_change}"
             )
-    if is_activsg2000_v8:
+    if is_activsg2000_v8_plus:
         observed_change = benchmark.get("certificate_controller_fix")
-        if observed_change != ACTIVSG2000_V8_CERTIFICATE_CONTROLLER_FIX:
+        expected_change = (
+            ACTIVSG2000_V9_CERTIFICATE_CONTROLLER_FIX
+            if is_activsg2000_v9
+            else ACTIVSG2000_V8_CERTIFICATE_CONTROLLER_FIX
+        )
+        if observed_change != expected_change:
             raise ScopfError(
                 "ACTIVSg2000 GPU Lagrangian v8 certificate/controller identity changed: "
-                f"expected={ACTIVSG2000_V8_CERTIFICATE_CONTROLLER_FIX}, "
+                f"expected={expected_change}, "
+                f"observed={observed_change}"
+            )
+    if is_activsg2000_v9:
+        observed_change = benchmark.get("compact_replay_fix")
+        if observed_change != ACTIVSG2000_V9_COMPACT_REPLAY_FIX:
+            raise ScopfError(
+                "ACTIVSg2000 GPU Lagrangian v9 compact-replay identity changed: "
+                f"expected={ACTIVSG2000_V9_COMPACT_REPLAY_FIX}, "
                 f"observed={observed_change}"
             )
     profile = config.raw["platforms"].get("dgx_spark", {})
@@ -773,6 +821,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
                 or is_activsg2000_v6
                 or is_activsg2000_v7
                 or is_activsg2000_v8
+                or is_activsg2000_v9
             )
             else (
                 "power_system_equilibrated_v2"
@@ -786,7 +835,12 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
         "console_logging": True,
         "integer_solver": (
             "cuopt_gpu_heuristics_only_for_primal"
-            if is_activsg2000_v6 or is_activsg2000_v7 or is_activsg2000_v8
+            if (
+                is_activsg2000_v6
+                or is_activsg2000_v7
+                or is_activsg2000_v8
+                or is_activsg2000_v9
+            )
             else "none"
         ),
         "branch_and_bound": False,
@@ -800,7 +854,12 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
     runtime = config.runtime
     expected_deadline = (
         990.0
-        if is_activsg2000_v6 or is_activsg2000_v7 or is_activsg2000_v8
+        if (
+            is_activsg2000_v6
+            or is_activsg2000_v7
+            or is_activsg2000_v8
+            or is_activsg2000_v9
+        )
         else (1800.0 if is_activsg2000 else 600.0)
     )
     if float(runtime.get("deadline_seconds", 0.0)) != expected_deadline:
@@ -809,21 +868,25 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
             f"expected={expected_deadline}, observed={runtime.get('deadline_seconds')}"
         )
     expected_activsg2000_runtime = (
-        ACTIVSG2000_V8_RUNTIME
-        if is_activsg2000_v8
+        ACTIVSG2000_V9_RUNTIME
+        if is_activsg2000_v9
         else (
-            ACTIVSG2000_V7_RUNTIME
-            if is_activsg2000_v7
+            ACTIVSG2000_V8_RUNTIME
+            if is_activsg2000_v8
             else (
-                ACTIVSG2000_V6_RUNTIME
-                if is_activsg2000_v6
+                ACTIVSG2000_V7_RUNTIME
+                if is_activsg2000_v7
                 else (
-                    ACTIVSG2000_V5_RUNTIME
-                    if is_activsg2000_v5
+                    ACTIVSG2000_V6_RUNTIME
+                    if is_activsg2000_v6
                     else (
-                        ACTIVSG2000_V4_RUNTIME
-                        if is_activsg2000_v4
-                        else ACTIVSG2000_V1_RUNTIME
+                        ACTIVSG2000_V5_RUNTIME
+                        if is_activsg2000_v5
+                        else (
+                            ACTIVSG2000_V4_RUNTIME
+                            if is_activsg2000_v4
+                            else ACTIVSG2000_V1_RUNTIME
+                        )
                     )
                 )
             )
@@ -854,7 +917,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
                 f"expected={required_runtime}, observed={observed_runtime}"
             )
     if config.benchmark_id.endswith(
-        ("-v4", "-v5", "-v6", "-v7", "-v8")
+        ("-v4", "-v5", "-v6", "-v7", "-v8", "-v9")
     ) or is_activsg2000:
         required_runtime = {
             "maximum_primal_candidate_seconds": (90.0 if is_activsg2000 else 15.0),
@@ -873,7 +936,12 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
             "region_attempt_cold_restart_attempts": 1,
             "maximum_failed_split_attempts": (
                 64
-                if is_activsg2000_v6 or is_activsg2000_v7 or is_activsg2000_v8
+                if (
+                    is_activsg2000_v6
+                    or is_activsg2000_v7
+                    or is_activsg2000_v8
+                    or is_activsg2000_v9
+                )
                 else (16 if is_activsg2000 else 8)
             ),
             "phase_one_time_limit_seconds": 60.0 if is_activsg2000 else 15.0,
@@ -887,7 +955,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
                 "GPU Lagrangian bounded-region policy changed: "
                 f"expected={required_runtime}, observed={observed_runtime}"
             )
-        if config.benchmark_id.endswith(("-v6", "-v7", "-v8")) or is_activsg2000:
+        if config.benchmark_id.endswith(("-v6", "-v7", "-v8", "-v9")) or is_activsg2000:
             expected_precheck = 10.0 if is_activsg2000 else 2.0
             if float(runtime.get("precheck_phase_one_time_limit_seconds", -1.0)) != (
                 expected_precheck
@@ -899,7 +967,12 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
             raise ScopfError("GPU Lagrangian v4/v5/v6/v7 security-row replay tolerance changed")
         if float(config.model.get("phase_one_replay_tolerance_pu", -1.0)) != 1e-10:
             raise ScopfError("GPU Lagrangian v4/v5/v6/v7 Phase-I replay tolerance changed")
-    if is_activsg2000_v6 or is_activsg2000_v7 or is_activsg2000_v8:
+    if (
+        is_activsg2000_v6
+        or is_activsg2000_v7
+        or is_activsg2000_v8
+        or is_activsg2000_v9
+    ):
         required_v6_profile = {
             "pdlp_solver_mode_native": 1,
             "pdlp_solver_mode": "stable2",
@@ -1710,7 +1783,7 @@ def _solve_fixed_commitment_feasibility(
     tolerance_mw = tolerance_pu * float(case.base_mva)
     secure_seed_tolerance_fraction = (
         float(config.runtime["fixed_commitment_secure_seed_tolerance_fraction"])
-        if config.benchmark_id == ACTIVSG2000_V8_EXPERIMENT_ID
+        if config.benchmark_id in ACTIVSG2000_V8_PLUS_EXPERIMENT_IDS
         else 1.0
     )
     if not 0.0 < secure_seed_tolerance_fraction <= 1.0:
@@ -2097,8 +2170,9 @@ def _solve_fixed_commitment_cost_projection(
     if config.benchmark_id not in {
         ACTIVSG2000_V7_EXPERIMENT_ID,
         ACTIVSG2000_V8_EXPERIMENT_ID,
+        ACTIVSG2000_V9_EXPERIMENT_ID,
     }:
-        raise ScopfError("The fixed-commitment cost projection is registered only for v7/v8")
+        raise ScopfError("The fixed-commitment cost projection is registered only for v7-v9")
     started = time.perf_counter()
     master = prepared_master
     binary = np.asarray(commitment, dtype=np.int8)
@@ -2325,7 +2399,7 @@ def _solve_fixed_commitment_cost_projection(
             }
             round_record["secure_seed_margin_refinements"].append(margin_record)
             emit_progress()
-            if config.benchmark_id != ACTIVSG2000_V8_EXPERIMENT_ID:
+            if config.benchmark_id not in ACTIVSG2000_V8_PLUS_EXPERIMENT_IDS:
                 reject(
                     "projected_cost_secure_seed_lost_margin",
                     "Secure seed lacks the registered numerical-repair safety margin",
@@ -3244,9 +3318,10 @@ def _solve_phase_one_lagrangian_region(
         ACTIVSG2000_V6_EXPERIMENT_ID,
         ACTIVSG2000_V7_EXPERIMENT_ID,
         ACTIVSG2000_V8_EXPERIMENT_ID,
+        ACTIVSG2000_V9_EXPERIMENT_ID,
     }:
         raise ScopfError(
-            "Phase-I Lagrangian child engine is registered only for ACTIVSg2000 v6/v7/v8"
+            "Phase-I Lagrangian child engine is registered only for ACTIVSg2000 v6-v9"
         )
     pairs_by_id = {pair.pair_id: pair for pair in initial_pairs}
     if set(pairs_by_id) != set(master.security_pair_ids):
@@ -3842,7 +3917,7 @@ def run_gpu_lagrangian_experiment(
         guard_runtime_environment(config.root)
         validate_platform(config, "dgx_spark")
         payload["environment"] = environment_manifest("dgx_spark")
-        if config.benchmark_id == ACTIVSG2000_V8_EXPERIMENT_ID:
+        if config.benchmark_id in ACTIVSG2000_V8_PLUS_EXPERIMENT_IDS:
             payload["cpu_comparison_policy"] = (
                 "deferred_until_after_gpu_acceptance_status_is_final"
             )
@@ -3999,7 +4074,7 @@ def run_gpu_lagrangian_experiment(
             PrimalCandidatePolicy.from_config(config)
             if (
                 config.benchmark_id.endswith(
-                    ("-v3", "-v4", "-v5", "-v6", "-v7", "-v8")
+                    ("-v3", "-v4", "-v5", "-v6", "-v7", "-v8", "-v9")
                 )
                 or config.benchmark_id
                 in {
@@ -4011,6 +4086,7 @@ def run_gpu_lagrangian_experiment(
                     ACTIVSG2000_V6_EXPERIMENT_ID,
                     ACTIVSG2000_V7_EXPERIMENT_ID,
                     ACTIVSG2000_V8_EXPERIMENT_ID,
+                    ACTIVSG2000_V9_EXPERIMENT_ID,
                 }
             )
             else None
@@ -4019,7 +4095,7 @@ def run_gpu_lagrangian_experiment(
             PrimalCandidatePolicy.from_config(config, scope="disjunctive_region")
             if (
                 config.benchmark_id.endswith(
-                    ("-v4", "-v5", "-v6", "-v7", "-v8")
+                    ("-v4", "-v5", "-v6", "-v7", "-v8", "-v9")
                 )
                 or config.benchmark_id
                 in {
@@ -4031,12 +4107,13 @@ def run_gpu_lagrangian_experiment(
                     ACTIVSG2000_V6_EXPERIMENT_ID,
                     ACTIVSG2000_V7_EXPERIMENT_ID,
                     ACTIVSG2000_V8_EXPERIMENT_ID,
+                    ACTIVSG2000_V9_EXPERIMENT_ID,
                 }
             )
             else None
         )
         phase_one_first = config.benchmark_id.endswith(
-            ("-v6", "-v7", "-v8")
+            ("-v6", "-v7", "-v8", "-v9")
         ) or config.benchmark_id in {
             ACTIVSG2000_EXPERIMENT_ID,
             ACTIVSG2000_V2_EXPERIMENT_ID,
@@ -4046,6 +4123,7 @@ def run_gpu_lagrangian_experiment(
             ACTIVSG2000_V6_EXPERIMENT_ID,
             ACTIVSG2000_V7_EXPERIMENT_ID,
             ACTIVSG2000_V8_EXPERIMENT_ID,
+            ACTIVSG2000_V9_EXPERIMENT_ID,
         }
         payload["primal_candidate_policy"] = (
             candidate_policy.as_dict() if candidate_policy is not None else None
@@ -4100,6 +4178,7 @@ def run_gpu_lagrangian_experiment(
                         ACTIVSG2000_V6_EXPERIMENT_ID,
                         ACTIVSG2000_V7_EXPERIMENT_ID,
                         ACTIVSG2000_V8_EXPERIMENT_ID,
+                        ACTIVSG2000_V9_EXPERIMENT_ID,
                     }
                 ),
                 "phase_one_source_primal_warm_starts_cost_lp": (
@@ -4108,6 +4187,7 @@ def run_gpu_lagrangian_experiment(
                         ACTIVSG2000_V6_EXPERIMENT_ID,
                         ACTIVSG2000_V7_EXPERIMENT_ID,
                         ACTIVSG2000_V8_EXPERIMENT_ID,
+                        ACTIVSG2000_V9_EXPERIMENT_ID,
                     }
                 ),
                 "v6_child_policy": (
@@ -4117,6 +4197,7 @@ def run_gpu_lagrangian_experiment(
                         ACTIVSG2000_V6_EXPERIMENT_ID,
                         ACTIVSG2000_V7_EXPERIMENT_ID,
                         ACTIVSG2000_V8_EXPERIMENT_ID,
+                        ACTIVSG2000_V9_EXPERIMENT_ID,
                     }
                     else None
                 ),
@@ -4141,6 +4222,7 @@ def run_gpu_lagrangian_experiment(
                     not in {
                         ACTIVSG2000_V7_EXPERIMENT_ID,
                         ACTIVSG2000_V8_EXPERIMENT_ID,
+                        ACTIVSG2000_V9_EXPERIMENT_ID,
                     }
                 ),
                 "cost_polish_uses_exact_convex_pwl_epigraph_projection": (
@@ -4148,6 +4230,7 @@ def run_gpu_lagrangian_experiment(
                     in {
                         ACTIVSG2000_V7_EXPERIMENT_ID,
                         ACTIVSG2000_V8_EXPERIMENT_ID,
+                        ACTIVSG2000_V9_EXPERIMENT_ID,
                     }
                 ),
                 "cost_polish_uses_mapped_native_row_dual_start": (
@@ -4156,6 +4239,7 @@ def run_gpu_lagrangian_experiment(
                     not in {
                         ACTIVSG2000_V7_EXPERIMENT_ID,
                         ACTIVSG2000_V8_EXPERIMENT_ID,
+                        ACTIVSG2000_V9_EXPERIMENT_ID,
                     }
                 ),
                 "cpu_commitment_or_dispatch_seeded": False,
@@ -4169,6 +4253,7 @@ def run_gpu_lagrangian_experiment(
                 ACTIVSG2000_V6_EXPERIMENT_ID,
                 ACTIVSG2000_V7_EXPERIMENT_ID,
                 ACTIVSG2000_V8_EXPERIMENT_ID,
+                ACTIVSG2000_V9_EXPERIMENT_ID,
             }
             else {"enabled": False}
         )
@@ -4361,6 +4446,7 @@ def run_gpu_lagrangian_experiment(
                     ACTIVSG2000_V6_EXPERIMENT_ID,
                     ACTIVSG2000_V7_EXPERIMENT_ID,
                     ACTIVSG2000_V8_EXPERIMENT_ID,
+                    ACTIVSG2000_V9_EXPERIMENT_ID,
                 }:
                     if candidate_policy is None:
                         raise ScopfError("ACTIVSg2000 v2 requires a bounded candidate policy")
@@ -4414,6 +4500,7 @@ def run_gpu_lagrangian_experiment(
                     if config.benchmark_id in {
                         ACTIVSG2000_V7_EXPERIMENT_ID,
                         ACTIVSG2000_V8_EXPERIMENT_ID,
+                        ACTIVSG2000_V9_EXPERIMENT_ID,
                     }:
                         attempt["cost_polish"] = {
                             "status": "running",
@@ -4560,7 +4647,7 @@ def run_gpu_lagrangian_experiment(
                 queued_repairs: list[NetworkCommitmentRepair] = []
                 cut_repairs: list[tuple[np.ndarray, dict[str, Any]]] = []
                 if (
-                    config.benchmark_id == ACTIVSG2000_V8_EXPERIMENT_ID
+                    config.benchmark_id in ACTIVSG2000_V8_PLUS_EXPERIMENT_IDS
                     and isinstance(exc, RegionAttemptRejected)
                     and exc.commitment_feasibility_cut is not None
                     and exc.commitment_feasibility_cut_record is not None
@@ -4737,6 +4824,7 @@ def run_gpu_lagrangian_experiment(
             ACTIVSG2000_V6_EXPERIMENT_ID,
             ACTIVSG2000_V7_EXPERIMENT_ID,
             ACTIVSG2000_V8_EXPERIMENT_ID,
+            ACTIVSG2000_V9_EXPERIMENT_ID,
         }:
             heuristic_pipeline_started = time.perf_counter()
             payload["gpu_primal_heuristics"] = {
@@ -5210,7 +5298,7 @@ def run_gpu_lagrangian_experiment(
             if len(frontier) >= maximum_regions:
                 payload["status"] = "incomplete_frontier_region_limit"
                 break
-            if config.benchmark_id == ACTIVSG2000_V8_EXPERIMENT_ID:
+            if config.benchmark_id in ACTIVSG2000_V8_PLUS_EXPERIMENT_IDS:
                 try:
                     remaining_refinement_budget = deadline.solver_budget()
                 except DeadlineExceeded:
@@ -5343,6 +5431,7 @@ def run_gpu_lagrangian_experiment(
                         ACTIVSG2000_V6_EXPERIMENT_ID,
                         ACTIVSG2000_V7_EXPERIMENT_ID,
                         ACTIVSG2000_V8_EXPERIMENT_ID,
+                        ACTIVSG2000_V9_EXPERIMENT_ID,
                     }:
                         try:
                             phase_child, phase_prune = (
@@ -5873,7 +5962,7 @@ def run_gpu_lagrangian_experiment(
                 "refinement_stop_status",
                 "incomplete_requested_gap_not_certified",
             )
-        if config.benchmark_id == ACTIVSG2000_V8_EXPERIMENT_ID:
+        if config.benchmark_id in ACTIVSG2000_V8_PLUS_EXPERIMENT_IDS:
             payload["cpu_comparison"] = _load_cpu_comparison(config, registration)
         cpu = payload["cpu_comparison"]
         payload["system_comparison"] = {

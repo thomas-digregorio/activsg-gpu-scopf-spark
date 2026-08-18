@@ -16,6 +16,7 @@ from activsg_scopf.lagrangian_experiment import (
     ACTIVSG2000_V6_EXPERIMENT_ID,
     ACTIVSG2000_V7_EXPERIMENT_ID,
     ACTIVSG2000_V8_EXPERIMENT_ID,
+    ACTIVSG2000_V9_EXPERIMENT_ID,
     EXPERIMENT_ID,
     EXPERIMENT_TAG,
     PrimalCandidatePolicy,
@@ -333,6 +334,33 @@ def test_registered_activsg2000_v8_certificate_controller_is_fail_closed() -> No
     v8.raw["runtime"]["maximum_primal_repairs"] = 63
     with pytest.raises(ScopfError, match="runtime policy changed"):
         validate_lagrangian_experiment_config(v8)
+
+
+def test_registered_activsg2000_v9_compact_replay_fix_is_fail_closed() -> None:
+    v8 = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v8.json")
+    v9 = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v9.json")
+    registration = validate_lagrangian_experiment_config(v9)
+
+    assert v9.benchmark_id == ACTIVSG2000_V9_EXPERIMENT_ID
+    assert registration["benchmark"]["required_git_tag"] == (
+        "experiment-2000-gpu-lagrangian-v9"
+    )
+    assert v9.raw["raw_inputs"] == v8.raw["raw_inputs"]
+    assert v9.model == v8.model
+    assert v9.runtime == v8.runtime
+    assert v9.raw["platforms"] == v8.raw["platforms"]
+    controller = registration["benchmark"]["certificate_controller_fix"]
+    assert controller["lagrangian_certificate_serialization"] == (
+        "sparse_nonzero_dual_order_independent_identity_v3"
+    )
+    fix = registration["benchmark"]["compact_replay_fix"]
+    assert fix["failed_v8_run_preserved"] is True
+    assert fix["derived_fp64_vector_hash_gate_removed"] is True
+    assert fix["exact_source_pmin_changed"] is False
+    assert fix["cpu_commitment_dispatch_objective_or_bound_seeded"] is False
+    v9.raw["benchmark"]["compact_replay_fix"]["failed_v8_run_preserved"] = False
+    with pytest.raises(ScopfError, match="compact-replay identity changed"):
+        validate_lagrangian_experiment_config(v9)
 
 
 def test_phase_one_native_dual_maps_lower_upper_and_equality_rows() -> None:
