@@ -1,0 +1,192 @@
+{
+  "schema_version": "1.0.0",
+  "experiment_suite_id": "activsg2000-gpu-lagrangian-v3",
+  "case_name": "ACTIVSg2000",
+  "status": "deadline_budget_exhausted",
+  "scientific_success": false,
+  "one_shot_run_count": 1,
+  "automatic_retry_performed": false,
+  "failure_gates": {
+    "secure_integer_primal_available": false,
+    "objective_available": false,
+    "commitment_dispatch_and_pricing_available": false,
+    "requested_gap_certified": false,
+    "final_exhaustive_primal_screen_available": false
+  },
+  "frozen_identity": {
+    "commit": "6d4c141238c7d67d45fef4bbbbe61d021c072676",
+    "tag": "experiment-2000-gpu-lagrangian-v3",
+    "config_sha256": "fb867a2c19b131001ddb752cc9f2c1a85a8fcd358f1b25457ed35fe30e827d01",
+    "container_image_sha256": "abe2edbceff89e6d8c74044e680018f473b7a21b35c6d3f0a223a632848e7aee",
+    "container_revision_label": "6d4c141238c7d67d45fef4bbbbe61d021c072676"
+  },
+  "approval_audit": {
+    "explicit_user_approval_received": true,
+    "approval_bearing_commit_time_utc": "2026-08-18T17:45:51Z",
+    "tag_time_utc": "2026-08-18T17:45:52Z",
+    "run_started_at_utc": "2026-08-18T17:46:49.887984Z",
+    "frozen_preflight_manual_timestamp_utc": "2026-08-18T17:47:00Z",
+    "manual_timestamp_correction": "The manually entered preflight timestamp was late; Git commit and tag timestamps prove approval was frozen before launch."
+  },
+  "run_registry": {
+    "started_at_utc": "2026-08-18T17:46:49.887984Z",
+    "finished_at_utc": "2026-08-18T18:14:24.531128Z",
+    "controller_elapsed_seconds": 1653.389239983997,
+    "total_wall_time_seconds": 1654.358731305998,
+    "deadline_seconds": 1800.0,
+    "termination_error_type": "DeadlineExceeded",
+    "termination_message": "No solver budget remains before verification reserve"
+  },
+  "model_and_policy": {
+    "requested_relative_gap": 0.001,
+    "model_residual_tolerance_pu": 0.000001,
+    "security_violation_tolerance_pu": 0.00001,
+    "exact_tamu_source_pmin_pmax_retained": true,
+    "cpu_commitment_or_dispatch_seeded": false,
+    "integer_solver_used": false,
+    "branch_and_bound_performed": false,
+    "custom_cuda_kernel_used": false,
+    "valid_branch_outages": 2740,
+    "excluded_branch_outages": 450,
+    "deferred_generator_outages": 544,
+    "screened_sides_per_exhaustive_screen": 17563400
+  },
+  "root_relaxation": {
+    "objective": 1128529.233432291,
+    "fractional_commitments": 53,
+    "logical_security_pairs": 104,
+    "rounds": [
+      {
+        "round": 1,
+        "gpu_solve_seconds": 10.485055591008859,
+        "new_logical_pairs": 84,
+        "maximum_exhaustive_violation_pu": 1.5669193892931026
+      },
+      {
+        "round": 2,
+        "gpu_solve_seconds": 48.96236787800444,
+        "new_logical_pairs": 20,
+        "maximum_exhaustive_violation_pu": 0.23488301627999192
+      },
+      {
+        "round": 3,
+        "gpu_solve_seconds": 36.292975830991054,
+        "new_logical_pairs": 0,
+        "maximum_exhaustive_violation_pu": 1.4199486031429842e-12
+      }
+    ],
+    "conservative_lagrangian_bound": 1128529.2234322468,
+    "same_platform_replay_passed": true,
+    "same_platform_replay_difference_dollars": 0.0
+  },
+  "fixed_commitment_search": {
+    "candidate_count": 8,
+    "commitment_counts": [333, 323, 338, 432, 335, 334, 334, 334],
+    "candidate_statuses": [
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected"
+    ],
+    "common_row": "c0603_m0609_lower",
+    "shifted_upper_mw": -0.3799999999912984,
+    "pruning_scope": "fixed_commitment_candidate_only",
+    "full_model_infeasibility_claimed": false,
+    "minimum_candidate_wall_seconds": 1.663723078003386,
+    "maximum_candidate_wall_seconds": 1.8075907239981461,
+    "known_secure_cpu_commitment_projection_check": {
+      "passed": true,
+      "commitment_count": 327,
+      "projected_free_dispatch_columns": 215,
+      "active_projected_coupling_rows": 431,
+      "purpose": "Confirms the common GPU-candidate rejection is not a projection false positive."
+    }
+  },
+  "disjunctive_search": {
+    "completed_split_transactions": 12,
+    "committed_splits": 4,
+    "failed_rolled_back_splits": 8,
+    "committed_generator_source_rows": [16, 17, 152, 320],
+    "pending_split_at_deadline": {
+      "transaction_attempt": 13,
+      "generator_source_row": 493,
+      "status": "solving_children_parent_certificate_retained"
+    },
+    "final_frontier_region_count": 5,
+    "phase_one_pruned_region_count": 0,
+    "phase_one_precheck_count": 23,
+    "phase_one_fallback_count": 8,
+    "secure_incumbent_checkpoint_count": 0,
+    "final_frontier_fractional_commitment_counts": [53, 50, 51, 51, 52]
+  },
+  "final_lower_bound": {
+    "recorded_dollars": 1128528.2593281749,
+    "raw_result_bound_status": "gpu_generated_pending_independent_replay",
+    "independent_laptop_replay_passed": true,
+    "replayed_dollars": 1128528.25932818,
+    "replay_difference_dollars": 5.122274160385132e-9,
+    "maximum_region_replay_difference_dollars": 7.683411240577698e-9,
+    "maximum_lodf_replay_difference": 3.3084646133829665e-14,
+    "maximum_phase_one_replay_difference_pu": 0.0,
+    "disjunctive_cover_passed": true,
+    "root_minus_final_bound_dollars": 0.9641040719579905
+  },
+  "cpu_comparison": {
+    "source_suite": "activsg2000-gap-sensitivity-v1",
+    "status": "optimal_verified",
+    "objective": 1133479.3855011363,
+    "bound": 1132599.3522354912,
+    "relative_gap": 0.0007763998859633739,
+    "commitment_count": 327,
+    "total_wall_time_seconds": 1007.3702709000063,
+    "cpu_bound_minus_gpu_bound_dollars": 4071.0929073162843,
+    "cpu_incumbent_vs_gpu_bound_external_gap": 0.004368077828581268,
+    "comparison_kind": "system_to_system_not_pure_gpu_speedup"
+  },
+  "platform": {
+    "name": "DGX Spark",
+    "gpu": "NVIDIA GB10",
+    "compute_capability": "12.1",
+    "cuopt_version": "26.06.00",
+    "cupy_version": "14.1.1",
+    "peak_process_rss_bytes": 5280141312,
+    "cuda_device_memory_delta_bytes": 5197725696,
+    "cupy_pool_used_bytes": 70301696
+  },
+  "artifacts": {
+    "raw_result": {
+      "path": "results/experiments/activsg2000-gpu-lagrangian-v3-dgx-spark.json",
+      "sha256": "5d7e8d0ddb9b92b281cb485482b891d479d0720cff2c272f42cbae210ab248d4",
+      "bytes": 38977435
+    },
+    "run_registry": {
+      "path": "results/experiments/activsg2000-gpu-lagrangian-v3-run-registry.json",
+      "sha256": "5ac541d2186bee862427be2687bcd2833544864f6f10d89465052ed2acec5d88",
+      "bytes": 903
+    },
+    "checkpoint": {
+      "path": "results/checkpoints/activsg2000-gpu-lagrangian-v3-dgx_spark.json",
+      "sha256": "92714174615ddc45954f1939791f0d28f8d79b092f7d056d3d7482b0251e5947",
+      "bytes": 38976611
+    },
+    "worker_console_log": {
+      "path": "results/diagnostics/activsg2000-gpu-lagrangian-v3-worker-console.log",
+      "sha256": "b04bd598d5d618c8795f08acf73c417db76c58eaa9b43bc2009ef530c0d2cf0e",
+      "bytes": 618772
+    },
+    "launcher_log": {
+      "path": "results/experiments/activsg2000-gpu-lagrangian-v3-launcher.log",
+      "sha256": "f53bd660d0ee1b43dd47663fca99150a25c3ec2df859eda4cd28cba2676ebc22",
+      "bytes": 129
+    }
+  },
+  "post_run_verifier_fix": {
+    "commit": "85a997a644a071240d9613954580bb1abbb53f58",
+    "change": "Allow the replay wrapper to report a missing primal while still replaying the lower-bound cover.",
+    "experiment_result_changed": false
+  }
+}
