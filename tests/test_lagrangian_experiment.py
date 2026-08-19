@@ -39,6 +39,9 @@ from activsg_scopf.lagrangian_experiment import (
     ACTIVSG2000_V19_EXPERIMENT_ID,
     ACTIVSG2000_V19_NUMERICAL_EXTENDED_COVER_FIX,
     ACTIVSG2000_V19_RUNTIME,
+    ACTIVSG2000_V20_EXPERIMENT_ID,
+    ACTIVSG2000_V20_RUNTIME,
+    ACTIVSG2000_V20_SECURITY_ROW_NUMERICAL_FIX,
     EXPERIMENT_ID,
     EXPERIMENT_TAG,
     PrimalCandidatePolicy,
@@ -652,6 +655,35 @@ def test_registered_activsg2000_v19_numerical_extended_cover_fix_is_fail_closed(
     v19.raw["runtime"]["extended_cover_enabled"] = False
     with pytest.raises(ScopfError, match="runtime policy changed"):
         validate_lagrangian_experiment_config(v19)
+
+
+def test_registered_activsg2000_v20_security_row_numerical_fix_is_fail_closed() -> None:
+    v19 = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v19.json")
+    v20 = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v20.json")
+    registration = validate_lagrangian_experiment_config(v20)
+
+    assert v20.benchmark_id == ACTIVSG2000_V20_EXPERIMENT_ID
+    assert registration["benchmark"]["required_git_tag"] == (
+        "experiment-2000-gpu-lagrangian-v20"
+    )
+    assert v20.raw["raw_inputs"] == v19.raw["raw_inputs"]
+    assert v20.runtime == ACTIVSG2000_V20_RUNTIME
+    assert v20.model["reduced_coefficient_zero_tolerance"] == 1e-5
+    assert v20.model["security_row_maximum_raw_violation_envelope_pu"] == 5e-6
+    assert (
+        v20.model["security_row_maximum_raw_violation_envelope_pu"]
+        + v20.model["model_residual_tolerance_pu"]
+        < v20.model["security_violation_tolerance_pu"]
+    )
+    assert registration["benchmark"]["security_row_numerical_fix"] == (
+        ACTIVSG2000_V20_SECURITY_ROW_NUMERICAL_FIX
+    )
+    assert registration["benchmark"]["security_row_numerical_fix"][
+        "cpu_solution_data_used"
+    ] is False
+    v20.raw["model"]["security_row_maximum_raw_violation_envelope_pu"] = 9e-6
+    with pytest.raises(ScopfError, match="security-row envelope"):
+        validate_lagrangian_experiment_config(v20)
 
 
 def test_gpu_lagrangian_timing_accepts_centered_and_legacy_audits() -> None:

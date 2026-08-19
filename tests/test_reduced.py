@@ -233,6 +233,30 @@ def test_small_coefficient_cleanup_is_audited_and_upper_row_is_relaxed() -> None
     assert relaxed_rhs == pytest.approx(5.0 + row_audit["rhs_outward_relaxation"])
 
 
+def test_security_row_cleanup_caps_hidden_raw_violation_over_the_dispatch_box() -> None:
+    coefficients = np.asarray([1e-5, -2e-5, 0.2])
+    lower = np.asarray([0.0, 0.0, 0.0])
+    upper = np.asarray([10.0, 10.0, 1.0])
+    cleaned, relaxed_rhs, audit = clean_upper_row_with_box_relaxation(
+        coefficients,
+        lower,
+        upper,
+        5.0,
+        zero_tolerance=2e-5,
+        maximum_raw_violation_envelope=1.5e-4,
+    )
+
+    np.testing.assert_array_equal(cleaned, [0.0, -2e-5, 0.2])
+    assert audit["candidate_coefficient_count"] == 2
+    assert audit["dropped_coefficient_count"] == 1
+    assert audit["retained_candidate_count_due_to_raw_violation_limit"] == 1
+    assert audit["rhs_outward_relaxation"] == pytest.approx(0.0)
+    assert audit["raw_activity_increase_bound"] == pytest.approx(1e-4)
+    assert audit["raw_violation_envelope"] == pytest.approx(1e-4)
+    assert audit["raw_violation_envelope"] <= 1.5e-4
+    assert relaxed_rhs == pytest.approx(5.0)
+
+
 def test_reduced_security_rows_reproduce_screened_post_flow() -> None:
     case, table = triangle_case()
     network = build_network(case)

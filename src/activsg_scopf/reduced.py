@@ -79,6 +79,8 @@ class CouplingRow:
     coefficient_cleanup_dropped_count: int = 0
     coefficient_cleanup_maximum_absolute: float = 0.0
     coefficient_cleanup_rhs_relaxation: float = 0.0
+    coefficient_cleanup_raw_activity_increase_bound: float = 0.0
+    coefficient_cleanup_raw_violation_envelope: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -95,6 +97,7 @@ class ReducedMaster:
     index: ReducedIndex
     costs: dict[int, PwlCost]
     operator: InjectionOperator
+    security_row_maximum_raw_violation_envelope_mw: float | None = None
     coupling_rows: list[CouplingRow] = field(default_factory=list)
     security_pair_ids: set[str] = field(default_factory=set)
     security_pair_representative_by_id: dict[str, str] = field(default_factory=dict)
@@ -134,6 +137,7 @@ def clean_upper_row_with_box_relaxation(
     rhs: float,
     *,
     zero_tolerance: float,
+    maximum_raw_violation_envelope: float | None = None,
 ) -> tuple[FloatArray, float, dict[str, float | int]]:
     """Clean an upper row while retaining a provable relaxation of that row."""
 
@@ -149,9 +153,83 @@ def clean_upper_row_with_box_relaxation(
         and np.isfinite(rhs)
     ):
         raise ScopfError("Upper-row cleanup requires finite, conformable box data")
-    cleaned, audit = clean_sensitivity_coefficients(
-        original, zero_tolerance=zero_tolerance
-    )
+    if maximum_raw_violation_envelope is not None and (
+        not np.isfinite(maximum_raw_violation_envelope)
+        or maximum_raw_violation_envelope < 0.0
+    ):
+        raise ScopfError("Upper-row raw-violation envelope must be finite and nonnegative")
+
+    candidate_mask = (original != 0.0) & (np.abs(original) <= zero_tolerance)
+    dropped_mask = candidate_mask.copy()
+    if maximum_raw_violation_envelope is not None and np.any(candidate_mask):
+        candidate_indices = np.flatnonzero(candidate_mask)
+        outward_contributions = np.maximum(
+            -original[candidate_indices] * lower_values[candidate_indices],
+            -original[candidate_indices] * upper_values[candidate_indices],
+        )
+        raw_increase_contributions = np.maximum(
+            original[candidate_indices] * lower_values[candidate_indices],
+            original[candidate_indices] * upper_values[candidate_indices],
+        )
+        candidate_contributions = (
+            outward_contributions + raw_increase_contributions
+        )
+        # The sum is the full interval range of every dropped a_i * p_i term.
+        # It bounds both the outward RHS relaxation needed to preserve the
+        # original feasible set and the raw-row violation a cleaned solution
+        # can hide.  Nonpositive terms cannot consume that error budget.
+        free = candidate_contributions <= 0.0
+        selected_indices = list(candidate_indices[free])
+        used = float(np.sum(candidate_contributions[free]))
+        positive_indices = candidate_indices[~free]
+        if positive_indices.size:
+            order = np.lexsort(
+                (positive_indices, np.abs(original[positive_indices]))
+            )
+            ordered_indices = positive_indices[order]
+            ordered_contributions = (
+                np.maximum(
+                    -original[ordered_indices] * lower_values[ordered_indices],
+                    -original[ordered_indices] * upper_values[ordered_indices],
+                )
+                + np.maximum(
+                    original[ordered_indices] * lower_values[ordered_indices],
+                    original[ordered_indices] * upper_values[ordered_indices],
+                )
+            )
+            cumulative = used + np.cumsum(ordered_contributions, dtype=np.float64)
+            numerical_margin = max(
+                1e-15,
+                16.0
+                * np.finfo(np.float64).eps
+                * max(1.0, float(maximum_raw_violation_envelope)),
+            )
+            prefix = int(
+                np.searchsorted(
+                    cumulative,
+                    float(maximum_raw_violation_envelope) + numerical_margin,
+                    side="right",
+                )
+            )
+            selected_indices.extend(ordered_indices[:prefix])
+        dropped_mask[:] = False
+        dropped_mask[np.asarray(selected_indices, dtype=np.int64)] = True
+
+    cleaned = original.copy()
+    cleaned[dropped_mask] = 0.0
+    audit: dict[str, float | int] = {
+        "zero_tolerance": float(zero_tolerance),
+        "candidate_coefficient_count": int(np.count_nonzero(candidate_mask)),
+        "dropped_coefficient_count": int(np.count_nonzero(dropped_mask)),
+        "retained_candidate_count_due_to_raw_violation_limit": int(
+            np.count_nonzero(candidate_mask) - np.count_nonzero(dropped_mask)
+        ),
+        "maximum_absolute_dropped_coefficient": (
+            float(np.max(np.abs(original[dropped_mask])))
+            if np.any(dropped_mask)
+            else 0.0
+        ),
+    }
     dropped = original - cleaned
     # Original row: a*p <= b.  With a' = a - dropped, every point in the
     # original feasible set satisfies
@@ -159,7 +237,25 @@ def clean_upper_row_with_box_relaxation(
     rhs_relaxation = float(
         np.sum(np.maximum(-dropped * lower_values, -dropped * upper_values))
     )
+    raw_activity_increase_bound = float(
+        np.sum(np.maximum(dropped * lower_values, dropped * upper_values))
+    )
+    raw_violation_envelope = rhs_relaxation + raw_activity_increase_bound
+    if (
+        maximum_raw_violation_envelope is not None
+        and raw_violation_envelope
+        > float(maximum_raw_violation_envelope)
+        + max(
+            1e-15,
+            32.0
+            * np.finfo(np.float64).eps
+            * max(1.0, float(maximum_raw_violation_envelope)),
+        )
+    ):
+        raise ScopfError("Upper-row cleanup exceeded its raw-violation envelope")
     audit["rhs_outward_relaxation"] = rhs_relaxation
+    audit["raw_activity_increase_bound"] = raw_activity_increase_bound
+    audit["raw_violation_envelope"] = raw_violation_envelope
     return cleaned, float(rhs) + rhs_relaxation, audit
 
 
@@ -272,6 +368,11 @@ def _add_upper_coupling_row(
             dispatch_upper,
             rhs,
             zero_tolerance=master.operator.coefficient_zero_tolerance,
+            maximum_raw_violation_envelope=(
+                master.security_row_maximum_raw_violation_envelope_mw
+                if kind.startswith("contingency_")
+                else None
+            ),
         )
     )
     rhs_relaxation = float(generator_audit["rhs_outward_relaxation"])
@@ -362,6 +463,43 @@ def _add_upper_coupling_row(
         float(audit.get("maximum_absolute_dropped_generator_coefficient", 0.0)),
         dropped_maximum,
     )
+    raw_activity_increase_bound = float(
+        generator_audit["raw_activity_increase_bound"]
+    )
+    raw_violation_envelope = float(generator_audit["raw_violation_envelope"])
+    if master.security_row_maximum_raw_violation_envelope_mw is not None:
+        retained_due_to_limit = int(
+            generator_audit[
+                "retained_candidate_count_due_to_raw_violation_limit"
+            ]
+        )
+        audit[
+            "retained_generator_coefficient_count_due_to_raw_violation_limit"
+        ] = int(
+            audit.get(
+                "retained_generator_coefficient_count_due_to_raw_violation_limit",
+                0,
+            )
+        ) + retained_due_to_limit
+        if kind.startswith("contingency_"):
+            audit["maximum_security_row_raw_activity_increase_bound"] = max(
+                float(
+                    audit.get(
+                        "maximum_security_row_raw_activity_increase_bound", 0.0
+                    )
+                ),
+                raw_activity_increase_bound,
+            )
+            audit["maximum_security_row_raw_violation_envelope"] = max(
+                float(
+                    audit.get("maximum_security_row_raw_violation_envelope", 0.0)
+                ),
+                raw_violation_envelope,
+            )
+            if retained_due_to_limit:
+                audit["security_rows_limited_by_raw_violation_budget"] = int(
+                    audit.get("security_rows_limited_by_raw_violation_budget", 0)
+                ) + 1
     master.coupling_rows.append(
         CouplingRow(
             row_index=row,
@@ -374,6 +512,10 @@ def _add_upper_coupling_row(
             coefficient_cleanup_dropped_count=dropped_count,
             coefficient_cleanup_maximum_absolute=dropped_maximum,
             coefficient_cleanup_rhs_relaxation=rhs_relaxation,
+            coefficient_cleanup_raw_activity_increase_bound=(
+                raw_activity_increase_bound
+            ),
+            coefficient_cleanup_raw_violation_envelope=raw_violation_envelope,
         )
     )
     if deduplicate_security_row:
@@ -389,9 +531,15 @@ def build_reduced_master(
     *,
     segments: int = 10,
     coefficient_zero_tolerance: float = 1e-14,
+    security_row_maximum_raw_violation_envelope_mw: float | None = None,
 ) -> ReducedMaster:
     """Build the convex-hull-ready generator model with base DC constraints."""
 
+    if security_row_maximum_raw_violation_envelope_mw is not None and (
+        not np.isfinite(security_row_maximum_raw_violation_envelope_mw)
+        or security_row_maximum_raw_violation_envelope_mw < 0.0
+    ):
+        raise ScopfError("Security-row raw-violation envelope must be finite and nonnegative")
     operator = build_injection_operator(
         case,
         network,
@@ -453,22 +601,44 @@ def build_reduced_master(
         dispatch_by_generator=dispatch,
         segments_by_generator=segment_columns,
     )
+    cleanup_audit: dict[str, float | int | str | bool] = {
+        "policy": "drop_small_dispatch_coefficients_with_box_rhs_relaxation_v1",
+        "zero_tolerance": float(coefficient_zero_tolerance),
+        "physical_injection_operator_changed": False,
+        "solver_rows_are_relaxations_of_original_rows": True,
+        "potential_flow_operator_dust": dict(operator.coefficient_cleanup_audit),
+        "dropped_generator_coefficient_count": 0,
+        "maximum_absolute_dropped_generator_coefficient": 0.0,
+        "total_rhs_outward_relaxation": 0.0,
+        "maximum_row_rhs_outward_relaxation": 0.0,
+    }
+    if security_row_maximum_raw_violation_envelope_mw is not None:
+        cleanup_audit.update(
+            {
+                "policy": (
+                    "drop_small_dispatch_coefficients_with_box_raw_violation_"
+                    "envelope_cap_v2"
+                ),
+                "security_row_maximum_raw_violation_envelope_mw": float(
+                    security_row_maximum_raw_violation_envelope_mw
+                ),
+                "retained_generator_coefficient_count_due_to_raw_violation_limit": 0,
+                "security_rows_limited_by_raw_violation_budget": 0,
+                "maximum_security_row_raw_activity_increase_bound": 0.0,
+                "maximum_security_row_raw_violation_envelope": 0.0,
+            }
+        )
     master = ReducedMaster(
         model,
         index,
         curves,
         operator,
-        coefficient_cleanup_audit={
-            "policy": "drop_small_dispatch_coefficients_with_box_rhs_relaxation_v1",
-            "zero_tolerance": float(coefficient_zero_tolerance),
-            "physical_injection_operator_changed": False,
-            "solver_rows_are_relaxations_of_original_rows": True,
-            "potential_flow_operator_dust": dict(operator.coefficient_cleanup_audit),
-            "dropped_generator_coefficient_count": 0,
-            "maximum_absolute_dropped_generator_coefficient": 0.0,
-            "total_rhs_outward_relaxation": 0.0,
-            "maximum_row_rhs_outward_relaxation": 0.0,
-        },
+        security_row_maximum_raw_violation_envelope_mw=(
+            None
+            if security_row_maximum_raw_violation_envelope_mw is None
+            else float(security_row_maximum_raw_violation_envelope_mw)
+        ),
+        coefficient_cleanup_audit=cleanup_audit,
     )
     dispatch_columns = [dispatch[int(generator)] for generator in operator.generator_source_rows]
     balance_coefficients = np.ones(len(dispatch_columns), dtype=np.float64)

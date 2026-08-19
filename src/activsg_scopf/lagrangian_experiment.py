@@ -141,6 +141,7 @@ ACTIVSG2000_V16_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v16"
 ACTIVSG2000_V17_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v17"
 ACTIVSG2000_V18_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v18"
 ACTIVSG2000_V19_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v19"
+ACTIVSG2000_V20_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v20"
 ACTIVSG2000_V4_PLUS_EXPERIMENT_IDS = frozenset(
     {
         ACTIVSG2000_V4_EXPERIMENT_ID,
@@ -159,6 +160,7 @@ ACTIVSG2000_V4_PLUS_EXPERIMENT_IDS = frozenset(
         ACTIVSG2000_V17_EXPERIMENT_ID,
         ACTIVSG2000_V18_EXPERIMENT_ID,
         ACTIVSG2000_V19_EXPERIMENT_ID,
+        ACTIVSG2000_V20_EXPERIMENT_ID,
     }
 )
 ACTIVSG2000_V8_PLUS_EXPERIMENT_IDS = frozenset(
@@ -175,6 +177,7 @@ ACTIVSG2000_V8_PLUS_EXPERIMENT_IDS = frozenset(
         ACTIVSG2000_V17_EXPERIMENT_ID,
         ACTIVSG2000_V18_EXPERIMENT_ID,
         ACTIVSG2000_V19_EXPERIMENT_ID,
+        ACTIVSG2000_V20_EXPERIMENT_ID,
     }
 )
 ACTIVSG2000_V10_PLUS_EXPERIMENT_IDS = frozenset(
@@ -189,6 +192,7 @@ ACTIVSG2000_V10_PLUS_EXPERIMENT_IDS = frozenset(
         ACTIVSG2000_V17_EXPERIMENT_ID,
         ACTIVSG2000_V18_EXPERIMENT_ID,
         ACTIVSG2000_V19_EXPERIMENT_ID,
+        ACTIVSG2000_V20_EXPERIMENT_ID,
     }
 )
 ACTIVSG2000_V11_PLUS_EXPERIMENT_IDS = frozenset(
@@ -202,6 +206,7 @@ ACTIVSG2000_V11_PLUS_EXPERIMENT_IDS = frozenset(
         ACTIVSG2000_V17_EXPERIMENT_ID,
         ACTIVSG2000_V18_EXPERIMENT_ID,
         ACTIVSG2000_V19_EXPERIMENT_ID,
+        ACTIVSG2000_V20_EXPERIMENT_ID,
     }
 )
 ACTIVSG2000_V12_PLUS_EXPERIMENT_IDS = frozenset(
@@ -214,6 +219,7 @@ ACTIVSG2000_V12_PLUS_EXPERIMENT_IDS = frozenset(
         ACTIVSG2000_V17_EXPERIMENT_ID,
         ACTIVSG2000_V18_EXPERIMENT_ID,
         ACTIVSG2000_V19_EXPERIMENT_ID,
+        ACTIVSG2000_V20_EXPERIMENT_ID,
     }
 )
 ACTIVSG2000_V13_PLUS_EXPERIMENT_IDS = frozenset(
@@ -225,6 +231,7 @@ ACTIVSG2000_V13_PLUS_EXPERIMENT_IDS = frozenset(
         ACTIVSG2000_V17_EXPERIMENT_ID,
         ACTIVSG2000_V18_EXPERIMENT_ID,
         ACTIVSG2000_V19_EXPERIMENT_ID,
+        ACTIVSG2000_V20_EXPERIMENT_ID,
     }
 )
 ACTIVSG2000_V14_PLUS_EXPERIMENT_IDS = frozenset(
@@ -235,6 +242,7 @@ ACTIVSG2000_V14_PLUS_EXPERIMENT_IDS = frozenset(
         ACTIVSG2000_V17_EXPERIMENT_ID,
         ACTIVSG2000_V18_EXPERIMENT_ID,
         ACTIVSG2000_V19_EXPERIMENT_ID,
+        ACTIVSG2000_V20_EXPERIMENT_ID,
     }
 )
 ACTIVSG2000_V15_PLUS_EXPERIMENT_IDS = frozenset(
@@ -244,6 +252,7 @@ ACTIVSG2000_V15_PLUS_EXPERIMENT_IDS = frozenset(
         ACTIVSG2000_V17_EXPERIMENT_ID,
         ACTIVSG2000_V18_EXPERIMENT_ID,
         ACTIVSG2000_V19_EXPERIMENT_ID,
+        ACTIVSG2000_V20_EXPERIMENT_ID,
     }
 )
 ACTIVSG2000_V16_PLUS_EXPERIMENT_IDS = frozenset(
@@ -252,6 +261,7 @@ ACTIVSG2000_V16_PLUS_EXPERIMENT_IDS = frozenset(
         ACTIVSG2000_V17_EXPERIMENT_ID,
         ACTIVSG2000_V18_EXPERIMENT_ID,
         ACTIVSG2000_V19_EXPERIMENT_ID,
+        ACTIVSG2000_V20_EXPERIMENT_ID,
     }
 )
 REGISTERED_EXPERIMENTS = {
@@ -424,6 +434,14 @@ REGISTERED_EXPERIMENTS = {
         "policy": (
             "gpu_conditioned_extended_cover_master_plus_balanced_type_"
             "rounding_activsg2000_v19"
+        ),
+    },
+    ACTIVSG2000_V20_EXPERIMENT_ID: {
+        "case_name": "ACTIVSg2000",
+        "tag": "experiment-2000-gpu-lagrangian-v20",
+        "policy": (
+            "gpu_security_row_raw_violation_envelope_plus_conditioned_extended_"
+            "cover_master_activsg2000_v20"
         ),
     },
 }
@@ -850,6 +868,29 @@ ACTIVSG2000_V19_NUMERICAL_EXTENDED_COVER_FIX = {
     "exact_source_pmin_changed": False,
     "mathematical_original_integer_feasible_set_changed": False,
 }
+ACTIVSG2000_V20_SECURITY_ROW_NUMERICAL_FIX = {
+    "comparison_baseline": "activsg2000-gpu-lagrangian-v19",
+    "failed_v19_result_preserved": True,
+    "v19_failure": "existing_security_pair_raw_residual_exceeded_tolerance",
+    "v19_maximum_raw_security_violation_pu": 0.0001450779883404607,
+    "v19_maximum_raw_security_pair_id": "c0941_m3193_lower",
+    "v19_root_pdlp_error_status": "Success",
+    "coefficient_zero_tolerance_unchanged": 1e-5,
+    "security_row_cleanup": (
+        "drop_small_dispatch_coefficients_only_while_full_box_raw_violation_"
+        "envelope_le_5e_6_pu_v1"
+    ),
+    "raw_violation_envelope_proof": (
+        "rhs_outward_relaxation_plus_raw_activity_increase_bound_v1"
+    ),
+    "screen_acceptance_ceiling_pu": 6e-6,
+    "security_violation_tolerance_pu": 1e-5,
+    "certificate_authority": "independent_raw_input_exact_fp64_lagrangian_replay_v1",
+    "final_primal_authority": "independent_exhaustive_raw_n_minus_one_verifier_v1",
+    "cpu_solution_data_used": False,
+    "exact_source_pmin_changed": False,
+    "mathematical_original_integer_feasible_set_changed": False,
+}
 ACTIVSG2000_V1_RUNTIME = {
     "deadline_seconds": 1800.0,
     "verification_reserve_seconds": 120.0,
@@ -1001,6 +1042,7 @@ ACTIVSG2000_V19_RUNTIME = {
     "extended_cover_enabled": True,
     "benders_parent_master_policy": "cover_only_when_available",
 }
+ACTIVSG2000_V20_RUNTIME = dict(ACTIVSG2000_V19_RUNTIME)
 
 
 @dataclass
@@ -1177,11 +1219,13 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
     is_activsg2000_v17 = config.benchmark_id == ACTIVSG2000_V17_EXPERIMENT_ID
     is_activsg2000_v18 = config.benchmark_id == ACTIVSG2000_V18_EXPERIMENT_ID
     is_activsg2000_v19 = config.benchmark_id == ACTIVSG2000_V19_EXPERIMENT_ID
+    is_activsg2000_v20 = config.benchmark_id == ACTIVSG2000_V20_EXPERIMENT_ID
     is_activsg2000_v16_plus = (
         is_activsg2000_v16
         or is_activsg2000_v17
         or is_activsg2000_v18
         or is_activsg2000_v19
+        or is_activsg2000_v20
     )
     is_activsg2000_v15_plus = is_activsg2000_v15 or is_activsg2000_v16_plus
     is_activsg2000_v14_plus = is_activsg2000_v14 or is_activsg2000_v15_plus
@@ -1195,6 +1239,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
         or is_activsg2000_v17
         or is_activsg2000_v18
         or is_activsg2000_v19
+        or is_activsg2000_v20
     )
     is_activsg2000_v8_plus = (
         is_activsg2000_v8
@@ -1209,6 +1254,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
         or is_activsg2000_v17
         or is_activsg2000_v18
         or is_activsg2000_v19
+        or is_activsg2000_v20
     )
     is_activsg2000 = (
         is_activsg2000_v1
@@ -1230,6 +1276,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
         or is_activsg2000_v17
         or is_activsg2000_v18
         or is_activsg2000_v19
+        or is_activsg2000_v20
     )
     if benchmark.get("kind") != "gpu_lagrangian_disjunctive_experiment":
         raise ScopfError("GPU Lagrangian experiment kind changed")
@@ -1256,13 +1303,14 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
                 "-v17",
                 "-v18",
                 "-v19",
+                "-v20",
             )
         )
         or is_activsg2000
     )
     expected_coefficient_tolerance = (
         1e-5
-        if is_activsg2000_v19
+        if (is_activsg2000_v19 or is_activsg2000_v20)
         else 2e-6
         if (is_activsg2000_v13 or is_activsg2000_v14_plus)
         else (1e-9 if is_activsg2000 else 1e-14)
@@ -1397,6 +1445,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
         or is_activsg2000_v17
         or is_activsg2000_v18
         or is_activsg2000_v19
+        or is_activsg2000_v20
     ):
         observed_change = benchmark.get("compact_replay_fix")
         if observed_change != ACTIVSG2000_V9_COMPACT_REPLAY_FIX:
@@ -1416,6 +1465,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
         or is_activsg2000_v17
         or is_activsg2000_v18
         or is_activsg2000_v19
+        or is_activsg2000_v20
     ):
         observed_change = benchmark.get("cardinality_refinement")
         if observed_change != ACTIVSG2000_V10_CARDINALITY_REFINEMENT:
@@ -1441,6 +1491,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
         or is_activsg2000_v17
         or is_activsg2000_v18
         or is_activsg2000_v19
+        or is_activsg2000_v20
     ):
         observed_change = benchmark.get("numerical_throughput_fix")
         if observed_change != ACTIVSG2000_V12_NUMERICAL_THROUGHPUT_FIX:
@@ -1481,7 +1532,12 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
                 f"expected={ACTIVSG2000_V16_BENDERS_COVER_FIX}, "
                 f"observed={observed_change}"
             )
-    if is_activsg2000_v17 or is_activsg2000_v18 or is_activsg2000_v19:
+    if (
+        is_activsg2000_v17
+        or is_activsg2000_v18
+        or is_activsg2000_v19
+        or is_activsg2000_v20
+    ):
         observed_change = benchmark.get("primal_diversification_fix")
         if observed_change != ACTIVSG2000_V17_PRIMAL_DIVERSIFICATION_FIX:
             raise ScopfError(
@@ -1489,7 +1545,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
                 f"expected={ACTIVSG2000_V17_PRIMAL_DIVERSIFICATION_FIX}, "
                 f"observed={observed_change}"
             )
-    if is_activsg2000_v18 or is_activsg2000_v19:
+    if is_activsg2000_v18 or is_activsg2000_v19 or is_activsg2000_v20:
         observed_change = benchmark.get("primal_search_fix")
         if observed_change != ACTIVSG2000_V18_PRIMAL_SEARCH_FIX:
             raise ScopfError(
@@ -1497,7 +1553,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
                 f"expected={ACTIVSG2000_V18_PRIMAL_SEARCH_FIX}, "
                 f"observed={observed_change}"
             )
-    if is_activsg2000_v19:
+    if is_activsg2000_v19 or is_activsg2000_v20:
         observed_change = benchmark.get("numerical_extended_cover_fix")
         if observed_change != ACTIVSG2000_V19_NUMERICAL_EXTENDED_COVER_FIX:
             raise ScopfError(
@@ -1505,6 +1561,30 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
                 "changed: "
                 f"expected={ACTIVSG2000_V19_NUMERICAL_EXTENDED_COVER_FIX}, "
                 f"observed={observed_change}"
+            )
+    if is_activsg2000_v20:
+        observed_change = benchmark.get("security_row_numerical_fix")
+        if observed_change != ACTIVSG2000_V20_SECURITY_ROW_NUMERICAL_FIX:
+            raise ScopfError(
+                "ACTIVSg2000 GPU Lagrangian v20 security-row numerical identity "
+                "changed: "
+                f"expected={ACTIVSG2000_V20_SECURITY_ROW_NUMERICAL_FIX}, "
+                f"observed={observed_change}"
+            )
+        envelope_pu = float(
+            config.model.get(
+                "security_row_maximum_raw_violation_envelope_pu", -1.0
+            )
+        )
+        model_tolerance_pu = float(config.model["model_residual_tolerance_pu"])
+        security_tolerance_pu = float(
+            config.model["security_violation_tolerance_pu"]
+        )
+        if envelope_pu != 5e-6:
+            raise ScopfError("ACTIVSg2000 v20 security-row envelope changed")
+        if envelope_pu + model_tolerance_pu >= security_tolerance_pu:
+            raise ScopfError(
+                "ACTIVSg2000 v20 security-row envelope lacks screening headroom"
             )
     profile = config.raw["platforms"].get("dgx_spark", {})
     required_profile = {
@@ -1530,6 +1610,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
                 or is_activsg2000_v17
                 or is_activsg2000_v18
                 or is_activsg2000_v19
+                or is_activsg2000_v20
             )
             else (
                 "power_system_equilibrated_v2" if is_activsg2000_v4 else "power_system_per_unit_v1"
@@ -1556,6 +1637,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
                 or is_activsg2000_v17
                 or is_activsg2000_v18
                 or is_activsg2000_v19
+                or is_activsg2000_v20
             )
             else "none"
         ),
@@ -1592,54 +1674,58 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
             f"expected={expected_deadline}, observed={runtime.get('deadline_seconds')}"
         )
     expected_activsg2000_runtime = (
-        ACTIVSG2000_V19_RUNTIME
-        if is_activsg2000_v19
+        ACTIVSG2000_V20_RUNTIME
+        if is_activsg2000_v20
         else (
-            ACTIVSG2000_V18_RUNTIME
-            if is_activsg2000_v18
+            ACTIVSG2000_V19_RUNTIME
+            if is_activsg2000_v19
             else (
-                ACTIVSG2000_V17_RUNTIME
-                if is_activsg2000_v17
+                ACTIVSG2000_V18_RUNTIME
+                if is_activsg2000_v18
                 else (
-                    ACTIVSG2000_V16_RUNTIME
-                    if is_activsg2000_v16
+                    ACTIVSG2000_V17_RUNTIME
+                    if is_activsg2000_v17
                     else (
-                        ACTIVSG2000_V15_RUNTIME
-                        if is_activsg2000_v15
+                        ACTIVSG2000_V16_RUNTIME
+                        if is_activsg2000_v16
                         else (
-                            ACTIVSG2000_V14_RUNTIME
-                            if is_activsg2000_v14
+                            ACTIVSG2000_V15_RUNTIME
+                            if is_activsg2000_v15
                             else (
-                                ACTIVSG2000_V13_RUNTIME
-                                if is_activsg2000_v13
+                                ACTIVSG2000_V14_RUNTIME
+                                if is_activsg2000_v14
                                 else (
-                                    ACTIVSG2000_V12_RUNTIME
-                                    if is_activsg2000_v12
+                                    ACTIVSG2000_V13_RUNTIME
+                                    if is_activsg2000_v13
                                     else (
-                                        ACTIVSG2000_V11_RUNTIME
-                                        if is_activsg2000_v11
+                                        ACTIVSG2000_V12_RUNTIME
+                                        if is_activsg2000_v12
                                         else (
-                                            ACTIVSG2000_V10_RUNTIME
-                                            if is_activsg2000_v10
+                                            ACTIVSG2000_V11_RUNTIME
+                                            if is_activsg2000_v11
                                             else (
-                                                ACTIVSG2000_V9_RUNTIME
-                                                if is_activsg2000_v9
+                                                ACTIVSG2000_V10_RUNTIME
+                                                if is_activsg2000_v10
                                                 else (
-                                                    ACTIVSG2000_V8_RUNTIME
-                                                    if is_activsg2000_v8
+                                                    ACTIVSG2000_V9_RUNTIME
+                                                    if is_activsg2000_v9
                                                     else (
-                                                        ACTIVSG2000_V7_RUNTIME
-                                                        if is_activsg2000_v7
+                                                        ACTIVSG2000_V8_RUNTIME
+                                                        if is_activsg2000_v8
                                                         else (
-                                                            ACTIVSG2000_V6_RUNTIME
-                                                            if is_activsg2000_v6
+                                                            ACTIVSG2000_V7_RUNTIME
+                                                            if is_activsg2000_v7
                                                             else (
-                                                                ACTIVSG2000_V5_RUNTIME
-                                                                if is_activsg2000_v5
+                                                                ACTIVSG2000_V6_RUNTIME
+                                                                if is_activsg2000_v6
                                                                 else (
-                                                                    ACTIVSG2000_V4_RUNTIME
-                                                                    if is_activsg2000_v4
-                                                                    else ACTIVSG2000_V1_RUNTIME
+                                                                    ACTIVSG2000_V5_RUNTIME
+                                                                    if is_activsg2000_v5
+                                                                    else (
+                                                                        ACTIVSG2000_V4_RUNTIME
+                                                                        if is_activsg2000_v4
+                                                                        else ACTIVSG2000_V1_RUNTIME
+                                                                    )
                                                                 )
                                                             )
                                                         )
@@ -1699,6 +1785,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
                 "-v17",
                 "-v18",
                 "-v19",
+                "-v20",
             )
         )
         or is_activsg2000
@@ -1739,6 +1826,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
                     or is_activsg2000_v17
                     or is_activsg2000_v18
                     or is_activsg2000_v19
+                    or is_activsg2000_v20
                 )
                 else (16 if is_activsg2000 else 8)
             ),
@@ -1770,6 +1858,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
                     "-v17",
                     "-v18",
                     "-v19",
+                    "-v20",
                 )
             )
             or is_activsg2000
@@ -1800,6 +1889,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
         or is_activsg2000_v17
         or is_activsg2000_v18
         or is_activsg2000_v19
+        or is_activsg2000_v20
     ):
         required_v6_profile = {
             "pdlp_solver_mode_native": 1,
@@ -1912,6 +2002,20 @@ def _worst_canonical_row_violation(
     }
 
 
+def _security_row_raw_violation_envelope_mw(
+    config: RunConfig, *, base_mva: float
+) -> float | None:
+    value = config.model.get("security_row_maximum_raw_violation_envelope_pu")
+    if value is None:
+        return None
+    envelope_pu = float(value)
+    if not np.isfinite(envelope_pu) or envelope_pu < 0.0:
+        raise ScopfError(
+            "Security-row raw-violation envelope must be finite and nonnegative"
+        )
+    return envelope_pu * float(base_mva)
+
+
 def _prepare_region_master(
     *,
     case: Any,
@@ -1927,6 +2031,11 @@ def _prepare_region_master(
         segments=int(config.model["pwl_segments"]),
         coefficient_zero_tolerance=float(
             config.model.get("reduced_coefficient_zero_tolerance", 1e-14)
+        ),
+        security_row_maximum_raw_violation_envelope_mw=(
+            _security_row_raw_violation_envelope_mw(
+                config, base_mva=float(case.base_mva)
+            )
         ),
     )
     add_reduced_security_pairs(master, network, initial_pairs)
@@ -2451,12 +2560,29 @@ def _solve_region(
             tolerance_pu=float(config.model["security_violation_tolerance_pu"]),
             already_added=set(pairs_by_id),
         )
+        security_envelope_mw = (
+            master.security_row_maximum_raw_violation_envelope_mw
+        )
+        security_envelope_pu = (
+            None
+            if security_envelope_mw is None
+            else float(security_envelope_mw) / float(case.base_mva)
+        )
         final_screen = {
             "wall_time_seconds": time.perf_counter() - screen_started,
             "evaluated_sides": screened.evaluated_pairs,
             "new_violated_pairs": len(screened.violations),
             "maximum_violation_pu": screened.maximum_violation_pu,
             "maximum_pair_id": screened.maximum_pair_id,
+            "security_row_maximum_raw_violation_envelope_pu": (
+                security_envelope_pu
+            ),
+            "cleaned_row_plus_model_residual_upper_bound_pu": (
+                None
+                if security_envelope_pu is None
+                else security_envelope_pu
+                + float(config.model["model_residual_tolerance_pu"])
+            ),
         }
         round_record["screen"] = final_screen
         emit_progress()
@@ -3054,9 +3180,10 @@ def _solve_fixed_commitment_cost_projection(
         ACTIVSG2000_V17_EXPERIMENT_ID,
         ACTIVSG2000_V18_EXPERIMENT_ID,
         ACTIVSG2000_V19_EXPERIMENT_ID,
+        ACTIVSG2000_V20_EXPERIMENT_ID,
     }:
         raise ScopfError(
-            "The fixed-commitment cost projection is registered only for v7-v19"
+            "The fixed-commitment cost projection is registered only for v7-v20"
         )
     started = time.perf_counter()
     master = prepared_master
@@ -4542,6 +4669,7 @@ def _replay_cleanup_audit_comparison(
         "coefficient_cleanup_audit.physical_injection_operator_changed",
         "coefficient_cleanup_audit.solver_rows_are_relaxations_of_original_rows",
         "coefficient_cleanup_audit.exact_duplicate_security_row_count",
+        "coefficient_cleanup_audit.security_row_maximum_raw_violation_envelope_mw",
     }
 
     def compare(left: Any, right: Any, path: str) -> None:
@@ -4606,6 +4734,26 @@ def _replay_cleanup_audit_comparison(
             raise ScopfError(f"Cleanup-audit {label} changed the physical operator")
         if audit.get("solver_rows_are_relaxations_of_original_rows") is not True:
             raise ScopfError(f"Cleanup-audit {label} lost outward-relaxation proof")
+        envelope_limit = audit.get(
+            "security_row_maximum_raw_violation_envelope_mw"
+        )
+        if envelope_limit is not None:
+            envelope_limit_value = float(envelope_limit)
+            maximum_envelope = float(
+                audit.get("maximum_security_row_raw_violation_envelope", 0.0)
+            )
+            if (
+                not np.isfinite(envelope_limit_value)
+                or envelope_limit_value < 0.0
+                or not np.isfinite(maximum_envelope)
+                or maximum_envelope < 0.0
+                or maximum_envelope
+                > envelope_limit_value
+                + max(1e-15, 32.0 * np.finfo(np.float64).eps)
+            ):
+                raise ScopfError(
+                    f"Cleanup-audit {label} security-row envelope is invalid"
+                )
     return {
         "maximum_fp64_difference": maximum_difference,
         "maximum_integer_difference": maximum_integer_difference,
@@ -5793,6 +5941,11 @@ def verify_lagrangian_certificate_payload(
             coefficient_zero_tolerance=float(
                 config.model.get("reduced_coefficient_zero_tolerance", 1e-14)
             ),
+            security_row_maximum_raw_violation_envelope_mw=(
+                _security_row_raw_violation_envelope_mw(
+                    config, base_mva=float(case.base_mva)
+                )
+            ),
         )
         cut_pairs = tuple(
             security_pair_from_record(
@@ -5932,6 +6085,11 @@ def verify_lagrangian_certificate_payload(
             segments=10,
             coefficient_zero_tolerance=float(
                 config.model.get("reduced_coefficient_zero_tolerance", 1e-14)
+            ),
+            security_row_maximum_raw_violation_envelope_mw=(
+                _security_row_raw_violation_envelope_mw(
+                    config, base_mva=float(case.base_mva)
+                )
             ),
         )
         add_reduced_security_pairs(capacity_master, network, capacity_pairs)
@@ -6074,6 +6232,11 @@ def verify_lagrangian_certificate_payload(
                 coefficient_zero_tolerance=float(
                     config.model.get("reduced_coefficient_zero_tolerance", 1e-14)
                 ),
+                security_row_maximum_raw_violation_envelope_mw=(
+                    _security_row_raw_violation_envelope_mw(
+                        config, base_mva=float(case.base_mva)
+                    )
+                ),
             )
             pairs = tuple(
                 security_pair_from_record(
@@ -6155,6 +6318,11 @@ def verify_lagrangian_certificate_payload(
             segments=10,
             coefficient_zero_tolerance=float(
                 config.model.get("reduced_coefficient_zero_tolerance", 1e-14)
+            ),
+            security_row_maximum_raw_violation_envelope_mw=(
+                _security_row_raw_violation_envelope_mw(
+                    config, base_mva=float(case.base_mva)
+                )
             ),
         )
         pairs = tuple(
@@ -6449,6 +6617,11 @@ def run_gpu_lagrangian_experiment(
             coefficient_zero_tolerance=float(
                 config.model.get("reduced_coefficient_zero_tolerance", 1e-14)
             ),
+            security_row_maximum_raw_violation_envelope_mw=(
+                _security_row_raw_violation_envelope_mw(
+                    config, base_mva=float(case.base_mva)
+                )
+            ),
         )
         payload["timings_seconds"]["network_and_reduced_model_build"] = (
             time.perf_counter() - started
@@ -6705,6 +6878,7 @@ def run_gpu_lagrangian_experiment(
                 "-v17",
                 "-v18",
                 "-v19",
+                "-v20",
             )
         ) or config.benchmark_id in {
             ACTIVSG2000_EXPERIMENT_ID,
@@ -6724,6 +6898,7 @@ def run_gpu_lagrangian_experiment(
             ACTIVSG2000_V17_EXPERIMENT_ID,
             ACTIVSG2000_V18_EXPERIMENT_ID,
             ACTIVSG2000_V19_EXPERIMENT_ID,
+            ACTIVSG2000_V20_EXPERIMENT_ID,
         }
         payload["primal_candidate_policy"] = (
             candidate_policy.as_dict() if candidate_policy is not None else None
@@ -8403,7 +8578,7 @@ def run_gpu_lagrangian_experiment(
             and best_primal is not None
         ):
             if int(config.runtime["analytic_capacity_cover_rounds"]) != 1:
-                raise ScopfError("v13-v19 permit exactly one analytic cover-separation pass")
+                raise ScopfError("v13-v20 permit exactly one analytic cover-separation pass")
             payload["active_stage"] = "analytic_capacity_cover_separation"
             covers, cover_records, cover_audit = _select_analytic_capacity_cover_cuts(
                 master=root.master,
@@ -8779,7 +8954,7 @@ def run_gpu_lagrangian_experiment(
                 )
                 if not new_global_cuts:
                     raise ScopfError(
-                        "v15-v19 generated a global strengthening cut but did not "
+                        "v15-v20 generated a global strengthening cut but did not "
                         "append it to the root"
                     )
                 combined_minimizer_cuts: tuple[CommitmentUpperCut, ...] = (
