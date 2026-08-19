@@ -53,5 +53,3 @@ docker run --rm --gpus all \
   --output "/workspace/results/experiments/$output" \
   2>&1 | tee "$console_log"
 
-
-

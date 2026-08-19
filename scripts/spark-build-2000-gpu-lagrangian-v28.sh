@@ -19,5 +19,3 @@ docker build \
   --file Dockerfile.spark \
   .
 
-
-
