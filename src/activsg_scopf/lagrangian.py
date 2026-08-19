@@ -344,17 +344,26 @@ def _coordinate_ascent_commitment_cut_arrays(
                 without_coordinate[None, :]
                 - candidates[:, None] * coefficients[None, :]
             )
-            other_constant = z @ cut_rhs - z[cut_index] * cut_rhs[cut_index]
-            candidate_raw = (
-                coupling_constant
-                + other_constant
-                + candidates * cut_rhs[cut_index]
-                + xp.sum(local_values(candidate_on), axis=1)
+            current_on = (
+                without_coordinate - z[cut_index] * coefficients
             )
-            candidate_raw = xp.where(
-                xp.isfinite(candidate_raw), candidate_raw, -xp.inf
+            # Compare coordinate moves as local objective deltas.  Forming the
+            # full million-dollar Lagrangian value for every breakpoint loses
+            # small but decisive improvements to FP64 cancellation, which can
+            # leave a strongly violated cut at multiplier zero.  The constant
+            # network and other-cut terms cancel analytically.
+            candidate_delta = (
+                (candidates - z[cut_index]) * cut_rhs[cut_index]
+                + xp.sum(
+                    local_values(candidate_on)
+                    - local_values(current_on)[None, :],
+                    axis=1,
+                )
             )
-            maximum_raw = xp.max(candidate_raw)
+            candidate_delta = xp.where(
+                xp.isfinite(candidate_delta), candidate_delta, -xp.inf
+            )
+            maximum_delta = xp.max(candidate_delta)
             candidate_commitment = xp.where(
                 fixed_off[None, :],
                 0,
@@ -364,7 +373,7 @@ def _coordinate_ascent_commitment_cut_arrays(
                 candidate_commitment @ coefficients - cut_rhs[cut_index]
             )
             tie_score = xp.where(
-                candidate_raw == maximum_raw,
+                candidate_delta == maximum_delta,
                 xp.abs(candidate_violation),
                 xp.inf,
             )
@@ -542,7 +551,7 @@ def optimize_commitment_cut_duals_coordinate_cupy(
         "device_state_persistent_across_coordinates": True,
         "host_transfer_during_coordinates": False,
         "coordinate_policy": (
-            "exact_breakpoints_with_adjacent_fp64_minimum_cut_violation_tie_break_v2"
+            "stable_local_delta_exact_breakpoints_with_adjacent_fp64_tie_break_v3"
         ),
         "device_id": int(cp.cuda.Device().id),
     }

@@ -14,6 +14,7 @@ from activsg_scopf.commitment_cuts import (
 from activsg_scopf.fixed_commitment import build_fixed_commitment_projection
 from activsg_scopf.lagrangian import (
     RegionMasks,
+    _coordinate_ascent_commitment_cut_arrays,
     evaluate_lagrangian_bound,
     optimize_commitment_cut_duals_coordinate_numpy,
     replay_lagrangian_certificate,
@@ -23,6 +24,30 @@ from activsg_scopf.phase_one import build_phase_one_model, phase_one_certificate
 from activsg_scopf.reduced import CouplingRow, build_reduced_master, fix_commitments
 
 from .helpers import triangle_case
+
+
+def test_cut_coordinate_uses_local_delta_below_absolute_objective_ulp() -> None:
+    dual, raw, _on_values, commitment, cycle_raw = (
+        _coordinate_ascent_commitment_cut_arrays(
+            xp=np,
+            base_on_values=np.asarray([1e-4]),
+            coupling_constant=np.asarray(1e15),
+            cut_coefficients=np.asarray([[-1.0]]),
+            cut_rhs=np.asarray([-1.0]),
+            initial_cut_dual=np.asarray([0.0]),
+            fixed_off=np.asarray([False]),
+            fixed_on=np.asarray([False]),
+            cycles=1,
+        )
+    )
+
+    # The true 1e-4 coordinate improvement is below one ULP of the 1e15
+    # absolute objective.  Stable local deltas must still move through the
+    # kink to the cut-satisfying tied minimizer.
+    assert dual[0] < -1e-4
+    assert commitment[0] == 1
+    assert raw == 1e15
+    np.testing.assert_array_equal(cycle_raw, np.asarray([1e15, 1e15]))
 
 
 def test_direct_row_capacity_cut_replays_exact_pmin_pmax_envelope() -> None:
