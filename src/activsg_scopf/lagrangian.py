@@ -162,6 +162,25 @@ class LagrangianMultiplierSearchModel:
     audit: dict[str, Any]
 
 
+@dataclass(frozen=True)
+class LagrangianMultiplierDeltaSearchModel:
+    """A centered and explicitly scaled LP that proposes dual multipliers."""
+
+    canonical: CanonicalMILP
+    selected_coupling_positions: npt.NDArray[np.int64]
+    coupling_delta_columns: npt.NDArray[np.int64]
+    coupling_centers: FloatArray
+    coupling_step_scales: FloatArray
+    commitment_cut_delta_columns: npt.NDArray[np.int64]
+    commitment_cut_centers: FloatArray
+    commitment_cut_step_scales: FloatArray
+    epigraph_delta_columns: npt.NDArray[np.int64]
+    base_row_dual: FloatArray
+    initial_values: FloatArray
+    objective_normalizer: float
+    audit: dict[str, Any]
+
+
 def evaluate_lagrangian_bound_cupy(
     master: ReducedMaster,
     row_dual: npt.ArrayLike,
@@ -1135,6 +1154,490 @@ def build_lagrangian_multiplier_search_model(
             "exact_source_pmin_pmax_changed": False,
         },
     )
+
+
+def build_lagrangian_multiplier_delta_search_model(
+    master: ReducedMaster,
+    row_dual: npt.ArrayLike,
+    region: RegionMasks,
+    *,
+    commitment_cuts: tuple[CommitmentUpperCut, ...] = (),
+    commitment_cut_dual: npt.ArrayLike | None = None,
+    maximum_new_violated_coupling_rows: int = 384,
+    coupling_trust_radius: float = 100.0,
+    commitment_cut_trust_radius: float = 10_000.0,
+    search_coefficient_zero_tolerance: float = 1e-8,
+) -> LagrangianMultiplierDeltaSearchModel:
+    """Build a numerically scaled local LP for multiplier proposals.
+
+    The physical multipliers are represented as ``center + radius * delta``.
+    Every delta starts at zero, and each generator hypograph is shifted by its
+    exact value at the center.  Positive row scaling and one positive objective
+    scaling then keep the search LP near unit magnitude without changing its
+    optimizer.  The finite trust box changes only this proposal problem: every
+    returned point is still projected and scored by the exact nonsmoothed
+    Lagrangian evaluator before it can become a lower-bound certificate.
+    """
+
+    if maximum_new_violated_coupling_rows < 0:
+        raise ScopfError("Delta multiplier search active-row limit is negative")
+    for value, label in (
+        (coupling_trust_radius, "coupling trust radius"),
+        (commitment_cut_trust_radius, "commitment-cut trust radius"),
+    ):
+        if not np.isfinite(value) or value <= 0.0:
+            raise ScopfError(f"Delta multiplier search {label} must be positive")
+    if (
+        not np.isfinite(search_coefficient_zero_tolerance)
+        or search_coefficient_zero_tolerance < 0.0
+    ):
+        raise ScopfError("Delta multiplier search cleanup tolerance is invalid")
+
+    generator_count = master.index.generator_source_rows.size
+    region.validate(generator_count)
+    for cut in commitment_cuts:
+        cut.validate(generator_count)
+    full_dual = np.asarray(row_dual, dtype=np.float64)
+    if full_dual.shape != (master.canonical.num_rows,) or not np.all(
+        np.isfinite(full_dual)
+    ):
+        raise ScopfError("Delta multiplier search initial row dual is invalid")
+    supplied_cut_dual = (
+        np.zeros(len(commitment_cuts), dtype=np.float64)
+        if commitment_cut_dual is None
+        else np.asarray(commitment_cut_dual, dtype=np.float64)
+    )
+    if supplied_cut_dual.shape != (len(commitment_cuts),) or not np.all(
+        np.isfinite(supplied_cut_dual)
+    ):
+        raise ScopfError("Delta multiplier search initial cut dual is invalid")
+
+    coupling_rows = sorted(master.coupling_rows, key=lambda row: row.row_name)
+    coupling_indices = np.asarray(
+        [row.row_index for row in coupling_rows], dtype=np.int64
+    )
+    coupling_dual = full_dual[coupling_indices].copy()
+    upper = np.asarray(
+        [row.kind != "balance_equality" for row in coupling_rows], dtype=bool
+    )
+    coupling_dual[upper] = np.minimum(coupling_dual[upper], 0.0)
+    base_row_dual = full_dual.copy()
+    base_row_dual[coupling_indices] = coupling_dual
+    cut_dual = np.minimum(supplied_cut_dual, 0.0)
+    rhs = np.asarray([row.rhs for row in coupling_rows], dtype=np.float64)
+    coefficients = np.stack(
+        [row.generator_coefficients for row in coupling_rows]
+    ).astype(np.float64, copy=False)
+    cut_coefficients = (
+        np.stack([cut.coefficients for cut in commitment_cuts]).astype(
+            np.float64, copy=False
+        )
+        if commitment_cuts
+        else np.empty((0, generator_count), dtype=np.float64)
+    )
+    dispatch_states, state_cost, state_commitment = (
+        _generator_breakpoint_state_arrays(master)
+    )
+    effective = -(coupling_dual @ coefficients)
+    cut_adjustment = (
+        -(cut_dual @ cut_coefficients)
+        if commitment_cuts
+        else np.zeros(generator_count, dtype=np.float64)
+    )
+    base_state_values = (
+        state_cost
+        + effective[:, None] * dispatch_states
+        + cut_adjustment[:, None] * state_commitment
+    )
+    valid_state = np.ones(base_state_values.shape, dtype=bool)
+    valid_state[:, 0] = ~region.fixed_on
+    valid_state[:, 1:] = (~region.fixed_off)[:, None]
+    base_state_values[~valid_state] = np.inf
+    base_generator_minimum = np.min(base_state_values, axis=1)
+    if not np.all(np.isfinite(base_generator_minimum)):
+        raise ScopfError("Delta multiplier search region has no valid generator state")
+    minimizing_state = np.argmin(base_state_values, axis=1)
+    minimizing_dispatch = dispatch_states[
+        np.arange(generator_count, dtype=np.int64), minimizing_state
+    ]
+    residual = rhs - coefficients @ minimizing_dispatch
+
+    mandatory = (~upper) | (coupling_dual != 0.0)
+    inactive_violated = np.flatnonzero(
+        upper & ~mandatory & (residual < -1e-12)
+    )
+    ranked_violated = sorted(
+        (int(position) for position in inactive_violated),
+        key=lambda position: (
+            float(residual[position]),
+            coupling_rows[position].row_name,
+        ),
+    )
+    selected_mask = mandatory.copy()
+    selected_mask[
+        np.asarray(
+            ranked_violated[:maximum_new_violated_coupling_rows], dtype=np.int64
+        )
+    ] = True
+    selected = np.flatnonzero(selected_mask).astype(np.int64)
+    if not selected.size:
+        raise ScopfError("Delta multiplier search selected no coupling rows")
+
+    coupling_centers = coupling_dual[selected].copy()
+    coupling_steps = np.full(
+        selected.size, float(coupling_trust_radius), dtype=np.float64
+    )
+    coupling_delta_lower = np.full(selected.size, -1.0, dtype=np.float64)
+    coupling_delta_upper = np.ones(selected.size, dtype=np.float64)
+    selected_upper = upper[selected]
+    coupling_delta_upper[selected_upper] = np.minimum(
+        1.0,
+        -coupling_centers[selected_upper] / coupling_steps[selected_upper],
+    )
+    coupling_delta_upper = np.maximum(
+        coupling_delta_upper, coupling_delta_lower
+    )
+    cut_steps = np.full(
+        len(commitment_cuts),
+        float(commitment_cut_trust_radius),
+        dtype=np.float64,
+    )
+    cut_delta_lower = np.full(len(commitment_cuts), -1.0, dtype=np.float64)
+    cut_delta_upper = np.minimum(
+        np.ones(len(commitment_cuts), dtype=np.float64),
+        -cut_dual / cut_steps if commitment_cuts else np.empty(0),
+    )
+    cut_delta_upper = np.maximum(cut_delta_upper, cut_delta_lower)
+
+    coupling_physical_objective = rhs[selected] * coupling_steps
+    cut_physical_objective = (
+        np.asarray([cut.rhs for cut in commitment_cuts], dtype=np.float64)
+        * cut_steps
+        if commitment_cuts
+        else np.empty(0, dtype=np.float64)
+    )
+
+    unique_states: list[list[tuple[int, float, float, float]]] = []
+    epigraph_scales = np.ones(generator_count, dtype=np.float64)
+    epigraph_lower = np.zeros(generator_count, dtype=np.float64)
+    epigraph_upper = np.zeros(generator_count, dtype=np.float64)
+    duplicate_state_count = 0
+    for generator in range(generator_count):
+        generator_states: list[tuple[int, float, float, float]] = []
+        seen: set[tuple[float, float, int]] = set()
+        physical_lower = np.inf
+        physical_upper = np.inf
+        maximum_row_magnitude = 1.0
+        for state in np.flatnonzero(valid_state[generator]):
+            signature = (
+                float(dispatch_states[generator, state]),
+                float(state_cost[generator, state]),
+                int(state_commitment[generator, state]),
+            )
+            if signature in seen:
+                duplicate_state_count += 1
+                continue
+            seen.add(signature)
+            power = float(dispatch_states[generator, state])
+            committed = float(state_commitment[generator, state])
+            shifted_rhs = float(
+                base_state_values[generator, state]
+                - base_generator_minimum[generator]
+            )
+            coupling_values = (
+                coefficients[selected, generator] * power * coupling_steps
+            )
+            cut_values = (
+                cut_coefficients[:, generator] * committed * cut_steps
+                if commitment_cuts
+                else np.empty(0, dtype=np.float64)
+            )
+            all_values = np.concatenate((coupling_values, cut_values))
+            all_lower = np.concatenate((coupling_delta_lower, cut_delta_lower))
+            all_upper = np.concatenate((coupling_delta_upper, cut_delta_upper))
+            maximizing_box = np.where(all_values >= 0.0, all_upper, all_lower)
+            minimizing_box = np.where(all_values >= 0.0, all_lower, all_upper)
+            state_physical_lower = shifted_rhs - float(
+                all_values @ maximizing_box
+            )
+            state_physical_upper = shifted_rhs - float(
+                all_values @ minimizing_box
+            )
+            physical_lower = min(physical_lower, state_physical_lower)
+            physical_upper = min(physical_upper, state_physical_upper)
+            maximum_row_magnitude = max(
+                maximum_row_magnitude,
+                abs(shifted_rhs),
+                float(np.max(np.abs(all_values))) if all_values.size else 0.0,
+            )
+            generator_states.append((int(state), power, committed, shifted_rhs))
+        if not generator_states:
+            raise ScopfError("Delta multiplier search omitted every generator state")
+        epigraph_scales[generator] = maximum_row_magnitude
+        epigraph_lower[generator] = min(0.0, physical_lower / maximum_row_magnitude)
+        epigraph_upper[generator] = max(0.0, physical_upper / maximum_row_magnitude)
+        unique_states.append(generator_states)
+
+    objective_terms = np.concatenate(
+        (
+            np.abs(coupling_physical_objective),
+            np.abs(cut_physical_objective),
+            epigraph_scales,
+        )
+    )
+    objective_normalizer = float(max(1.0, np.max(objective_terms)))
+    search = CanonicalMILP()
+    coupling_columns = [
+        search.add_variable(
+            f"delta_lambda__{coupling_rows[int(position)].row_name}",
+            objective=-float(coupling_physical_objective[offset])
+            / objective_normalizer,
+            lower=float(coupling_delta_lower[offset]),
+            upper=float(coupling_delta_upper[offset]),
+        )
+        for offset, position in enumerate(selected)
+    ]
+    cut_columns = [
+        search.add_variable(
+            f"delta_mu__{cut.cut_id}",
+            objective=-float(cut_physical_objective[offset])
+            / objective_normalizer,
+            lower=float(cut_delta_lower[offset]),
+            upper=float(cut_delta_upper[offset]),
+        )
+        for offset, cut in enumerate(commitment_cuts)
+    ]
+    epigraph_columns = [
+        search.add_variable(
+            f"delta_generator_value__g{int(source_row) + 1:04d}",
+            objective=-float(epigraph_scales[generator])
+            / objective_normalizer,
+            lower=float(epigraph_lower[generator]),
+            upper=float(epigraph_upper[generator]),
+        )
+        for generator, source_row in enumerate(master.index.generator_source_rows)
+    ]
+
+    state_row_count = 0
+    dropped_search_coefficient_count = 0
+    maximum_dropped_search_coefficient = 0.0
+    row_scale_minimum = np.inf
+    row_scale_maximum = 0.0
+    for generator, generator_states in enumerate(unique_states):
+        for state, power, committed, shifted_rhs in generator_states:
+            coupling_values = (
+                coefficients[selected, generator] * power * coupling_steps
+            )
+            cut_values = (
+                cut_coefficients[:, generator] * committed * cut_steps
+                if commitment_cuts
+                else np.empty(0, dtype=np.float64)
+            )
+            maximum_coefficient = max(
+                float(epigraph_scales[generator]),
+                float(np.max(np.abs(coupling_values)))
+                if coupling_values.size
+                else 0.0,
+                float(np.max(np.abs(cut_values))) if cut_values.size else 0.0,
+            )
+            row_scale = max(1.0, abs(shifted_rhs), maximum_coefficient)
+            row_scale_minimum = min(row_scale_minimum, row_scale)
+            row_scale_maximum = max(row_scale_maximum, row_scale)
+            row_coefficients: dict[int, float] = {
+                epigraph_columns[generator]: float(
+                    epigraph_scales[generator] / row_scale
+                )
+            }
+            for column, physical_coefficient in zip(
+                coupling_columns, coupling_values, strict=True
+            ):
+                scaled_coefficient = float(physical_coefficient / row_scale)
+                if abs(scaled_coefficient) <= search_coefficient_zero_tolerance:
+                    if scaled_coefficient != 0.0:
+                        dropped_search_coefficient_count += 1
+                        maximum_dropped_search_coefficient = max(
+                            maximum_dropped_search_coefficient,
+                            abs(scaled_coefficient),
+                        )
+                    continue
+                row_coefficients[column] = scaled_coefficient
+            for column, physical_coefficient in zip(
+                cut_columns, cut_values, strict=True
+            ):
+                scaled_coefficient = float(physical_coefficient / row_scale)
+                if abs(scaled_coefficient) <= search_coefficient_zero_tolerance:
+                    if scaled_coefficient != 0.0:
+                        dropped_search_coefficient_count += 1
+                        maximum_dropped_search_coefficient = max(
+                            maximum_dropped_search_coefficient,
+                            abs(scaled_coefficient),
+                        )
+                    continue
+                row_coefficients[column] = scaled_coefficient
+            search.add_row(
+                f"delta_state__g{int(master.index.generator_source_rows[generator]) + 1:04d}"
+                f"__s{state:02d}",
+                row_coefficients,
+                upper=float(shifted_rhs / row_scale),
+            )
+            state_row_count += 1
+
+    initial_values = np.zeros(search.num_columns, dtype=np.float64)
+    initial_residual = search.max_row_violation(initial_values)
+    if initial_residual > 1e-12:
+        raise ScopfError(
+            "Delta multiplier search failed to embed its exact center certificate"
+        )
+    matrix = search.matrix_csr()
+    matrix_absolute = np.abs(matrix.data)
+    objective_absolute = np.abs(np.asarray(search.objective, dtype=np.float64))
+    finite_column_bounds = np.concatenate(
+        (
+            np.abs(np.asarray(search.column_lower, dtype=np.float64)),
+            np.abs(np.asarray(search.column_upper, dtype=np.float64)),
+        )
+    )
+    return LagrangianMultiplierDeltaSearchModel(
+        canonical=search,
+        selected_coupling_positions=selected,
+        coupling_delta_columns=np.asarray(coupling_columns, dtype=np.int64),
+        coupling_centers=coupling_centers,
+        coupling_step_scales=coupling_steps,
+        commitment_cut_delta_columns=np.asarray(cut_columns, dtype=np.int64),
+        commitment_cut_centers=cut_dual,
+        commitment_cut_step_scales=cut_steps,
+        epigraph_delta_columns=np.asarray(epigraph_columns, dtype=np.int64),
+        base_row_dual=base_row_dual,
+        initial_values=initial_values,
+        objective_normalizer=objective_normalizer,
+        audit={
+            "policy": "centered_dimensionless_finite_generator_state_dual_lp_v2",
+            "coupling_row_count": len(coupling_rows),
+            "mandatory_coupling_row_count": int(np.count_nonzero(mandatory)),
+            "inactive_violated_coupling_row_count": int(inactive_violated.size),
+            "selected_coupling_row_count": int(selected.size),
+            "selected_new_violated_coupling_row_count": int(
+                np.count_nonzero(selected_mask & ~mandatory)
+            ),
+            "maximum_new_violated_coupling_rows": int(
+                maximum_new_violated_coupling_rows
+            ),
+            "commitment_cut_count": len(commitment_cuts),
+            "generator_state_row_count": state_row_count,
+            "duplicate_generator_state_count": duplicate_state_count,
+            "columns": search.num_columns,
+            "rows": search.num_rows,
+            "nonzeros": int(matrix.nnz),
+            "initial_canonical_row_residual": initial_residual,
+            "coupling_trust_radius": float(coupling_trust_radius),
+            "commitment_cut_trust_radius": float(
+                commitment_cut_trust_radius
+            ),
+            "objective_normalizer": objective_normalizer,
+            "row_scale_minimum": float(row_scale_minimum),
+            "row_scale_maximum": float(row_scale_maximum),
+            "matrix_nonzero_minimum_absolute": (
+                None if not matrix_absolute.size else float(np.min(matrix_absolute))
+            ),
+            "matrix_nonzero_maximum_absolute": (
+                None if not matrix_absolute.size else float(np.max(matrix_absolute))
+            ),
+            "objective_nonzero_minimum_absolute": (
+                None
+                if not np.any(objective_absolute > 0.0)
+                else float(np.min(objective_absolute[objective_absolute > 0.0]))
+            ),
+            "objective_maximum_absolute": float(np.max(objective_absolute)),
+            "finite_column_bound_maximum_absolute": float(
+                np.max(finite_column_bounds)
+            ),
+            "search_coefficient_zero_tolerance": float(
+                search_coefficient_zero_tolerance
+            ),
+            "dropped_search_coefficient_count": dropped_search_coefficient_count,
+            "maximum_absolute_dropped_search_coefficient": (
+                maximum_dropped_search_coefficient
+            ),
+            "center_is_exact_nonsmoothed_certificate": True,
+            "row_scaling_is_exact_positive_scaling": True,
+            "objective_scaling_is_exact_positive_scaling": True,
+            "finite_bounds_are_search_restrictions_only": True,
+            "search_lp_solution_is_never_bound_authority": True,
+            "exact_replay_after_candidate_reconstruction_required": True,
+            "exact_source_pmin_pmax_changed": False,
+        },
+    )
+
+
+def expand_lagrangian_multiplier_delta_candidate(
+    master: ReducedMaster,
+    search: LagrangianMultiplierDeltaSearchModel,
+    values: npt.ArrayLike,
+) -> tuple[FloatArray, FloatArray, dict[str, Any]]:
+    """Map a bounded search point back to sign-valid physical multipliers."""
+
+    candidate_values = np.asarray(values, dtype=np.float64)
+    if candidate_values.shape != (search.canonical.num_columns,) or not np.all(
+        np.isfinite(candidate_values)
+    ):
+        raise ScopfError("Delta multiplier search returned an invalid vector")
+    lower = np.asarray(search.canonical.column_lower, dtype=np.float64)
+    upper = np.asarray(search.canonical.column_upper, dtype=np.float64)
+    clipped_values = np.clip(candidate_values, lower, upper)
+    maximum_box_projection = float(np.max(np.abs(candidate_values - clipped_values)))
+
+    coupling_rows = sorted(master.coupling_rows, key=lambda row: row.row_name)
+    if np.any(search.selected_coupling_positions >= len(coupling_rows)):
+        raise ScopfError("Delta multiplier search coupling identity is invalid")
+    row_dual = search.base_row_dual.copy()
+    for offset, (position, column) in enumerate(
+        zip(
+            search.selected_coupling_positions,
+            search.coupling_delta_columns,
+            strict=True,
+        )
+    ):
+        coupling = coupling_rows[int(position)]
+        physical_value = float(
+            search.coupling_centers[offset]
+            + search.coupling_step_scales[offset] * clipped_values[int(column)]
+        )
+        row_dual[coupling.row_index] = (
+            min(physical_value, 0.0)
+            if coupling.kind != "balance_equality"
+            else physical_value
+        )
+    cut_dual = search.commitment_cut_centers.copy()
+    for offset, column in enumerate(search.commitment_cut_delta_columns):
+        cut_dual[offset] = min(
+            float(
+                search.commitment_cut_centers[offset]
+                + search.commitment_cut_step_scales[offset]
+                * clipped_values[int(column)]
+            ),
+            0.0,
+        )
+    return row_dual, cut_dual, {
+        "policy": "box_projection_then_physical_multiplier_reconstruction_v1",
+        "maximum_search_box_projection": maximum_box_projection,
+        "coupling_upper_sign_violation_after_projection": float(
+            max(
+                0.0,
+                max(
+                    (
+                        row_dual[row.row_index]
+                        for row in coupling_rows
+                        if row.kind != "balance_equality"
+                    ),
+                    default=0.0,
+                ),
+            )
+        ),
+        "commitment_cut_upper_sign_violation_after_projection": float(
+            max(0.0, float(np.max(cut_dual)) if cut_dual.size else 0.0)
+        ),
+        "exact_evaluator_still_required": True,
+    }
 
 
 def optimize_lagrangian_bound_cupy_smoothed(

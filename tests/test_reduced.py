@@ -5,10 +5,12 @@ from activsg_scopf.errors import ScopfError
 from activsg_scopf.lagrangian import (
     RegionMasks,
     _generator_breakpoint_state_arrays,
+    build_lagrangian_multiplier_delta_search_model,
     build_lagrangian_multiplier_search_model,
     bus_prices_from_coupling_duals,
     choose_split_generator,
     evaluate_lagrangian_bound,
+    expand_lagrangian_multiplier_delta_candidate,
     replay_lagrangian_certificate,
     verify_disjunctive_cover,
 )
@@ -103,6 +105,73 @@ def test_multiplier_search_lp_embeds_exact_initial_certificate_with_finite_bound
     assert search.audit["exact_source_pmin_pmax_changed"] is False
     assert search.audit["generator_state_row_count"] <= 24
     assert search.selected_coupling_positions.size == search.coupling_columns.size
+
+
+def test_delta_multiplier_search_is_unit_scaled_and_replays_exact_center() -> None:
+    case, _ = triangle_case()
+    case.gen[1, 7] = 1.0
+    master = build_reduced_master(case, build_network(case))
+    row_dual = np.zeros(master.canonical.num_rows, dtype=np.float64)
+    for row in master.coupling_rows:
+        row_dual[row.row_index] = 6.0 if row.kind == "balance_equality" else -0.25
+    region = RegionMasks.root(master.index.generator_source_rows.size)
+    center = evaluate_lagrangian_bound(
+        master, row_dual, region, safety_margin_dollars=0.0
+    )
+
+    search = build_lagrangian_multiplier_delta_search_model(
+        master,
+        row_dual,
+        region,
+        maximum_new_violated_coupling_rows=2,
+        coupling_trust_radius=50.0,
+    )
+    candidate_row_dual, candidate_cut_dual, reconstruction = (
+        expand_lagrangian_multiplier_delta_candidate(
+            master, search, search.initial_values
+        )
+    )
+    replayed_center = evaluate_lagrangian_bound(
+        master,
+        candidate_row_dual,
+        region,
+        safety_margin_dollars=0.0,
+        commitment_cut_dual=candidate_cut_dual,
+    )
+
+    assert search.canonical.max_row_violation(search.initial_values) <= 1e-12
+    assert replayed_center.raw_lower_bound == pytest.approx(
+        center.raw_lower_bound, abs=1e-10
+    )
+    assert reconstruction["maximum_search_box_projection"] == 0.0
+    matrix = search.canonical.matrix_csr()
+    assert np.max(np.abs(matrix.data)) <= 1.0 + 1e-12
+    assert np.max(np.abs(search.canonical.objective)) <= 1.0 + 1e-12
+    assert search.audit["center_is_exact_nonsmoothed_certificate"] is True
+    assert search.audit["search_lp_solution_is_never_bound_authority"] is True
+    assert search.audit["exact_source_pmin_pmax_changed"] is False
+
+
+def test_delta_multiplier_candidate_is_box_clipped_and_sign_valid() -> None:
+    case, _ = triangle_case()
+    master = build_reduced_master(case, build_network(case))
+    row_dual = np.zeros(master.canonical.num_rows, dtype=np.float64)
+    search = build_lagrangian_multiplier_delta_search_model(
+        master,
+        row_dual,
+        RegionMasks.root(1),
+        maximum_new_violated_coupling_rows=2,
+    )
+    outside = np.full(search.canonical.num_columns, 2.0, dtype=np.float64)
+
+    candidate_row_dual, _candidate_cut_dual, audit = (
+        expand_lagrangian_multiplier_delta_candidate(master, search, outside)
+    )
+
+    assert audit["maximum_search_box_projection"] >= 1.0
+    for row in master.coupling_rows:
+        if row.kind != "balance_equality":
+            assert candidate_row_dual[row.row_index] <= 0.0
 
 
 def test_injection_elimination_matches_explicit_dc_solve() -> None:
