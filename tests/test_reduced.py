@@ -264,6 +264,19 @@ def test_hard_cardinality_delta_search_exactly_embeds_center() -> None:
     assert search.canonical.column_upper[hard_column] == 0.0
     assert search.audit["hard_group_configuration_count"] == 3
     assert search.audit["hard_cardinality_hypograph_is_exact_inside_search_box"] is True
+    assert (
+        search.audit["finite_column_bound_minimum_nonzero_absolute"]
+        >= search.audit["search_coefficient_zero_tolerance"]
+    )
+    assert (
+        search.audit["matrix_nonzero_minimum_absolute"]
+        >= search.audit["search_coefficient_zero_tolerance"]
+    )
+    assert (
+        search.audit["objective_nonzero_minimum_absolute"]
+        >= search.audit["search_coefficient_zero_tolerance"]
+    )
+    assert search.audit["conditioned_search_lp_is_bound_authority"] is False
 
     solved = solve_highs(
         search.canonical,
@@ -313,6 +326,10 @@ def test_hard_cardinality_delta_search_accepts_empty_at_most_pattern() -> None:
 
     assert search.audit["hard_group_configuration_count"] == 3
     assert search.canonical.max_row_violation(search.initial_values) <= 1e-12
+    assert (
+        search.audit["finite_column_bound_minimum_nonzero_absolute"]
+        >= search.audit["search_coefficient_zero_tolerance"]
+    )
 
 
 def test_injection_elimination_matches_explicit_dc_solve() -> None:

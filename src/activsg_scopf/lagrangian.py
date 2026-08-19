@@ -2002,6 +2002,7 @@ def build_lagrangian_multiplier_delta_search_model(
     state_row_count = 0
     dropped_search_coefficient_count = 0
     maximum_dropped_search_coefficient = 0.0
+
     row_scale_minimum = np.inf
     row_scale_maximum = 0.0
     for generator, generator_states in enumerate(unique_states):
@@ -2498,6 +2499,10 @@ def build_hard_cardinality_multiplier_delta_search_model(
         support_size = int(support.size)
         if support_size >= 63:
             raise ScopfError("Hard-cardinality group is too large to enumerate")
+        if (1 << support_size) > maximum_group_configurations:
+            raise ScopfError(
+                "Hard-cardinality group exceeds the configuration enumeration limit"
+            )
         configurations: list[npt.NDArray[np.int64]] = []
         for mask in range(1 << support_size):
             selected_positions = support[
@@ -2554,6 +2559,10 @@ def build_hard_cardinality_multiplier_delta_search_model(
             )
         group_lower = min(0.0, min(configuration_lower) / maximum_group_magnitude)
         group_upper = max(0.0, min(configuration_upper) / maximum_group_magnitude)
+        if abs(group_lower) < search_coefficient_zero_tolerance:
+            group_lower = 0.0
+        if abs(group_upper) < search_coefficient_zero_tolerance:
+            group_upper = 0.0
         group_specs.append(
             {
                 "cut": cut,
@@ -2661,6 +2670,27 @@ def build_hard_cardinality_multiplier_delta_search_model(
 
     dropped_search_coefficient_count = 0
     maximum_dropped_search_coefficient = 0.0
+
+    def retain_conditioned_coefficient(
+        row_coefficients: dict[int, float],
+        column: int,
+        value: float,
+    ) -> None:
+        """Retain only coefficients meeting the proposal LP conditioning floor."""
+
+        nonlocal dropped_search_coefficient_count
+        nonlocal maximum_dropped_search_coefficient
+        coefficient = float(value)
+        if abs(coefficient) <= search_coefficient_zero_tolerance:
+            if coefficient != 0.0:
+                dropped_search_coefficient_count += 1
+                maximum_dropped_search_coefficient = max(
+                    maximum_dropped_search_coefficient,
+                    abs(coefficient),
+                )
+            return
+        row_coefficients[int(column)] = coefficient
+
     row_scale_minimum = np.inf
     row_scale_maximum = 0.0
     state_row_count = 0
@@ -2684,33 +2714,26 @@ def build_hard_cardinality_multiplier_delta_search_model(
             row_scale = max(1.0, abs(float(shifted_rhs)), maximum_coefficient)
             row_scale_minimum = min(row_scale_minimum, row_scale)
             row_scale_maximum = max(row_scale_maximum, row_scale)
-            row_coefficients: dict[int, float] = {
-                value_columns[spec_index]: value_scale / row_scale
-            }
+            row_coefficients: dict[int, float] = {}
+            retain_conditioned_coefficient(
+                row_coefficients,
+                value_columns[spec_index],
+                value_scale / row_scale,
+            )
             for column, physical_coefficient in zip(
                 coupling_columns, coupling_values, strict=True
             ):
                 scaled = float(physical_coefficient / row_scale)
-                if abs(scaled) <= search_coefficient_zero_tolerance:
-                    if scaled != 0.0:
-                        dropped_search_coefficient_count += 1
-                        maximum_dropped_search_coefficient = max(
-                            maximum_dropped_search_coefficient, abs(scaled)
-                        )
-                    continue
-                row_coefficients[column] = scaled
+                retain_conditioned_coefficient(
+                    row_coefficients, column, scaled
+                )
             for column, physical_coefficient in zip(
                 cut_columns, cut_values, strict=True
             ):
                 scaled = float(physical_coefficient / row_scale)
-                if abs(scaled) <= search_coefficient_zero_tolerance:
-                    if scaled != 0.0:
-                        dropped_search_coefficient_count += 1
-                        maximum_dropped_search_coefficient = max(
-                            maximum_dropped_search_coefficient, abs(scaled)
-                        )
-                    continue
-                row_coefficients[column] = scaled
+                retain_conditioned_coefficient(
+                    row_coefficients, column, scaled
+                )
             search.add_row(
                 f"hard_state__g{int(master.index.generator_source_rows[generator]) + 1:04d}"
                 f"__s{int(state):02d}",
@@ -2742,11 +2765,18 @@ def build_hard_cardinality_multiplier_delta_search_model(
             row_scale = max(1.0, abs(rhs_value), maximum_coefficient)
             row_scale_minimum = min(row_scale_minimum, row_scale)
             row_scale_maximum = max(row_scale_maximum, row_scale)
-            row_coefficients = {group_column: group_scale / row_scale}
+            row_coefficients: dict[int, float] = {}
+            retain_conditioned_coefficient(
+                row_coefficients,
+                group_column,
+                group_scale / row_scale,
+            )
             for generator in configuration:
                 spec_index = value_spec_by_generator[int(generator)]
-                row_coefficients[value_columns[spec_index]] = (
-                    -float(value_specs[spec_index]["scale"]) / row_scale
+                retain_conditioned_coefficient(
+                    row_coefficients,
+                    value_columns[spec_index],
+                    -float(value_specs[spec_index]["scale"]) / row_scale,
                 )
             search.add_row(
                 f"hard_configuration__h{group_index:03d}__c{configuration_index:04d}",
@@ -2770,6 +2800,32 @@ def build_hard_cardinality_multiplier_delta_search_model(
             np.abs(np.asarray(search.column_upper, dtype=np.float64)),
         )
     )
+    nonzero_finite_column_bounds = finite_column_bounds[
+        finite_column_bounds > 0.0
+    ]
+    conditioned_minima = {
+        "matrix": (
+            None if not matrix_absolute.size else float(np.min(matrix_absolute))
+        ),
+        "objective": (
+            None
+            if not np.any(objective_absolute > 0.0)
+            else float(np.min(objective_absolute[objective_absolute > 0.0]))
+        ),
+        "finite_column_bound": (
+            None
+            if not nonzero_finite_column_bounds.size
+            else float(np.min(nonzero_finite_column_bounds))
+        ),
+    }
+    for label, minimum in conditioned_minima.items():
+        if minimum is not None and minimum + 8.0 * np.finfo(np.float64).eps < (
+            search_coefficient_zero_tolerance
+        ):
+            raise ScopfError(
+                "Hard-cardinality search retained a below-threshold "
+                f"{label} magnitude"
+            )
     return LagrangianMultiplierDeltaSearchModel(
         canonical=search,
         selected_coupling_positions=selected,
@@ -2820,19 +2876,20 @@ def build_hard_cardinality_multiplier_delta_search_model(
             "row_scale_minimum": float(row_scale_minimum),
             "row_scale_maximum": float(row_scale_maximum),
             "matrix_nonzero_minimum_absolute": (
-                None if not matrix_absolute.size else float(np.min(matrix_absolute))
+                conditioned_minima["matrix"]
             ),
             "matrix_nonzero_maximum_absolute": (
                 None if not matrix_absolute.size else float(np.max(matrix_absolute))
             ),
             "objective_nonzero_minimum_absolute": (
-                None
-                if not np.any(objective_absolute > 0.0)
-                else float(np.min(objective_absolute[objective_absolute > 0.0]))
+                conditioned_minima["objective"]
             ),
             "objective_maximum_absolute": float(np.max(objective_absolute)),
             "finite_column_bound_maximum_absolute": float(
                 np.max(finite_column_bounds)
+            ),
+            "finite_column_bound_minimum_nonzero_absolute": (
+                conditioned_minima["finite_column_bound"]
             ),
             "search_coefficient_zero_tolerance": float(
                 search_coefficient_zero_tolerance
@@ -2851,7 +2908,11 @@ def build_hard_cardinality_multiplier_delta_search_model(
                 maximum_dropped_search_objective_coefficient
             ),
             "center_is_exact_nonsmoothed_certificate": True,
-            "hard_cardinality_hypograph_is_exact_inside_search_box": True,
+            "unconditioned_hard_cardinality_hypograph_derivation_is_exact": True,
+            "hard_cardinality_hypograph_is_exact_inside_search_box": (
+                dropped_search_coefficient_count == 0
+            ),
+            "conditioned_search_lp_is_bound_authority": False,
             "row_scaling_is_exact_positive_scaling": True,
             "objective_scaling_is_exact_positive_scaling": True,
             "search_lp_solution_is_never_bound_authority": True,
