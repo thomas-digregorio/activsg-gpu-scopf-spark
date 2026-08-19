@@ -3587,8 +3587,10 @@ def _run_centered_dual_search(
             "exact_source_pmin_pmax_changed": False,
             "mathematical_original_integer_feasible_set_changed": False,
             "best_raw_lower_bound": final_replay.raw_lower_bound,
-            "best_minimizing_commitment": final_replay.minimizing_commitment,
-            "best_commitment_cut_dual": current_cut_dual,
+            "best_minimizing_commitment": (
+                final_replay.minimizing_commitment.tolist()
+            ),
+            "best_commitment_cut_dual": current_cut_dual.tolist(),
         },
     )
 
