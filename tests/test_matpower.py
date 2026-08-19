@@ -3,13 +3,14 @@ from pathlib import Path
 from activsg_scopf.matpower import (
     GEN_STATUS,
     PMIN,
+    enumerate_in_service_branch_contingencies,
     read_contingency_table,
     read_matpower_case,
     sha256_file,
 )
 from activsg_scopf.provenance import build_source_manifest
 
-from .helpers import write_triangle_matpower
+from .helpers import triangle_case, write_triangle_matpower
 
 
 def test_tiny_matpower_sources_preserve_rows_and_exact_pmin(tmp_path: Path) -> None:
@@ -40,3 +41,29 @@ def test_manifest_preserves_every_tiny_generator_source_row(tmp_path: Path) -> N
     assert manifest["generators"][0]["pmin_mw"] == 25
     assert manifest["source_online_capacity_mw"]["pmin_sum"] == 25
 
+
+def test_series24_cp1252_case_is_parsed_without_rewriting_source(tmp_path: Path) -> None:
+    original_path, _ = write_triangle_matpower(tmp_path)
+    series24_path = original_path.with_name(
+        "Texas2k_series24_case1_2016summerPeak.m"
+    )
+    source = "% “Series24 source comment”\n" + original_path.read_text(
+        encoding="utf-8"
+    )
+    series24_path.write_bytes(source.encode("cp1252"))
+    case = read_matpower_case(
+        series24_path,
+        expected_sha256=sha256_file(series24_path),
+    )
+    assert case.case_name == "Texas2kSeries24Case1"
+    assert case.gen[0, PMIN] == 25
+
+
+def test_topology_derived_contingencies_preserve_every_branch_row() -> None:
+    case, _ = triangle_case()
+    table = enumerate_in_service_branch_contingencies(case)
+    assert table.mode == "enumerate_in_service_branches"
+    assert table.source_path is None
+    assert table.sha256 is None
+    assert [change.element_row for change in table.changes] == [1, 2, 3]
+    assert [change.source_row for change in table.changes] == [1, 2, 3]

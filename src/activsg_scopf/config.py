@@ -30,7 +30,21 @@ class RunConfig:
 
     @property
     def contingency_path(self) -> Path:
-        return guard_input_path(self.root / self.raw["raw_inputs"]["contingency_file"])
+        value = self.raw["raw_inputs"].get("contingency_file")
+        if value is None:
+            raise ProvenanceError(
+                f"{self.case_name} derives branch contingencies from its case topology"
+            )
+        return guard_input_path(self.root / value)
+
+    @property
+    def contingency_mode(self) -> str:
+        return str(self.raw["raw_inputs"].get("contingency_mode", "source_table"))
+
+    @property
+    def source_archive_path(self) -> Path | None:
+        value = self.raw["raw_inputs"].get("source_archive_file")
+        return None if value is None else guard_input_path(self.root / value)
 
     @property
     def model(self) -> dict[str, Any]:
@@ -70,12 +84,40 @@ def load_config(path: str | Path) -> RunConfig:
     inputs = payload["raw_inputs"]
     if Path(str(inputs.get("case_file", ""))).name != registration.case_file:
         raise ProvenanceError("Configuration case filename is not registered for case_name")
-    if Path(str(inputs.get("contingency_file", ""))).name != registration.contingency_file:
-        raise ProvenanceError("Configuration contingency filename is not registered for case_name")
     if inputs.get("case_sha256") != registration.case_sha256:
         raise ProvenanceError("Configuration case hash is not the registered source hash")
-    if inputs.get("contingency_sha256") != registration.contingency_sha256:
-        raise ProvenanceError("Configuration contingency hash is not registered")
+    observed_contingency_mode = str(inputs.get("contingency_mode", "source_table"))
+    if observed_contingency_mode != registration.contingency_mode:
+        raise ProvenanceError(
+            "Configuration contingency mode is not registered for case_name"
+        )
+    if registration.contingency_mode == "source_table":
+        if (
+            Path(str(inputs.get("contingency_file", ""))).name
+            != registration.contingency_file
+        ):
+            raise ProvenanceError(
+                "Configuration contingency filename is not registered for case_name"
+            )
+        if inputs.get("contingency_sha256") != registration.contingency_sha256:
+            raise ProvenanceError("Configuration contingency hash is not registered")
+    elif registration.contingency_mode == "enumerate_in_service_branches":
+        if "contingency_file" in inputs or "contingency_sha256" in inputs:
+            raise ProvenanceError(
+                "Topology-derived contingency configurations cannot name a contingency file"
+            )
+    else:
+        raise ProvenanceError(
+            f"Unsupported registered contingency mode {registration.contingency_mode!r}"
+        )
+    if registration.source_archive_file is not None:
+        if (
+            Path(str(inputs.get("source_archive_file", ""))).name
+            != registration.source_archive_file
+        ):
+            raise ProvenanceError("Configuration source archive filename is not registered")
+        if inputs.get("source_archive_sha256") != registration.source_archive_sha256:
+            raise ProvenanceError("Configuration source archive hash is not registered")
     if payload["model"].get("interval_hours") != 1.0:
         raise ScopeViolation("Version 1 is exactly one one-hour interval")
     if payload["model"].get("pwl_segments") != 10:
@@ -96,6 +138,7 @@ def load_config(path: str | Path) -> RunConfig:
                 if benchmark.get("kind")
                 in {
                     "gap_sensitivity_experiment",
+                    "series24_scenario_experiment",
                     "seeded_round2_diagnostic",
                     "gpu_lp_relaxation_certificate",
                     "gpu_lagrangian_disjunctive_experiment",
@@ -106,6 +149,23 @@ def load_config(path: str | Path) -> RunConfig:
         if deadline <= 0 or deadline > maximum_deadline:
             raise ScopeViolation(
                 f"The end-to-end deadline must be in (0, {maximum_deadline:g}] seconds"
+            )
+    benchmark = payload["benchmark"]
+    if benchmark.get("kind") == "series24_scenario_experiment":
+        if not str(payload["case_name"]).startswith("Texas2kSeries24Case"):
+            raise ScopeViolation("Series24 scenario experiments require a Series24 case")
+        if float(payload["model"].get("mip_relative_gap_tolerance", -1.0)) != 1e-3:
+            raise ScopeViolation("Series24 scenario experiments require a 1e-3 MIP gap")
+        if float(payload["runtime"].get("deadline_seconds", -1.0)) != 1800.0:
+            raise ScopeViolation("Series24 scenario experiments require a 1,800-second cap")
+        expected_initialization = {
+            "cross_scenario_mip_start": False,
+            "round_1": "cold",
+            "later_rounds": "prior_round_commitment_within_same_scenario",
+        }
+        if benchmark.get("initialization") != expected_initialization:
+            raise ScopeViolation(
+                "Series24 scenarios must start cold and may reuse only same-scenario rounds"
             )
     root = config_path.parent.parent
     return RunConfig(path=config_path, root=root, raw=payload)

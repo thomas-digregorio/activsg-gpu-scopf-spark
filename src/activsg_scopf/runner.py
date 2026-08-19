@@ -16,7 +16,6 @@ from .deadline import Deadline, PeakMemorySampler
 from .diagnostics import DiagnosticEventWriter
 from .environment import environment_manifest, validate_platform
 from .errors import DeadlineExceeded, MipStartSolveError
-from .matpower import read_contingency_table, read_matpower_case
 from .model import build_master
 from .network import (
     build_contingency_catalog,
@@ -29,6 +28,7 @@ from .provenance import build_source_manifest
 from .screening import ContingencyScreener, add_security_pairs
 from .solution import serialize_solution
 from .solvers import SolveResult, SolverSession, create_solver_session
+from .sources import load_registered_inputs
 from .verify import verify_serialized_solution
 
 Checkpoint = Callable[[dict[str, Any]], None]
@@ -150,6 +150,7 @@ def run_end_to_end(
         "constraint_generation_rounds": [],
         "added_security_pair_ids": [],
         "deadline_seconds": None if unbounded else total_deadline,
+        "initialization_policy": config.raw["benchmark"].get("initialization", {}),
     }
     profile = config.raw["platforms"][platform_name]
     diagnostics_profile = profile.get("diagnostics", {})
@@ -206,20 +207,20 @@ def run_end_to_end(
 
         stage = time.perf_counter()
         emit_diagnostic("raw_input_loading_started")
-        case = read_matpower_case(
-            config.case_path,
-            expected_sha256=config.raw["raw_inputs"]["case_sha256"],
-        )
-        contingency_table = read_contingency_table(
-            config.contingency_path,
-            expected_sha256=config.raw["raw_inputs"]["contingency_sha256"],
-        )
+        loaded_inputs = load_registered_inputs(config)
+        case = loaded_inputs.case
+        contingency_table = loaded_inputs.contingencies
         payload["timings_seconds"]["raw_input_loading"] = _seconds_since(stage)
         emit_diagnostic(
             "raw_input_loading_finished",
             wall_time_seconds=payload["timings_seconds"]["raw_input_loading"],
         )
-        payload["source_manifest"] = build_source_manifest(case, contingency_table)
+        payload["source_manifest"] = build_source_manifest(
+            case,
+            contingency_table,
+            source_archive_path=loaded_inputs.source_archive_path,
+            source_archive_sha256=loaded_inputs.source_archive_sha256,
+        )
         save_checkpoint()
 
         stage = time.perf_counter()

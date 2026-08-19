@@ -70,9 +70,10 @@ class ContingencyChange:
 
 @dataclass(frozen=True)
 class ContingencyTable:
-    source_path: Path
-    sha256: str
+    source_path: Path | None
+    sha256: str | None
     changes: tuple[ContingencyChange, ...]
+    mode: str = "source_table"
 
 
 def sha256_file(path: Path) -> str:
@@ -124,7 +125,7 @@ def read_matpower_case(
             f"{registration.case_name} case hash mismatch: expected {expected_sha256}, "
             f"observed {observed_hash}"
         )
-    lines = source.read_text(encoding="utf-8").splitlines()
+    lines = source.read_text(encoding=registration.text_encoding).splitlines()
     base_mva: float | None = None
     matrices: dict[str, FloatArray] = {}
     index = 0
@@ -246,4 +247,39 @@ def read_contingency_table(
         raise ProvenanceError("Unterminated chgtab matrix")
     if not changes:
         raise ProvenanceError("The contingency table is empty")
-    return ContingencyTable(source_path=source, sha256=observed_hash, changes=tuple(changes))
+    return ContingencyTable(
+        source_path=source,
+        sha256=observed_hash,
+        changes=tuple(changes),
+        mode="source_table",
+    )
+
+
+def enumerate_in_service_branch_contingencies(case: MatpowerCase) -> ContingencyTable:
+    """Create a deterministic candidate row for every source branch.
+
+    The network catalog subsequently excludes source-offline, invalid, and
+    islanding rows. Keeping a candidate for every immutable branch row makes
+    every exclusion auditable even when the source archive has no MATPOWER
+    ``contab`` file.
+    """
+
+    changes = tuple(
+        ContingencyChange(
+            source_row=source_row,
+            label=source_row,
+            probability=0.0,
+            table="CT_TBRCH",
+            element_row=source_row,
+            column="BR_STATUS",
+            change_type="CT_REP",
+            new_value=0.0,
+        )
+        for source_row in range(1, case.branch.shape[0] + 1)
+    )
+    return ContingencyTable(
+        source_path=None,
+        sha256=None,
+        changes=changes,
+        mode="enumerate_in_service_branches",
+    )

@@ -36,6 +36,32 @@ def test_registered_activsg10k_config_is_single_hour_and_separately_tagged() -> 
     assert config.raw["benchmark"]["required_git_tag"] == "benchmark-10k-v1"
 
 
+def test_series24_configs_are_cold_bounded_cpu_scenarios() -> None:
+    expected_names = (
+        "2016 summer peak",
+        "2016 low load",
+        "2024 summer peak",
+        "2024 low load",
+        "2024 high renewables",
+        "2024 low load with grid-forming inverters",
+    )
+    for ordinal, expected_name in enumerate(expected_names, start=1):
+        config = load_config(
+            ROOT / "configs" / f"texas2k-series24-case{ordinal}-1e-3.json"
+        )
+        assert config.case_name == f"Texas2kSeries24Case{ordinal}"
+        assert config.contingency_mode == "enumerate_in_service_branches"
+        assert config.runtime["deadline_seconds"] == 1800.0
+        assert config.model["mip_relative_gap_tolerance"] == 1e-3
+        assert config.raw["benchmark"]["scenario_name"] == expected_name
+        assert config.raw["benchmark"]["initialization"] == {
+            "cross_scenario_mip_start": False,
+            "round_1": "cold",
+            "later_rounds": "prior_round_commitment_within_same_scenario",
+        }
+        assert config.raw["platforms"]["laptop_cpu"]["solver"] == "highs"
+
+
 def test_activsg10k_v2_changes_runtime_identity_not_mathematical_contract() -> None:
     v1 = load_config(ROOT / "configs" / "activsg10k.json")
     v2 = load_config(ROOT / "configs" / "activsg10k-v2.json")

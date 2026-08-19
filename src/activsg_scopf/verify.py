@@ -20,12 +20,11 @@ from .matpower import (
     PD,
     PMAX,
     PMIN,
-    read_contingency_table,
-    read_matpower_case,
 )
 from .network import build_contingency_catalog, build_network, solve_dc
 from .screening import ContingencyScreener
 from .solution import base_flow_vector
+from .sources import load_registered_inputs
 
 
 @dataclass(frozen=True)
@@ -86,13 +85,9 @@ def verify_serialized_solution(
         and reported_case != configured_case
     ):
         raise ProvenanceError("Solution case_name does not match the verification config")
-    case = read_matpower_case(
-        config.case_path, expected_sha256=config.raw["raw_inputs"]["case_sha256"]
-    )
-    contingency_table = read_contingency_table(
-        config.contingency_path,
-        expected_sha256=config.raw["raw_inputs"]["contingency_sha256"],
-    )
+    loaded_inputs = load_registered_inputs(config)
+    case = loaded_inputs.case
+    contingency_table = loaded_inputs.contingencies
     network = build_network(case)
     catalog = build_contingency_catalog(
         case,

@@ -8,16 +8,36 @@
   "properties": {
     "$schema": {"type": "string"},
     "schema_version": {"const": "1.0.0"},
-    "case_name": {"enum": ["ACTIVSg500", "ACTIVSg2000", "ACTIVSg10k"]},
+    "case_name": {
+      "enum": [
+        "ACTIVSg500",
+        "ACTIVSg2000",
+        "ACTIVSg10k",
+        "Texas2kSeries24Case1",
+        "Texas2kSeries24Case2",
+        "Texas2kSeries24Case3",
+        "Texas2kSeries24Case4",
+        "Texas2kSeries24Case5",
+        "Texas2kSeries24Case6"
+      ]
+    },
     "raw_inputs": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["case_file", "case_sha256", "contingency_file", "contingency_sha256"],
+      "required": ["case_file", "case_sha256"],
       "properties": {
-        "case_file": {"type": "string", "pattern": "ACTIVSg(500|2000|10k)"},
+        "case_file": {
+          "type": "string",
+          "pattern": "(ACTIVSg(500|2000|10k)|Texas2k_series24_case[1-6])"
+        },
         "case_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
         "contingency_file": {"type": "string", "pattern": "ACTIVSg(500|2000|10k)"},
-        "contingency_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        "contingency_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "contingency_mode": {
+          "enum": ["source_table", "enumerate_in_service_branches"]
+        },
+        "source_archive_file": {"type": "string"},
+        "source_archive_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
       }
     },
     "model": {"type": "object"},

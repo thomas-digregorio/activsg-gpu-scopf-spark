@@ -21,7 +21,6 @@ from .lp_certificate import (
     run_lp_certificate_worker_serialized,
     run_one_shot_lp_certificate,
 )
-from .matpower import read_contingency_table, read_matpower_case
 from .official import run_controlled
 from .paths import guard_input_path, guard_output_path, guard_runtime_environment
 from .provenance import build_source_manifest, write_json_atomic
@@ -30,6 +29,7 @@ from .seeded_diagnostic import (
     run_one_shot_seeded_round2_diagnostic,
     run_seeded_round2_worker_serialized,
 )
+from .sources import load_registered_inputs
 from .verify import verify_serialized_solution
 
 
@@ -99,15 +99,16 @@ def _gpu_lagrangian_worker_parser() -> argparse.ArgumentParser:
 def _ingest(config_path: Path, output_path: Path) -> dict[str, object]:
     config = load_config(config_path)
     guard_runtime_environment(config.root)
-    case = read_matpower_case(
-        config.case_path, expected_sha256=config.raw["raw_inputs"]["case_sha256"]
-    )
-    contingencies = read_contingency_table(
-        config.contingency_path,
-        expected_sha256=config.raw["raw_inputs"]["contingency_sha256"],
-    )
+    loaded_inputs = load_registered_inputs(config)
+    case = loaded_inputs.case
+    contingencies = loaded_inputs.contingencies
     output = guard_output_path(output_path)
-    payload = build_source_manifest(case, contingencies)
+    payload = build_source_manifest(
+        case,
+        contingencies,
+        source_archive_path=loaded_inputs.source_archive_path,
+        source_archive_sha256=loaded_inputs.source_archive_sha256,
+    )
     write_json_atomic(payload, output)
     return {"status": "ok", "command": "ingest", "output": str(output)}
 

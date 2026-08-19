@@ -2,9 +2,10 @@
 
 Fresh, auditable prototype for a one-hour preventive branch-N-1 DC
 security-constrained commitment and dispatch MILP on the synthetic TAMU
-ACTIVSg500, ACTIVSg2000, and ACTIVSg10k systems. The bounded MIP-gap studies
-apply the same mathematical contract to ACTIVSg500 and ACTIVSg2000; the earlier
-ACTIVSg10k benchmark and experiment evidence remains preserved.
+ACTIVSg500, ACTIVSg2000, and ACTIVSg10k systems, plus the six explicitly
+registered Texas2k Series24 operating scenarios. The bounded MIP-gap studies
+apply the same mathematical contract; earlier benchmark and experiment
+evidence remains preserved.
 
 Each registered case comparison is exactly one end-to-end laptop CPU run versus
 exactly one end-to-end DGX Spark run. The laptop uses HiGHS with NumPy/SciPy;
@@ -12,16 +13,19 @@ the Spark uses NVIDIA cuOpt with CuPy. No custom CUDA kernels are present.
 
 ## Scope guardrails
 
-- Only ACTIVSg500, ACTIVSg2000, and ACTIVSg10k are registered. Every other
-  ACTIVSg size is rejected.
+- ACTIVSg500, ACTIVSg2000, ACTIVSg10k, and the six Texas2k Series24 scenarios
+  are registered. Every other ACTIVSg size is rejected.
 - Exact source-case `PMIN` and `PMAX` are conditional on commitment. Source-offline
   generators are unavailable.
 - The interval is exactly one hour. Ramping, minimum up/down times, startup
   trajectories, reserves, and every inter-period constraint are absent.
 - Source polynomial production-cost curves become ten equal-MW chord segments
   over exact `[PMIN, PMAX]`. They are not submitted market offers.
-- Version 1 includes source-listed, in-service, non-islanding branch outages.
-  Generator outages and corrective redispatch are deferred.
+- Version 1 includes source-listed, in-service, non-islanding branch outages
+  for the classic cases. Because Series24 has no MATPOWER contingency table,
+  it deterministically enumerates every source branch row and retains each
+  in-service, non-islanding outage. Generator outages and corrective
+  redispatch are deferred.
 - There is no load shedding, generation spillage, overload slack, or feasibility
   repair.
 - Raw cases, factor caches, solver artifacts, environments, and detailed results
@@ -54,6 +58,12 @@ the original source-online PMIN/PMAX totals and case dimensions. The tracked
 [`ACTIVSg10k source manifest`](data/source-manifests/activsg10k.json) records
 1,937 source-online generators and their aggregate exact PMIN of 85,764.93 MW;
 the detailed ingest/result manifest retains every generator row and PMIN value.
+
+The separately frozen
+[`Texas2k Series24 CPU scenario experiment`](docs/series24-cpu-scenario-experiment.md)
+uses all six official MATPOWER scenario files, exact scenario PMIN values, a
+`1e-3` MIP gap, and one cold laptop HiGHS run of at most 1,800 seconds per
+scenario. No solution or solver session is shared between scenarios.
 
 ## Laptop setup
 

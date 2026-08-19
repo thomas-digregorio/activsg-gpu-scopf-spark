@@ -9,6 +9,7 @@ Raw cases are not tracked in this repository.
 - ACTIVSg500: https://electricgrids.engr.tamu.edu/electric-grid-test-cases/activsg500/
 - ACTIVSg2000: https://electricgrids.engr.tamu.edu/electric-grid-test-cases/activsg2000/
 - ACTIVSg10k: https://electricgrids.engr.tamu.edu/electric-grid-test-cases/activsg10k/
+- Texas2k Series24: https://electricgrids.engr.tamu.edu/activsg2000-dynamics-cases-2024/
 - MATPOWER case format: https://matpower.org/docs/ref/matpower7.1/lib/caseformat.html
 
 Retain the attribution and license notices distributed with the source data.

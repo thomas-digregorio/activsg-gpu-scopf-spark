@@ -20,25 +20,60 @@ def branch_source_id(source_row_zero_based: int) -> str:
     return f"branch-row-{source_row_zero_based + 1:04d}"
 
 
-def build_source_manifest(case: MatpowerCase, contingencies: ContingencyTable) -> dict[str, Any]:
+def build_source_manifest(
+    case: MatpowerCase,
+    contingencies: ContingencyTable,
+    *,
+    source_archive_path: Path | None = None,
+    source_archive_sha256: str | None = None,
+) -> dict[str, Any]:
     status = case.gen[:, GEN_STATUS] > 0
     table_counts = Counter(change.table for change in contingencies.changes)
+    source_identity: dict[str, Any] = {
+        "case_file": case.source_path.name,
+        "case_sha256": case.sha256,
+        "contingency_mode": contingencies.mode,
+        "row_identity_convention": {
+            "generator": "gen-row-NNNN is the immutable one-based mpc.gen source row",
+            "branch": "branch-row-NNNN is the immutable one-based mpc.branch source row",
+            "contingency_change": (
+                "source_row is the immutable one-based chgtab row"
+                if contingencies.mode == "source_table"
+                else "source_row equals the immutable one-based mpc.branch source row"
+            ),
+        },
+    }
+    if contingencies.source_path is not None:
+        source_identity.update(
+            {
+                "contingency_file": contingencies.source_path.name,
+                "contingency_sha256": contingencies.sha256,
+            }
+        )
+    else:
+        source_identity.update(
+            {
+                "contingency_file": None,
+                "contingency_sha256": None,
+                "contingency_derivation": (
+                    "one deterministic outage candidate per immutable branch row; "
+                    "catalog retains only in-service non-islanding branches"
+                ),
+            }
+        )
+    if source_archive_path is not None:
+        source_identity.update(
+            {
+                "source_archive_file": source_archive_path.name,
+                "source_archive_sha256": source_archive_sha256,
+            }
+        )
     return {
         "schema_version": "1.0.0",
         "created_at_utc": datetime.now(UTC).isoformat(),
         "case_name": case.case_name,
         "synthetic_system": True,
-        "source_identity": {
-            "case_file": case.source_path.name,
-            "case_sha256": case.sha256,
-            "contingency_file": contingencies.source_path.name,
-            "contingency_sha256": contingencies.sha256,
-            "row_identity_convention": {
-                "generator": "gen-row-NNNN is the immutable one-based mpc.gen source row",
-                "branch": "branch-row-NNNN is the immutable one-based mpc.branch source row",
-                "contingency_change": "source_row is the immutable one-based chgtab row",
-            },
-        },
+        "source_identity": source_identity,
         "dimensions": {
             "buses": int(case.bus.shape[0]),
             "generators": int(case.gen.shape[0]),
