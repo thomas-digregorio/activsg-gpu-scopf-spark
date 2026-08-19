@@ -1042,6 +1042,350 @@ def optimize_lagrangian_bound_cupy(
     }
 
 
+def optimize_lagrangian_bound_cupy_adam(
+    master: ReducedMaster,
+    row_dual: npt.ArrayLike,
+    region: RegionMasks,
+    *,
+    iterations: int,
+    learning_rates: tuple[float, ...],
+    commitment_cuts: tuple[CommitmentUpperCut, ...] = (),
+    initial_commitment_cut_dual: npt.ArrayLike | None = None,
+    hard_cardinality_cuts: tuple[CommitmentCardinalityCut, ...] = (),
+    adam_beta1: float = 0.9,
+    adam_beta2: float = 0.999,
+    adam_epsilon: float = 1e-8,
+) -> tuple[FloatArray, dict[str, Any]]:
+    """Search several exact nonsmooth Lagrangian trajectories on one GPU.
+
+    Each lane uses the same replayable initial multipliers and a different
+    canonical-dual learning rate.  Adam only proposes multipliers.  Every
+    iterate is projected onto the valid row-dual cones and scored with the
+    exact binary/PWL generator subproblem, including any disjoint hard
+    cardinality branches.  The independently replayed exact score therefore
+    remains the certificate authority regardless of optimizer convergence.
+    """
+
+    if iterations < 1:
+        raise ScopfError("GPU Adam Lagrangian iterations must be positive")
+    if not learning_rates or any(
+        not np.isfinite(value) or value <= 0.0 for value in learning_rates
+    ):
+        raise ScopfError("GPU Adam Lagrangian learning rates must be positive")
+    if not (0.0 <= adam_beta1 < 1.0 and 0.0 <= adam_beta2 < 1.0):
+        raise ScopfError("GPU Adam Lagrangian factors must be in [0, 1)")
+    if not np.isfinite(adam_epsilon) or adam_epsilon <= 0.0:
+        raise ScopfError("GPU Adam Lagrangian epsilon must be positive")
+    try:
+        import cupy as cp
+    except ImportError as exc:
+        raise ScopfError("GPU Adam Lagrangian optimization requires CuPy") from exc
+
+    generator_count = master.index.generator_source_rows.size
+    region.validate(generator_count)
+    for cut in commitment_cuts:
+        cut.validate(generator_count)
+    hard_cut_ids, hard_supports = _validate_disjoint_hard_cardinality_cuts(
+        hard_cardinality_cuts,
+        generator_count=generator_count,
+        available_cut_ids={cut.cut_id for cut in commitment_cuts},
+    )
+    full_dual = np.asarray(row_dual, dtype=np.float64)
+    if full_dual.shape != (master.canonical.num_rows,) or not np.all(
+        np.isfinite(full_dual)
+    ):
+        raise ScopfError("GPU Adam Lagrangian initial dual is invalid")
+
+    coupling_rows = sorted(master.coupling_rows, key=lambda row: row.row_name)
+    coupling_indices_host = np.asarray(
+        [row.row_index for row in coupling_rows], dtype=np.int64
+    )
+    upper = cp.asarray(
+        [row.kind != "balance_equality" for row in coupling_rows],
+        dtype=cp.bool_,
+    )
+    rhs = cp.asarray([row.rhs for row in coupling_rows], dtype=cp.float64)
+    coefficients = cp.asarray(
+        np.stack([row.generator_coefficients for row in coupling_rows]),
+        dtype=cp.float64,
+    )
+    initial_y = cp.asarray(
+        full_dual[coupling_indices_host], dtype=cp.float64
+    )
+    initial_y = cp.where(upper, cp.minimum(initial_y, 0.0), initial_y)
+
+    curves = [master.costs[int(index)] for index in master.index.generator_source_rows]
+    pmin = cp.asarray([curve.pmin_mw for curve in curves], dtype=cp.float64)
+    base_cost = cp.asarray(
+        [curve.committed_base_cost for curve in curves], dtype=cp.float64
+    )
+    widths = cp.asarray(
+        np.stack([curve.segment_widths_mw for curve in curves]),
+        dtype=cp.float64,
+    )
+    slopes = cp.asarray(
+        np.stack([curve.segment_slopes_per_mwh for curve in curves]),
+        dtype=cp.float64,
+    )
+    fixed_off = cp.asarray(region.fixed_off, dtype=cp.bool_)
+    fixed_on = cp.asarray(region.fixed_on, dtype=cp.bool_)
+
+    supplied_cut_dual = (
+        np.zeros(len(commitment_cuts), dtype=np.float64)
+        if initial_commitment_cut_dual is None
+        else np.asarray(initial_commitment_cut_dual, dtype=np.float64)
+    )
+    if supplied_cut_dual.shape != (len(commitment_cuts),) or not np.all(
+        np.isfinite(supplied_cut_dual)
+    ):
+        raise ScopfError("GPU Adam Lagrangian commitment-cut dual is invalid")
+    hard_positions_host = np.asarray(
+        [cut.cut_id in hard_cut_ids for cut in commitment_cuts], dtype=bool
+    )
+    if np.any(supplied_cut_dual[hard_positions_host] != 0.0):
+        raise ScopfError(
+            "Hard cardinality cuts cannot also carry Lagrangian multipliers"
+        )
+    hard_positions = cp.asarray(hard_positions_host, dtype=cp.bool_)
+    if commitment_cuts:
+        cut_coefficients = cp.asarray(
+            np.stack([cut.coefficients for cut in commitment_cuts]),
+            dtype=cp.float64,
+        )
+        cut_rhs = cp.asarray([cut.rhs for cut in commitment_cuts], dtype=cp.float64)
+    else:
+        cut_coefficients = cp.empty((0, generator_count), dtype=cp.float64)
+        cut_rhs = cp.empty(0, dtype=cp.float64)
+    initial_z = cp.where(
+        hard_positions,
+        0.0,
+        cp.minimum(cp.asarray(supplied_cut_dual, dtype=cp.float64), 0.0),
+    )
+
+    hard_groups: list[tuple[str, Any, Any, int, int]] = []
+    for cut, support in zip(hard_cardinality_cuts, hard_supports, strict=True):
+        free_support = support[
+            ~(region.fixed_off[support] | region.fixed_on[support])
+        ]
+        fixed_on_support = support[region.fixed_on[support]]
+        fixed_on_count = int(fixed_on_support.size)
+        if cut.branch_side == "at_most":
+            free_limit = int(cut.integer_threshold) - fixed_on_count
+            if free_limit < 0:
+                raise ScopfError("Hard at-most cardinality region is empty")
+            free_limit = min(free_limit, int(free_support.size))
+            required_count = 0
+        else:
+            required_count = max(
+                0, int(cut.integer_threshold) - fixed_on_count
+            )
+            if required_count > int(free_support.size):
+                raise ScopfError("Hard at-least cardinality region is empty")
+            free_limit = int(free_support.size)
+        hard_groups.append(
+            (
+                cut.branch_side,
+                cp.asarray(free_support, dtype=cp.int64),
+                cp.asarray(fixed_on_support, dtype=cp.int64),
+                free_limit,
+                required_count,
+            )
+        )
+
+    lane_count = len(learning_rates)
+    rates = cp.asarray(learning_rates, dtype=cp.float64)[:, None]
+    y = cp.broadcast_to(initial_y, (lane_count, initial_y.size)).copy()
+    z = cp.broadcast_to(initial_z, (lane_count, initial_z.size)).copy()
+    first_y = cp.zeros_like(y)
+    second_y = cp.zeros_like(y)
+    first_z = cp.zeros_like(z)
+    second_z = cp.zeros_like(z)
+    best_q = cp.full(lane_count, -cp.inf, dtype=cp.float64)
+    best_y = y.copy()
+    best_z = z.copy()
+    best_commitment = cp.zeros(
+        (lane_count, generator_count), dtype=cp.int8
+    )
+    commitment_sum = cp.zeros(
+        (lane_count, generator_count), dtype=cp.float64
+    )
+    nonfinite_evaluations = cp.zeros(lane_count, dtype=cp.int64)
+    nonfinite_updates = cp.zeros(lane_count, dtype=cp.int64)
+    trace_stride = max(1, iterations // 8)
+    trace_iterations = tuple(
+        sorted(set(range(trace_stride, iterations + 1, trace_stride)) | {iterations})
+    )
+    trace_values = cp.empty((len(trace_iterations), lane_count), dtype=cp.float64)
+    trace_position = 0
+    lane_rows = cp.arange(lane_count, dtype=cp.int64)[:, None]
+
+    for iteration in range(1, iterations + 1):
+        effective = -(y @ coefficients)
+        adjusted_slopes = slopes[None, :, :] + effective[:, :, None]
+        on_value = (
+            base_cost[None, :]
+            + effective * pmin[None, :]
+            + cp.sum(
+                cp.minimum(0.0, adjusted_slopes * widths[None, :, :]),
+                axis=2,
+            )
+            - z @ cut_coefficients
+        )
+        commitment = cp.where(
+            fixed_off[None, :],
+            0,
+            cp.where(fixed_on[None, :] | (on_value < 0.0), 1, 0),
+        ).astype(cp.int8)
+        for (
+            branch_side,
+            free_device,
+            fixed_on_device,
+            free_limit,
+            required_count,
+        ) in hard_groups:
+            if free_device.size:
+                free_values = on_value[:, free_device]
+                identity_keys = cp.broadcast_to(
+                    free_device.astype(cp.float64)[None, :],
+                    free_values.shape,
+                )
+                order = cp.lexsort(
+                    cp.stack((identity_keys, free_values), axis=0), axis=-1
+                )
+                negative_count = cp.count_nonzero(free_values < 0.0, axis=1)
+                if branch_side == "at_most":
+                    selected_count = cp.minimum(free_limit, negative_count)
+                else:
+                    selected_count = cp.maximum(required_count, negative_count)
+                sorted_positions = free_device[order]
+                commitment[lane_rows, sorted_positions] = (
+                    cp.arange(free_device.size, dtype=cp.int64)[None, :]
+                    < selected_count[:, None]
+                ).astype(cp.int8)
+            if fixed_on_device.size:
+                commitment[:, fixed_on_device] = 1
+
+        segment_dispatch = cp.where(
+            (commitment[:, :, None] > 0) & (adjusted_slopes < 0.0),
+            widths[None, :, :],
+            0.0,
+        )
+        dispatch = commitment * pmin[None, :] + cp.sum(
+            segment_dispatch, axis=2
+        )
+        q = (
+            cp.sum(y * rhs[None, :], axis=1)
+            + cp.sum(z * cut_rhs[None, :], axis=1)
+            + cp.sum(cp.where(commitment > 0, on_value, 0.0), axis=1)
+        )
+        finite_evaluation = cp.isfinite(q) & cp.all(
+            cp.isfinite(on_value), axis=1
+        )
+        nonfinite_evaluations += ~finite_evaluation
+        better = finite_evaluation & (q > best_q)
+        best_q = cp.where(better, q, best_q)
+        best_y = cp.where(better[:, None], y, best_y)
+        best_z = cp.where(better[:, None], z, best_z)
+        best_commitment = cp.where(
+            better[:, None], commitment, best_commitment
+        )
+        commitment_sum += cp.where(
+            finite_evaluation[:, None], commitment, 0
+        )
+
+        gradient_y = rhs[None, :] - dispatch @ coefficients.T
+        gradient_z = cut_rhs[None, :] - commitment @ cut_coefficients.T
+        gradient_z = cp.where(hard_positions[None, :], 0.0, gradient_z)
+        first_y = adam_beta1 * first_y + (1.0 - adam_beta1) * gradient_y
+        second_y = (
+            adam_beta2 * second_y
+            + (1.0 - adam_beta2) * gradient_y * gradient_y
+        )
+        first_z = adam_beta1 * first_z + (1.0 - adam_beta1) * gradient_z
+        second_z = (
+            adam_beta2 * second_z
+            + (1.0 - adam_beta2) * gradient_z * gradient_z
+        )
+        corrected_y = first_y / (1.0 - adam_beta1**iteration)
+        corrected_y2 = second_y / (1.0 - adam_beta2**iteration)
+        corrected_z = first_z / (1.0 - adam_beta1**iteration)
+        corrected_z2 = second_z / (1.0 - adam_beta2**iteration)
+        candidate_y = y + rates * corrected_y / (
+            cp.sqrt(corrected_y2) + adam_epsilon
+        )
+        candidate_y = cp.where(
+            upper[None, :], cp.minimum(candidate_y, 0.0), candidate_y
+        )
+        candidate_z = z + rates * corrected_z / (
+            cp.sqrt(corrected_z2) + adam_epsilon
+        )
+        candidate_z = cp.where(
+            hard_positions[None, :], 0.0, cp.minimum(candidate_z, 0.0)
+        )
+        finite_update = (
+            finite_evaluation
+            & cp.all(cp.isfinite(candidate_y), axis=1)
+            & cp.all(cp.isfinite(candidate_z), axis=1)
+        )
+        nonfinite_updates += ~finite_update
+        y = cp.where(finite_update[:, None], candidate_y, best_y)
+        z = cp.where(finite_update[:, None], candidate_z, best_z)
+        if iteration == trace_iterations[trace_position]:
+            trace_values[trace_position] = best_q
+            trace_position += 1
+
+    cp.cuda.get_current_stream().synchronize()
+    lane = int(cp.argmax(best_q).item())
+    selected_q = float(best_q[lane].item())
+    if not np.isfinite(selected_q):
+        raise ScopfError("GPU Adam Lagrangian search found no finite certificate")
+    polished = np.zeros_like(full_dual)
+    polished[coupling_indices_host] = cp.asnumpy(best_y[lane])
+    initial_gpu = evaluate_lagrangian_bound_cupy(
+        master,
+        full_dual,
+        region,
+        commitment_cuts=commitment_cuts,
+        commitment_cut_dual=supplied_cut_dual,
+        hard_cardinality_cuts=hard_cardinality_cuts,
+    )
+    return polished, {
+        "backend": "cupy_fp64_multirate_exact_nonsmooth_adam_v1",
+        "iterations": iterations,
+        "learning_rates": [float(value) for value in learning_rates],
+        "selected_lane": lane,
+        "selected_learning_rate": float(learning_rates[lane]),
+        "initial_raw_lower_bound": float(initial_gpu["raw_lower_bound"]),
+        "best_raw_lower_bound": selected_q,
+        "improvement_dollars": selected_q
+        - float(initial_gpu["raw_lower_bound"]),
+        "best_lane_raw_lower_bounds": cp.asnumpy(best_q),
+        "best_minimizing_commitment": cp.asnumpy(
+            best_commitment[lane]
+        ).astype(np.int8),
+        "selected_lane_mean_commitment": cp.asnumpy(
+            commitment_sum[lane] / float(iterations)
+        ),
+        "best_commitment_cut_dual": cp.asnumpy(best_z[lane]),
+        "hard_cardinality_cut_count": len(hard_cardinality_cuts),
+        "hard_cardinality_cut_ids": sorted(hard_cut_ids),
+        "trace_iterations": list(trace_iterations),
+        "trace_best_raw_lower_bounds_by_lane": cp.asnumpy(trace_values),
+        "nonfinite_lagrangian_evaluation_iterations_by_lane": cp.asnumpy(
+            nonfinite_evaluations
+        ),
+        "nonfinite_projected_update_iterations_by_lane": cp.asnumpy(
+            nonfinite_updates
+        ),
+        "canonical_dual_learning_rates": True,
+        "exact_bound_scored_every_iteration": True,
+        "exact_source_pmin_pmax_changed": False,
+        "device_state_persistent_across_iterations": True,
+        "host_transfer_during_iterations": False,
+        "device_id": int(cp.cuda.Device().id),
+    }
+
+
 def _generator_breakpoint_state_arrays(
     master: ReducedMaster,
 ) -> tuple[FloatArray, FloatArray, npt.NDArray[np.int8]]:
