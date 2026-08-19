@@ -143,10 +143,12 @@ def main() -> None:
         if replayed.conservative_lower_bound + 1e-6 < initial.conservative_lower_bound:
             raise RuntimeError("GPU coordinate ascent weakened a bottleneck certificate")
         initial_violations = sum(
-            cut.violation(initial.minimizing_commitment) > 1e-9 for cut in cuts
+            float(cut.coefficients @ initial.minimizing_commitment - cut.rhs) > 1e-9
+            for cut in cuts
         )
         final_violations = sum(
-            cut.violation(replayed.minimizing_commitment) > 1e-9 for cut in cuts
+            float(cut.coefficients @ replayed.minimizing_commitment - cut.rhs) > 1e-9
+            for cut in cuts
         )
         strengthened_by_id[str(record["region_id"])] = replayed.conservative_lower_bound
         records.append(
