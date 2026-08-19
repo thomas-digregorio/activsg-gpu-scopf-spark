@@ -1245,13 +1245,10 @@ def optimize_lagrangian_bound_cupy_adam(
         ) in hard_groups:
             if free_device.size:
                 free_values = on_value[:, free_device]
-                identity_keys = cp.broadcast_to(
-                    free_device.astype(cp.float64)[None, :],
-                    free_values.shape,
-                )
-                order = cp.lexsort(
-                    cp.stack((identity_keys, free_values), axis=0)
-                )
+                # ``free_device`` is strictly increasing.  Stable row-wise
+                # sorting therefore uses generator position as the exact tie
+                # break without requiring CuPy's unsupported rank-3 lexsort.
+                order = cp.argsort(free_values, axis=1, kind="stable")
                 negative_count = cp.count_nonzero(free_values < 0.0, axis=1)
                 if branch_side == "at_most":
                     selected_count = cp.minimum(free_limit, negative_count)
