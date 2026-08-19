@@ -1297,6 +1297,9 @@ def build_lagrangian_multiplier_delta_search_model(
     coupling_delta_upper = np.maximum(
         coupling_delta_upper, coupling_delta_lower
     )
+    coupling_delta_upper[
+        np.abs(coupling_delta_upper) < search_coefficient_zero_tolerance
+    ] = 0.0
     cut_steps = np.full(
         len(commitment_cuts),
         float(commitment_cut_trust_radius),
@@ -1308,6 +1311,7 @@ def build_lagrangian_multiplier_delta_search_model(
         -cut_dual / cut_steps if commitment_cuts else np.empty(0),
     )
     cut_delta_upper = np.maximum(cut_delta_upper, cut_delta_lower)
+    cut_delta_upper[np.abs(cut_delta_upper) < search_coefficient_zero_tolerance] = 0.0
 
     coupling_physical_objective = rhs[selected] * coupling_steps
     cut_physical_objective = (
@@ -1377,6 +1381,9 @@ def build_lagrangian_multiplier_delta_search_model(
         epigraph_lower[generator] = min(0.0, physical_lower / maximum_row_magnitude)
         epigraph_upper[generator] = max(0.0, physical_upper / maximum_row_magnitude)
         unique_states.append(generator_states)
+
+    epigraph_lower[np.abs(epigraph_lower) < search_coefficient_zero_tolerance] = 0.0
+    epigraph_upper[np.abs(epigraph_upper) < search_coefficient_zero_tolerance] = 0.0
 
     objective_terms = np.concatenate(
         (

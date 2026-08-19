@@ -59,10 +59,12 @@ from .fixed_commitment import (
 from .lagrangian import (
     LagrangianEvaluation,
     RegionMasks,
+    build_lagrangian_multiplier_delta_search_model,
     bus_prices_from_coupling_duals,
     canonical_row_duals,
     choose_split_generator,
     evaluate_lagrangian_bound,
+    expand_lagrangian_multiplier_delta_candidate,
     optimize_lagrangian_bound_cupy,
     replay_lagrangian_certificate,
     verify_cardinality_disjunctive_cover,
@@ -696,6 +698,14 @@ class SolvedRegion:
     gpu_lagrangian: dict[str, Any]
     commitment_cuts: tuple[CommitmentUpperCut, ...] = ()
     commitment_cut_row_by_id: dict[str, int] | None = None
+
+
+@dataclass(frozen=True)
+class CenteredDualSearchResult:
+    row_dual: np.ndarray
+    commitment_cut_dual: np.ndarray
+    evaluation: LagrangianEvaluation
+    audit: dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -3376,6 +3386,211 @@ def _select_analytic_capacity_cover_cuts(
         "original_binary_feasible_set_changed": False,
     }
     return selected_cuts, selected_records, audit
+
+
+def _run_centered_dual_search(
+    *,
+    master: ReducedMaster,
+    masks: RegionMasks,
+    initial_row_dual: np.ndarray,
+    initial_commitment_cut_dual: np.ndarray,
+    commitment_cuts: tuple[CommitmentUpperCut, ...],
+    case: Any,
+    config: RunConfig,
+    deadline: Deadline,
+    stage: str,
+) -> CenteredDualSearchResult:
+    """Use scaled GPU search LPs only to propose exact replayable multipliers."""
+
+    coupling_radii = tuple(
+        float(value) for value in config.runtime["centered_dual_coupling_trust_radii"]
+    )
+    cut_radii = tuple(
+        float(value)
+        for value in config.runtime["centered_dual_commitment_cut_trust_radii"]
+    )
+    budgets = tuple(
+        float(value) for value in config.runtime["centered_dual_seconds_per_pass"]
+    )
+    if not coupling_radii or not (
+        len(coupling_radii) == len(cut_radii) == len(budgets)
+    ):
+        raise ScopfError("Centered dual-search schedule is empty or inconsistent")
+    schedule_values = (*coupling_radii, *cut_radii, *budgets)
+    if any(value <= 0.0 or not np.isfinite(value) for value in schedule_values):
+        raise ScopfError("Centered dual-search schedule contains an invalid value")
+
+    safety = float(config.raw["benchmark"]["certificate_safety_margin_dollars"])
+    current_row_dual = np.asarray(initial_row_dual, dtype=np.float64).copy()
+    current_cut_dual = np.asarray(
+        initial_commitment_cut_dual, dtype=np.float64
+    ).copy()
+    current = evaluate_lagrangian_bound(
+        master,
+        current_row_dual,
+        masks,
+        safety_margin_dollars=safety,
+        commitment_cuts=commitment_cuts,
+        commitment_cut_dual=current_cut_dual,
+    )
+    initial_bound = current.conservative_lower_bound
+    profile = config.raw["platforms"]["dgx_spark"]
+    passes: list[dict[str, Any]] = []
+    started = time.perf_counter()
+    for pass_number, (coupling_radius, cut_radius, requested_budget) in enumerate(
+        zip(coupling_radii, cut_radii, budgets, strict=True),
+        start=1,
+    ):
+        deadline.require(f"{stage} centered dual-search pass {pass_number}")
+        solver_budget = min(deadline.solver_budget(), requested_budget)
+        if solver_budget <= 0.0:
+            break
+        search_started = time.perf_counter()
+        search = build_lagrangian_multiplier_delta_search_model(
+            master,
+            current_row_dual,
+            masks,
+            commitment_cuts=commitment_cuts,
+            commitment_cut_dual=current_cut_dual,
+            maximum_new_violated_coupling_rows=int(
+                config.runtime["centered_dual_maximum_new_coupling_rows"]
+            ),
+            coupling_trust_radius=coupling_radius,
+            commitment_cut_trust_radius=cut_radius,
+            search_coefficient_zero_tolerance=float(
+                config.runtime["centered_dual_search_coefficient_zero_tolerance"]
+            ),
+        )
+        build_wall = time.perf_counter() - search_started
+        solve_started = time.perf_counter()
+        solve = solve_cuopt_continuous_pdlp(
+            search.canonical,
+            time_limit_seconds=solver_budget,
+            optimality_tolerance=float(
+                config.runtime["centered_dual_optimality_tolerance"]
+            ),
+            primal_feasibility_tolerance=float(
+                config.runtime["centered_dual_primal_feasibility_tolerance"]
+            ),
+            certificate_residual_tolerance=float(
+                config.runtime["centered_dual_certificate_residual_tolerance"]
+            ),
+            native_scaling_mode="none",
+            native_base_mva=float(case.base_mva),
+            log_to_console=True,
+            per_constraint_residual=True,
+            presolve=0,
+            initial_native_primal=search.initial_values,
+            pdlp_solver_mode=int(profile.get("pdlp_solver_mode_native", 1)),
+        )
+        solve_wall = time.perf_counter() - solve_started
+        pass_record: dict[str, Any] = {
+            "pass": pass_number,
+            "coupling_trust_radius": coupling_radius,
+            "commitment_cut_trust_radius": cut_radius,
+            "requested_solver_budget_seconds": requested_budget,
+            "actual_solver_budget_seconds": solver_budget,
+            "search_model_build_wall_time_seconds": build_wall,
+            "search_solver_wall_time_seconds": solve_wall,
+            "center_conservative_lower_bound": current.conservative_lower_bound,
+            "search_model": search.audit,
+            "search_solve": _solve_summary(solve),
+            "search_lp_solution_used_as_bound": False,
+        }
+        if solve.values is None or not np.all(np.isfinite(solve.values)):
+            pass_record["status"] = "no_finite_search_vector"
+            passes.append(pass_record)
+            continue
+        candidate_row_dual, candidate_cut_dual, reconstruction = (
+            expand_lagrangian_multiplier_delta_candidate(
+                master, search, solve.values
+            )
+        )
+        candidate = evaluate_lagrangian_bound(
+            master,
+            candidate_row_dual,
+            masks,
+            safety_margin_dollars=safety,
+            commitment_cuts=commitment_cuts,
+            commitment_cut_dual=candidate_cut_dual,
+        )
+        center_bound = current.conservative_lower_bound
+        accepted = candidate.conservative_lower_bound > center_bound
+        if accepted:
+            current = candidate
+            current_row_dual, current_cut_dual = _certificate_dual_arrays(
+                master, current, commitment_cuts
+            )
+        pass_record.update(
+            {
+                "status": (
+                    "exact_candidate_accepted"
+                    if accepted
+                    else "exact_candidate_rejected_monotone"
+                ),
+                "candidate_conservative_lower_bound": (
+                    candidate.conservative_lower_bound
+                ),
+                "exact_candidate_improvement_over_center_dollars": (
+                    candidate.conservative_lower_bound - center_bound
+                ),
+                "accepted_conservative_lower_bound": (
+                    current.conservative_lower_bound
+                ),
+                "candidate_reconstruction": reconstruction,
+                "search_predicted_improvement_dollars": (
+                    None
+                    if solve.primal_objective is None
+                    else -float(solve.primal_objective)
+                    * search.objective_normalizer
+                ),
+            }
+        )
+        passes.append(pass_record)
+
+    final_replay = evaluate_lagrangian_bound(
+        master,
+        current_row_dual,
+        masks,
+        safety_margin_dollars=safety,
+        commitment_cuts=commitment_cuts,
+        commitment_cut_dual=current_cut_dual,
+    )
+    replay_difference = abs(
+        final_replay.conservative_lower_bound - current.conservative_lower_bound
+    )
+    if replay_difference > float(
+        config.raw["benchmark"]["gpu_cpu_replay_tolerance_dollars"]
+    ):
+        raise ScopfError("Centered GPU dual-search certificate failed exact replay")
+    return CenteredDualSearchResult(
+        row_dual=current_row_dual,
+        commitment_cut_dual=current_cut_dual,
+        evaluation=final_replay,
+        audit={
+            "policy": "centered_dimensionless_gpu_pdlp_exact_replay_v1",
+            "stage": stage,
+            "passes": passes,
+            "pass_count": len(passes),
+            "initial_conservative_lower_bound": initial_bound,
+            "final_conservative_lower_bound": (
+                final_replay.conservative_lower_bound
+            ),
+            "improvement_dollars": (
+                final_replay.conservative_lower_bound - initial_bound
+            ),
+            "exact_final_replay_difference_dollars": replay_difference,
+            "total_wall_time_seconds": time.perf_counter() - started,
+            "search_lp_solution_used_as_bound": False,
+            "exact_nonsmoothed_fp64_replay_is_bound_authority": True,
+            "cpu_problem_solution_data_used": False,
+            "exact_source_pmin_pmax_changed": False,
+            "mathematical_original_integer_feasible_set_changed": False,
+            "best_raw_lower_bound": final_replay.raw_lower_bound,
+            "best_minimizing_commitment": final_replay.minimizing_commitment,
+            "best_commitment_cut_dual": current_cut_dual,
+        },
+    )
 
 
 def _refresh_region_with_global_commitment_cuts(
