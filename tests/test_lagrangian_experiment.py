@@ -28,6 +28,7 @@ from activsg_scopf.lagrangian_experiment import (
     EXPERIMENT_TAG,
     PrimalCandidatePolicy,
     RegionAttemptRejected,
+    _gpu_lagrangian_wall_time,
     _load_cpu_comparison,
     _map_phase_one_dual_to_source_native,
     _prepare_region_master,
@@ -491,6 +492,17 @@ def test_registered_activsg2000_v14_centered_dual_fix_is_fail_closed() -> None:
     v14.raw["runtime"]["centered_dual_coupling_trust_radii"][0] = 11.0
     with pytest.raises(ScopfError, match="runtime policy changed"):
         validate_lagrangian_experiment_config(v14)
+
+
+def test_gpu_lagrangian_timing_accepts_centered_and_legacy_audits() -> None:
+    assert _gpu_lagrangian_wall_time(
+        {"gpu_lagrangian_evaluation": {"wall_time_seconds": 1.25}}
+    ) == pytest.approx(1.25)
+    assert _gpu_lagrangian_wall_time(
+        {"gpu_lagrangian_evaluation": {"total_wall_time_seconds": 2.5}}
+    ) == pytest.approx(2.5)
+    with pytest.raises(ScopfError, match="recognized wall-time"):
+        _gpu_lagrangian_wall_time({"gpu_lagrangian_evaluation": {}})
 
 
 def test_analytic_capacity_cover_separator_selects_raw_row_proof() -> None:

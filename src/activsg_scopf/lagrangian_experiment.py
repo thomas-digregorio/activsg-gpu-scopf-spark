@@ -3686,6 +3686,7 @@ def _run_centered_dual_search(
         config.raw["benchmark"]["gpu_cpu_replay_tolerance_dollars"]
     ):
         raise ScopfError("Centered GPU dual-search certificate failed exact replay")
+    total_wall_time = time.perf_counter() - started
     return CenteredDualSearchResult(
         row_dual=current_row_dual,
         commitment_cut_dual=current_cut_dual,
@@ -3703,7 +3704,8 @@ def _run_centered_dual_search(
                 final_replay.conservative_lower_bound - initial_bound
             ),
             "exact_final_replay_difference_dollars": replay_difference,
-            "total_wall_time_seconds": time.perf_counter() - started,
+            "wall_time_seconds": total_wall_time,
+            "total_wall_time_seconds": total_wall_time,
             "search_lp_solution_used_as_bound": False,
             "exact_nonsmoothed_fp64_replay_is_bound_authority": True,
             "cpu_problem_solution_data_used": False,
@@ -4072,6 +4074,21 @@ def _region_record(
         ),
     }
     return record
+
+
+def _gpu_lagrangian_wall_time(region_record: dict[str, Any]) -> float:
+    """Read legacy or centered-search timing without making replay fragile."""
+
+    audit = region_record.get("gpu_lagrangian_evaluation")
+    if not isinstance(audit, dict):
+        raise ScopfError("Solved-region record lacks a GPU Lagrangian audit")
+    observed = audit.get("wall_time_seconds", audit.get("total_wall_time_seconds"))
+    if observed is None:
+        raise ScopfError("GPU Lagrangian audit lacks a recognized wall-time field")
+    value = float(observed)
+    if not np.isfinite(value) or value < 0.0:
+        raise ScopfError("GPU Lagrangian audit has an invalid wall time")
+    return value
 
 
 def _security_row_equivalence_record(master: ReducedMaster) -> dict[str, Any]:
@@ -8506,8 +8523,7 @@ def run_gpu_lagrangian_experiment(
                     for record in secure_seed_margin_rounds
                 ),
                 "cupy_lagrangian_evaluation_wall": sum(
-                    float(record["gpu_lagrangian_evaluation"]["wall_time_seconds"])
-                    for record in all_region_records
+                    _gpu_lagrangian_wall_time(record) for record in all_region_records
                 ),
                 "phase_one_precheck_pdlp_adapter_wall": sum(
                     float(record.get("adapter_wall_time_seconds", 0.0))
