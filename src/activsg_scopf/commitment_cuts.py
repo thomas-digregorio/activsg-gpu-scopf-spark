@@ -85,6 +85,94 @@ class CommitmentFeasibilityCut:
 
 
 @dataclass(frozen=True)
+class CommitmentCapacityCut:
+    """One row-wise necessary condition induced by conditional PMIN/PMAX.
+
+    If a dispatch row is ``a @ p <= b``, then every feasible commitment must
+    satisfy ``sum(min(a_g PMIN_g, a_g PMAX_g) u_g) <= b``.  A lower row uses
+    the analogous maximum activity and is negated into this common upper form.
+    The serialized source-row identity lets the independent checker rebuild
+    the inequality directly from raw inputs without trusting solver output.
+    """
+
+    cut_id: str
+    coefficients: FloatArray
+    rhs: float
+    source_commitment_sha256: str
+    conservative_source_violation_pu: float
+    source_row_name: str
+    source_row_side: str
+    source_row_bound_pu: float
+    outward_rhs_relaxation_pu: float
+
+    def validate(self, generator_count: int) -> None:
+        if self.coefficients.shape != (generator_count,) or not np.all(
+            np.isfinite(self.coefficients)
+        ):
+            raise ScopfError("Commitment capacity cut has invalid coefficients")
+        if self.source_row_side not in {"upper", "lower"}:
+            raise ScopfError("Commitment capacity cut has an invalid row side")
+        if not self.source_row_name:
+            raise ScopfError("Commitment capacity cut has an empty source row")
+        if not all(
+            isfinite(value)
+            for value in (
+                self.rhs,
+                self.conservative_source_violation_pu,
+                self.source_row_bound_pu,
+                self.outward_rhs_relaxation_pu,
+            )
+        ):
+            raise ScopfError("Commitment capacity cut has a nonfinite scalar")
+        if self.outward_rhs_relaxation_pu < 0.0:
+            raise ScopfError("Commitment capacity cut has a negative relaxation")
+
+    def violation(self, commitment: npt.ArrayLike) -> float:
+        binary = np.asarray(commitment, dtype=np.int8)
+        self.validate(binary.size)
+        if np.any((binary != 0) & (binary != 1)):
+            raise ScopfError("Commitment capacity cut requires a binary commitment")
+        return float(self.coefficients @ binary - self.rhs)
+
+    def as_dict(self, generator_source_rows: npt.ArrayLike) -> dict[str, Any]:
+        rows = np.asarray(generator_source_rows, dtype=np.int64)
+        self.validate(rows.size)
+        canonical_coefficients = np.where(
+            self.coefficients == 0.0, 0.0, self.coefficients
+        ).astype(np.float64, copy=False)
+        nonzero = np.flatnonzero(canonical_coefficients != 0.0)
+        return {
+            "certificate_kind": "conditional_dispatch_row_capacity_cut_v1",
+            "cut_id": self.cut_id,
+            "source_commitment_sha256": self.source_commitment_sha256,
+            "source_row_name": self.source_row_name,
+            "source_row_side": self.source_row_side,
+            "source_row_bound_pu": self.source_row_bound_pu,
+            "rhs": self.rhs,
+            "outward_rhs_relaxation_pu": self.outward_rhs_relaxation_pu,
+            "conservative_source_violation_pu": (
+                self.conservative_source_violation_pu
+            ),
+            "generator_coefficient_count": int(rows.size),
+            "nonzero_generator_coefficient_count": int(nonzero.size),
+            "generator_coefficients": [
+                {
+                    "source_row": int(rows[position]),
+                    "coefficient_pu": float(canonical_coefficients[position]),
+                }
+                for position in nonzero
+            ],
+            "coefficient_sha256": hashlib.sha256(
+                canonical_coefficients.tobytes()
+            ).hexdigest(),
+            "validity": (
+                "necessary_row_activity_envelope_with_exact_conditional_source_pmin_pmax"
+            ),
+            "exact_source_pmin_pmax_changed": False,
+        }
+
+
+@dataclass(frozen=True)
 class CommitmentCardinalityCut:
     """One branch inequality on an integer-valued commitment subset.
 
@@ -151,7 +239,9 @@ class CommitmentCardinalityCut:
         }
 
 
-type CommitmentUpperCut = CommitmentFeasibilityCut | CommitmentCardinalityCut
+type CommitmentUpperCut = (
+    CommitmentFeasibilityCut | CommitmentCapacityCut | CommitmentCardinalityCut
+)
 
 
 def build_commitment_cardinality_cut(
@@ -297,6 +387,64 @@ def commitment_feasibility_cut_from_record(
     return cut
 
 
+def commitment_capacity_cut_from_record(
+    record: dict[str, Any], generator_source_rows: npt.ArrayLike
+) -> CommitmentCapacityCut:
+    """Rebuild one row-capacity cut using public one-based generator rows."""
+
+    rows = np.asarray(generator_source_rows, dtype=np.int64)
+    if rows.ndim != 1 or len(set(int(row) for row in rows)) != int(rows.size):
+        raise ScopfError("Serialized capacity-cut generator identity is invalid")
+    by_row = {int(row): position for position, row in enumerate(rows)}
+    coefficients = np.zeros(rows.size, dtype=np.float64)
+    seen: set[int] = set()
+    for item in record.get("generator_coefficients", []):
+        source_row = int(item["source_row"])
+        if source_row not in by_row or source_row in seen:
+            raise ScopfError(
+                "Serialized capacity cut references an unknown or duplicate generator"
+            )
+        seen.add(source_row)
+        coefficients[by_row[source_row]] = float(item["coefficient_pu"])
+    cut = CommitmentCapacityCut(
+        cut_id=str(record["cut_id"]),
+        coefficients=coefficients,
+        rhs=float(record["rhs"]),
+        source_commitment_sha256=str(record["source_commitment_sha256"]),
+        conservative_source_violation_pu=float(
+            record["conservative_source_violation_pu"]
+        ),
+        source_row_name=str(record["source_row_name"]),
+        source_row_side=str(record["source_row_side"]),
+        source_row_bound_pu=float(record["source_row_bound_pu"]),
+        outward_rhs_relaxation_pu=float(record["outward_rhs_relaxation_pu"]),
+    )
+    cut.validate(rows.size)
+    expected = cut.as_dict(rows)
+    for key in (
+        "certificate_kind",
+        "cut_id",
+        "source_commitment_sha256",
+        "source_row_name",
+        "source_row_side",
+        "source_row_bound_pu",
+        "rhs",
+        "outward_rhs_relaxation_pu",
+        "conservative_source_violation_pu",
+        "generator_coefficient_count",
+        "nonzero_generator_coefficient_count",
+        "generator_coefficients",
+        "coefficient_sha256",
+        "validity",
+        "exact_source_pmin_pmax_changed",
+    ):
+        if record.get(key) != expected[key]:
+            raise ScopfError(
+                f"Serialized capacity cut identity mismatch for {key}"
+            )
+    return cut
+
+
 def commitment_upper_cut_from_record(
     record: dict[str, Any], generator_source_rows: npt.ArrayLike
 ) -> CommitmentUpperCut:
@@ -305,6 +453,8 @@ def commitment_upper_cut_from_record(
     kind = str(record.get("certificate_kind", ""))
     if kind == "phase_one_binary_benders_feasibility_cut_v1":
         return commitment_feasibility_cut_from_record(record, generator_source_rows)
+    if kind == "conditional_dispatch_row_capacity_cut_v1":
+        return commitment_capacity_cut_from_record(record, generator_source_rows)
     if kind == "binary_commitment_cardinality_branch_v1":
         return commitment_cardinality_cut_from_record(record, generator_source_rows)
     raise ScopfError(f"Unknown serialized commitment-cut kind: {kind!r}")
@@ -457,6 +607,134 @@ def _relax_commitment_cut_coefficient_dust(
     )
 
 
+def derive_commitment_capacity_cut(
+    *,
+    master: ReducedMaster,
+    source_row_name: str,
+    source_commitment: npt.ArrayLike,
+    base_mva: float,
+    safety_margin_pu: float,
+) -> tuple[CommitmentCapacityCut, dict[str, Any]]:
+    """Derive one direct PMIN/PMAX commitment envelope for a dispatch row.
+
+    This is a solver-independent certificate.  It uses only the cleaned
+    reduced dispatch row and the exact source PMIN/PMAX intervals.  The source
+    commitment selects which violated row side generated the cut; it does not
+    otherwise affect the globally valid inequality.
+    """
+
+    if not isfinite(base_mva) or base_mva <= 0.0:
+        raise ScopfError("Commitment capacity cut requires positive base MVA")
+    if not isfinite(safety_margin_pu) or safety_margin_pu < 0.0:
+        raise ScopfError("Commitment capacity cut safety margin must be nonnegative")
+    source_rows = np.asarray(master.index.generator_source_rows, dtype=np.int64)
+    binary = np.asarray(source_commitment, dtype=np.int8)
+    if binary.shape != (source_rows.size,) or np.any((binary != 0) & (binary != 1)):
+        raise ScopfError("Commitment capacity cut requires an exact binary source")
+    matches = [row for row in master.coupling_rows if row.row_name == source_row_name]
+    if len(matches) != 1:
+        raise ScopfError("Commitment capacity cut source row is missing or duplicated")
+    coupling = matches[0]
+    coefficients = np.asarray(coupling.generator_coefficients, dtype=np.float64)
+    curves = [master.costs[int(row)] for row in source_rows]
+    pmin = np.asarray([curve.pmin_mw for curve in curves], dtype=np.float64)
+    pmax = np.asarray([curve.pmax_mw for curve in curves], dtype=np.float64)
+    if (
+        coefficients.shape != binary.shape
+        or np.any(~np.isfinite(coefficients))
+        or np.any(~np.isfinite(pmin))
+        or np.any(~np.isfinite(pmax))
+        or np.any(pmin > pmax)
+    ):
+        raise ScopfError("Commitment capacity cut found invalid row or generator bounds")
+    minimum_activity = np.minimum(coefficients * pmin, coefficients * pmax)
+    maximum_activity = np.maximum(coefficients * pmin, coefficients * pmax)
+    row_lower, row_upper = master.canonical.row_bound_arrays()
+    lower = float(row_lower[coupling.row_index])
+    upper = float(row_upper[coupling.row_index])
+    candidates: list[tuple[str, FloatArray, float, float, float]] = []
+    if isfinite(upper):
+        candidate = minimum_activity / base_mva
+        transformed_rhs = upper / base_mva
+        violation = fsum(
+            [
+                -transformed_rhs,
+                *(float(candidate[position]) for position in np.flatnonzero(binary)),
+            ]
+        )
+        candidates.append(("upper", candidate, transformed_rhs, violation, upper / base_mva))
+    if isfinite(lower):
+        candidate = -maximum_activity / base_mva
+        transformed_rhs = -lower / base_mva
+        violation = fsum(
+            [
+                -transformed_rhs,
+                *(float(candidate[position]) for position in np.flatnonzero(binary)),
+            ]
+        )
+        candidates.append(("lower", candidate, transformed_rhs, violation, lower / base_mva))
+    if not candidates:
+        raise ScopfError("Commitment capacity cut source row has no finite side")
+    side, cut_coefficients, raw_rhs, raw_violation, source_bound_pu = max(
+        candidates, key=lambda item: (item[3], item[0])
+    )
+    if raw_violation <= safety_margin_pu:
+        raise ScopfError(
+            "Commitment capacity cut source does not violate a row envelope beyond its margin"
+        )
+    cut_coefficients = np.where(cut_coefficients == 0.0, 0.0, cut_coefficients).astype(
+        np.float64, copy=False
+    )
+    rounding_margin = 32.0 * np.finfo(np.float64).eps * max(
+        1.0,
+        abs(raw_rhs),
+        float(np.sum(np.abs(cut_coefficients))),
+    )
+    outward_relaxation = float(safety_margin_pu + rounding_margin)
+    rhs = float(raw_rhs + outward_relaxation)
+    source_violation = fsum(
+        [
+            -rhs,
+            *(float(cut_coefficients[position]) for position in np.flatnonzero(binary)),
+        ]
+    )
+    if source_violation <= 0.0:
+        raise ScopfError("Commitment capacity cut margin consumed its source violation")
+    source_sha = hashlib.sha256(binary.tobytes()).hexdigest()
+    identity_bytes = (
+        b"conditional_dispatch_row_capacity_cut_v1\0"
+        + source_row_name.encode("utf-8")
+        + b"\0"
+        + side.encode("ascii")
+        + np.asarray([rhs], dtype=np.float64).tobytes()
+        + cut_coefficients.tobytes()
+    )
+    cut = CommitmentCapacityCut(
+        cut_id="rc_" + hashlib.sha256(identity_bytes).hexdigest()[:24],
+        coefficients=cut_coefficients,
+        rhs=rhs,
+        source_commitment_sha256=source_sha,
+        conservative_source_violation_pu=source_violation,
+        source_row_name=source_row_name,
+        source_row_side=side,
+        source_row_bound_pu=source_bound_pu,
+        outward_rhs_relaxation_pu=outward_relaxation,
+    )
+    cut.validate(source_rows.size)
+    return cut, {
+        "derivation": "direct_conditional_pmin_pmax_row_activity_envelope_v1",
+        "source_row_name": source_row_name,
+        "source_row_side": side,
+        "source_row_kind": coupling.kind,
+        "source_row_bound_pu": source_bound_pu,
+        "raw_source_violation_pu": raw_violation,
+        "conservative_source_violation_pu": source_violation,
+        "outward_rhs_relaxation_pu": outward_relaxation,
+        "nonzero_coefficient_count": int(np.count_nonzero(cut_coefficients)),
+        "cut": cut.as_dict(source_rows + 1),
+    }
+
+
 def derive_commitment_feasibility_cut(
     *,
     master: ReducedMaster,
@@ -592,7 +870,7 @@ def derive_commitment_feasibility_cut(
 
 def generate_commitment_cut_repairs(
     *,
-    cut: CommitmentFeasibilityCut,
+    cut: CommitmentFeasibilityCut | CommitmentCapacityCut,
     commitment: npt.ArrayLike,
     fixed_off: npt.ArrayLike,
     fixed_on: npt.ArrayLike,

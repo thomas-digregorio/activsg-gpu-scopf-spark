@@ -4,8 +4,10 @@ import pytest
 from activsg_scopf.commitment_cuts import (
     _relax_commitment_cut_coefficient_dust,
     build_commitment_cardinality_cut,
+    commitment_capacity_cut_from_record,
     commitment_feasibility_cut_from_record,
     commitment_upper_cut_from_record,
+    derive_commitment_capacity_cut,
     derive_commitment_feasibility_cut,
     generate_commitment_cut_repairs,
 )
@@ -21,6 +23,93 @@ from activsg_scopf.phase_one import build_phase_one_model, phase_one_certificate
 from activsg_scopf.reduced import CouplingRow, build_reduced_master, fix_commitments
 
 from .helpers import triangle_case
+
+
+def test_direct_row_capacity_cut_replays_exact_pmin_pmax_envelope() -> None:
+    case, _ = triangle_case()
+    case.gen[1, 7] = 1.0
+    network = build_network(case)
+    master = build_reduced_master(case, network)
+    source_rows = master.index.generator_source_rows
+    dispatch_columns = [
+        master.index.dispatch_by_generator[int(generator)] for generator in source_rows
+    ]
+    row = master.canonical.add_row(
+        "test_minimum_activity_limit",
+        {dispatch_columns[0]: 1.0, dispatch_columns[1]: 1.0},
+        upper=20.0,
+    )
+    master.coupling_rows.append(
+        CouplingRow(
+            row_index=row,
+            row_name="test_minimum_activity_limit",
+            rhs=20.0,
+            generator_coefficients=np.asarray([1.0, 1.0]),
+            bus_coefficients=np.zeros(network.bus_ids.size),
+            kind="test_upper",
+        )
+    )
+    source = np.asarray([1, 0], dtype=np.int8)
+
+    cut, audit = derive_commitment_capacity_cut(
+        master=master,
+        source_row_name="test_minimum_activity_limit",
+        source_commitment=source,
+        base_mva=100.0,
+        safety_margin_pu=1e-8,
+    )
+
+    np.testing.assert_array_equal(cut.coefficients, np.asarray([0.25, 0.10]))
+    assert cut.rhs == pytest.approx(0.20000001)
+    assert cut.violation(source) == pytest.approx(0.04999999)
+    assert cut.violation(np.asarray([0, 1], dtype=np.int8)) < 0.0
+    assert audit["source_row_side"] == "upper"
+    assert audit["outward_rhs_relaxation_pu"] >= 1e-8
+    serialized = cut.as_dict(source_rows + 1)
+    rebuilt = commitment_capacity_cut_from_record(serialized, source_rows + 1)
+    generic = commitment_upper_cut_from_record(serialized, source_rows + 1)
+    assert rebuilt.cut_id == cut.cut_id == generic.cut_id
+    np.testing.assert_array_equal(rebuilt.coefficients, cut.coefficients)
+
+
+def test_direct_lower_row_capacity_cut_uses_conditional_pmax() -> None:
+    case, _ = triangle_case()
+    case.gen[1, 7] = 1.0
+    network = build_network(case)
+    master = build_reduced_master(case, network)
+    source_rows = master.index.generator_source_rows
+    dispatch_columns = [
+        master.index.dispatch_by_generator[int(generator)] for generator in source_rows
+    ]
+    row = master.canonical.add_row(
+        "test_maximum_activity_requirement",
+        {dispatch_columns[0]: 1.0, dispatch_columns[1]: 1.0},
+        lower=60.0,
+    )
+    master.coupling_rows.append(
+        CouplingRow(
+            row_index=row,
+            row_name="test_maximum_activity_requirement",
+            rhs=60.0,
+            generator_coefficients=np.asarray([1.0, 1.0]),
+            bus_coefficients=np.zeros(network.bus_ids.size),
+            kind="test_lower",
+        )
+    )
+
+    cut, audit = derive_commitment_capacity_cut(
+        master=master,
+        source_row_name="test_maximum_activity_requirement",
+        source_commitment=np.asarray([0, 1], dtype=np.int8),
+        base_mva=100.0,
+        safety_margin_pu=1e-8,
+    )
+
+    np.testing.assert_array_equal(cut.coefficients, np.asarray([-1.0, -0.5]))
+    assert cut.rhs == pytest.approx(-0.59999999)
+    assert cut.violation(np.asarray([0, 1], dtype=np.int8)) == pytest.approx(0.09999999)
+    assert cut.violation(np.asarray([1, 0], dtype=np.int8)) < 0.0
+    assert audit["source_row_side"] == "lower"
 
 
 def test_exact_coordinate_ascent_strengthens_at_most_commitment_cut() -> None:

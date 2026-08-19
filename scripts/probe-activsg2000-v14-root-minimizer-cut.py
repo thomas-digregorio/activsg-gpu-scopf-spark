@@ -20,8 +20,8 @@ from typing import Any
 import numpy as np
 
 from activsg_scopf.commitment_cuts import (
-    CommitmentFeasibilityCut,
     commitment_upper_cut_from_record,
+    derive_commitment_capacity_cut,
 )
 from activsg_scopf.config import load_config
 from activsg_scopf.deadline import Deadline
@@ -35,6 +35,7 @@ from activsg_scopf.lagrangian_experiment import (
     PrimalCandidatePolicy,
     RegionAttemptRejected,
     _certificate_dual_arrays,
+    _commitment_upper_cut_record,
     _prepare_region_master,
     _solve_fixed_commitment_feasibility,
     _validate_prepared_region_master,
@@ -51,89 +52,6 @@ def _read_json(path: Path) -> dict[str, Any]:
 
 def _commitment_sha256(commitment: np.ndarray) -> str:
     return hashlib.sha256(np.asarray(commitment, dtype=np.int8).tobytes()).hexdigest()
-
-
-def _diagnostic_row_capacity_cut(
-    *, master: Any, row_name: str, commitment: np.ndarray, base_mva: float
-) -> tuple[CommitmentFeasibilityCut, dict[str, Any]]:
-    """Create a conservative necessary commitment condition for one row.
-
-    For an upper row ``a @ p <= b``, every feasible dispatch must satisfy
-    ``sum(min(a_g PMIN_g, a_g PMAX_g) u_g) <= b``.  The analogous lower-row
-    condition is negated into the common upper-inequality form.  This probe
-    keeps the implementation local until its measured bound lift justifies a
-    production certificate type and independent replay path.
-    """
-
-    coupling = next(row for row in master.coupling_rows if row.row_name == row_name)
-    row_lower, row_upper = master.canonical.row_bound_arrays()
-    lower = float(row_lower[coupling.row_index])
-    upper = float(row_upper[coupling.row_index])
-    coefficients = np.asarray(coupling.generator_coefficients, dtype=np.float64)
-    curves = [master.costs[int(row)] for row in master.index.generator_source_rows]
-    pmin = np.asarray([curve.pmin_mw for curve in curves], dtype=np.float64)
-    pmax = np.asarray([curve.pmax_mw for curve in curves], dtype=np.float64)
-    minimum_activity = np.minimum(coefficients * pmin, coefficients * pmax)
-    maximum_activity = np.maximum(coefficients * pmin, coefficients * pmax)
-    candidates: list[tuple[str, np.ndarray, float, float]] = []
-    if np.isfinite(upper):
-        raw_coefficients = minimum_activity / base_mva
-        raw_rhs = upper / base_mva
-        candidates.append(
-            (
-                "upper",
-                raw_coefficients,
-                raw_rhs,
-                float(raw_coefficients @ commitment - raw_rhs),
-            )
-        )
-    if np.isfinite(lower):
-        raw_coefficients = -maximum_activity / base_mva
-        raw_rhs = -lower / base_mva
-        candidates.append(
-            (
-                "lower",
-                raw_coefficients,
-                raw_rhs,
-                float(raw_coefficients @ commitment - raw_rhs),
-            )
-        )
-    side, cut_coefficients, raw_rhs, raw_violation = max(
-        candidates, key=lambda item: (item[3], item[0])
-    )
-    scale = max(1.0, abs(raw_rhs), float(np.sum(np.abs(cut_coefficients))))
-    outward_relaxation = 32.0 * np.finfo(np.float64).eps * scale
-    rhs = float(raw_rhs + outward_relaxation)
-    cut_coefficients = np.where(cut_coefficients == 0.0, 0.0, cut_coefficients)
-    source_violation = float(cut_coefficients @ commitment - rhs)
-    if source_violation <= 0.0:
-        raise RuntimeError("Constant-row contradiction did not yield a violated capacity cut")
-    source_sha = _commitment_sha256(commitment)
-    identity = (
-        row_name.encode("utf-8")
-        + side.encode("ascii")
-        + source_sha.encode("ascii")
-        + np.asarray([rhs], dtype=np.float64).tobytes()
-        + np.asarray(cut_coefficients, dtype=np.float64).tobytes()
-    )
-    cut = CommitmentFeasibilityCut(
-        cut_id="diagnostic_rc_" + hashlib.sha256(identity).hexdigest()[:24],
-        coefficients=np.asarray(cut_coefficients, dtype=np.float64),
-        rhs=rhs,
-        source_commitment_sha256=source_sha,
-        conservative_source_violation_pu=source_violation,
-    )
-    cut.validate(commitment.size)
-    return cut, {
-        "derivation": "direct_exact_pmin_pmax_row_capacity_necessary_condition_probe_v1",
-        "source_row_name": row_name,
-        "source_row_side": side,
-        "raw_source_violation_pu": raw_violation,
-        "conservative_source_violation_pu": source_violation,
-        "outward_rhs_relaxation_pu": outward_relaxation,
-        "nonzero_coefficient_count": int(np.count_nonzero(cut_coefficients)),
-        "cut_id": cut.cut_id,
-    }
 
 
 def main() -> None:
@@ -238,73 +156,112 @@ def main() -> None:
         "root_minimizer_commitment_sha256": _commitment_sha256(minimizer),
         "phase_one_policy": policy.as_dict(),
     }
-    phase_started = time.perf_counter()
-    try:
-        feasible = _solve_fixed_commitment_feasibility(
-            region_id="v14_root_lagrangian_minimizer",
-            commitment=minimizer,
-            case=case,
-            network=network,
-            catalog=catalog,
-            config=config,
-            deadline=Deadline(240.0, 15.0, 5.0),
-            initial_pairs=root_pairs,
-            screener=screener,
-            checkpoint=lambda: None,
-            progress=None,
-            policy=policy,
+    current_pairs = root_pairs
+    current_cuts = existing_cuts
+    current_evaluation = replayed_root
+    current_row_dual = root_row_dual
+    current_cut_dual = root_cut_dual
+    iteration_records: list[dict[str, Any]] = []
+    seen_commitments: set[str] = set()
+    maximum_iterations = 32
+    coordinate_cycles = 16
+    probe_deadline = Deadline(240.0, 15.0, 5.0)
+    component_gate = "maximum_cut_iterations_reached"
+    for iteration in range(1, maximum_iterations + 1):
+        current_minimizer = np.asarray(
+            current_evaluation.minimizing_commitment, dtype=np.int8
         )
-    except RegionAttemptRejected as exc:
-        output["root_minimizer_phase_one"] = {
-            "status": "rejected",
-            "reason": exc.reason,
-            "wall_time_seconds": time.perf_counter() - phase_started,
-            "rounds": exc.rounds,
-            "replay_certified_global_cut_available": (
-                exc.commitment_feasibility_cut is not None
-            ),
+        commitment_digest = _commitment_sha256(current_minimizer)
+        if commitment_digest in seen_commitments:
+            component_gate = "lagrangian_minimizer_cycle_detected"
+            break
+        seen_commitments.add(commitment_digest)
+        phase_started = time.perf_counter()
+        iteration_record: dict[str, Any] = {
+            "iteration": iteration,
+            "commitment_count": int(np.count_nonzero(current_minimizer)),
+            "commitment_sha256": commitment_digest,
+            "bound_before": current_evaluation.conservative_lower_bound,
+            "cut_count_before": len(current_cuts),
         }
-        new_cut = exc.commitment_feasibility_cut
-        direct_capacity_audit: dict[str, Any] | None = None
-        if (
-            new_cut is None
-            and exc.reason == "projected_constant_coupling_row_violation"
-            and exc.rounds
-        ):
-            row_name = str(exc.rounds[-1]["projection_precheck"]["row_name"])
-            new_cut, direct_capacity_audit = _diagnostic_row_capacity_cut(
-                master=exc.master,
-                row_name=row_name,
-                commitment=minimizer,
-                base_mva=float(case.base_mva),
+        try:
+            feasible = _solve_fixed_commitment_feasibility(
+                region_id=f"v14_root_minimizer_{iteration:03d}",
+                commitment=current_minimizer,
+                case=case,
+                network=network,
+                catalog=catalog,
+                config=config,
+                deadline=probe_deadline,
+                initial_pairs=current_pairs,
+                screener=screener,
+                checkpoint=lambda: None,
+                progress=None,
+                policy=policy,
             )
-            output["root_minimizer_phase_one"]["direct_row_capacity_cut"] = (
-                direct_capacity_audit
+        except RegionAttemptRejected as exc:
+            iteration_record.update(
+                {
+                    "phase_one_status": "rejected",
+                    "phase_one_reason": exc.reason,
+                    "phase_one_wall_time_seconds": time.perf_counter() - phase_started,
+                    "phase_one_rounds": exc.rounds,
+                }
             )
-        if new_cut is None:
-            output["passed"] = True
-            output["component_gate"] = "no_replay_certified_global_cut_available"
-        else:
-            output["root_minimizer_phase_one"]["global_cut"] = new_cut.as_dict(
-                source_rows
+            new_cut = exc.commitment_feasibility_cut
+            cut_derivation: dict[str, Any] | None = None
+            if (
+                new_cut is None
+                and exc.reason == "projected_constant_coupling_row_violation"
+                and exc.rounds
+            ):
+                row_name = str(exc.rounds[-1]["projection_precheck"]["row_name"])
+                new_cut, cut_derivation = derive_commitment_capacity_cut(
+                    master=exc.master,
+                    source_row_name=row_name,
+                    source_commitment=current_minimizer,
+                    base_mva=float(case.base_mva),
+                    safety_margin_pu=float(
+                        config.runtime["phase_one_safety_margin_pu"]
+                    ),
+                )
+            elif new_cut is not None:
+                cut_derivation = exc.commitment_feasibility_cut_record
+            if new_cut is None:
+                iteration_record["status"] = "no_replay_certified_global_cut"
+                iteration_records.append(iteration_record)
+                component_gate = "no_replay_certified_global_cut_available"
+                break
+            iteration_record["cut_derivation"] = cut_derivation
+            iteration_record["cut"] = _commitment_upper_cut_record(new_cut, source_rows)
+            if new_cut.cut_id in {cut.cut_id for cut in current_cuts}:
+                iteration_record["status"] = "duplicate_global_cut"
+                iteration_record["existing_cut_violation_pu"] = new_cut.violation(
+                    current_minimizer
+                )
+                iteration_records.append(iteration_record)
+                component_gate = "duplicate_cut_at_new_minimizer"
+                break
+            current_pairs = tuple(sorted(exc.security_pairs))
+            combined_cuts = tuple(
+                sorted(current_cuts + (new_cut,), key=lambda cut: cut.cut_id)
             )
-            combined_cuts = tuple(sorted(existing_cuts + (new_cut,), key=lambda cut: cut.cut_id))
             strengthened_master = _prepare_region_master(
                 case=case,
                 network=network,
                 config=config,
                 masks=masks,
-                initial_pairs=tuple(sorted(exc.security_pairs)),
+                initial_pairs=current_pairs,
                 commitment_cuts=combined_cuts,
             )
             _validate_prepared_region_master(
                 strengthened_master,
                 masks,
-                tuple(sorted(exc.security_pairs)),
+                current_pairs,
                 combined_cuts,
             )
             inherited_row_dual, inherited_cut_dual = _certificate_dual_arrays(
-                strengthened_master, replayed_root, combined_cuts
+                strengthened_master, current_evaluation, combined_cuts
             )
             inherited = evaluate_lagrangian_bound(
                 strengthened_master,
@@ -321,7 +278,7 @@ def main() -> None:
                 masks,
                 commitment_cuts=combined_cuts,
                 initial_commitment_cut_dual=inherited_cut_dual,
-                cycles=64,
+                cycles=coordinate_cycles,
             )
             coordinate_wall = time.perf_counter() - coordinate_started
             strengthened = evaluate_lagrangian_bound(
@@ -341,72 +298,108 @@ def main() -> None:
                 raise RuntimeError(
                     "GPU cut coordinate certificate failed exact replay"
                 ) from exc
-            if strengthened.conservative_lower_bound + 1e-6 < inherited.conservative_lower_bound:
-                raise RuntimeError("GPU cut coordinate ascent weakened the certificate") from exc
-            required_bound = float(prior["objective"]) * (
-                1.0 - float(config.model["mip_relative_gap_tolerance"])
+            if strengthened.conservative_lower_bound + 1e-6 < (
+                inherited.conservative_lower_bound
+            ):
+                raise RuntimeError(
+                    "GPU cut coordinate ascent weakened the certificate"
+                ) from exc
+            iteration_record.update(
+                {
+                    "status": "cut_added_and_reoptimized",
+                    "coordinate_cycles": coordinate_cycles,
+                    "coordinate_wall_time_seconds": coordinate_wall,
+                    "bound_after": strengthened.conservative_lower_bound,
+                    "bound_improvement_dollars": (
+                        strengthened.conservative_lower_bound
+                        - current_evaluation.conservative_lower_bound
+                    ),
+                    "cut_count_after": len(combined_cuts),
+                    "nonzero_cut_dual_count": int(
+                        np.count_nonzero(optimized_cut_dual)
+                    ),
+                    "new_cut_dual": float(
+                        optimized_cut_dual[
+                            next(
+                                index
+                                for index, cut in enumerate(combined_cuts)
+                                if cut.cut_id == new_cut.cut_id
+                            )
+                        ]
+                    ),
+                    "next_commitment_count": int(
+                        np.count_nonzero(strengthened.minimizing_commitment)
+                    ),
+                    "next_commitment_sha256": _commitment_sha256(
+                        strengthened.minimizing_commitment
+                    ),
+                    "cpu_replay_difference_dollars": replay_difference,
+                }
             )
-            required_lift = max(
-                0.0, required_bound - inherited.conservative_lower_bound
-            )
-            achieved_lift = max(
-                0.0,
-                strengthened.conservative_lower_bound
-                - inherited.conservative_lower_bound,
-            )
-            output["cut_coordinate_ascent"] = {
-                "cycles": 64,
-                "wall_time_seconds": coordinate_wall,
-                "inherited_bound": inherited.conservative_lower_bound,
-                "strengthened_bound": strengthened.conservative_lower_bound,
-                "improvement_dollars": achieved_lift,
-                "required_bound_for_gpu_incumbent_at_requested_gap": required_bound,
-                "required_lift_dollars": required_lift,
-                "achieved_fraction_of_required_lift": (
-                    1.0 if required_lift == 0.0 else achieved_lift / required_lift
-                ),
-                "nonzero_cut_dual_count": int(np.count_nonzero(optimized_cut_dual)),
-                "new_cut_dual": float(
-                    optimized_cut_dual[
-                        next(
-                            index
-                            for index, cut in enumerate(combined_cuts)
-                            if cut.cut_id == new_cut.cut_id
+            iteration_records.append(iteration_record)
+            current_cuts = combined_cuts
+            current_evaluation = strengthened
+            current_row_dual = inherited_row_dual
+            current_cut_dual = optimized_cut_dual
+        else:
+            current_pairs = feasible.security_pairs
+            iteration_record.update(
+                {
+                    "status": "secure_lagrangian_minimizer",
+                    "phase_one_status": "secure",
+                    "phase_one_wall_time_seconds": time.perf_counter() - phase_started,
+                    "phase_one_round_count": len(feasible.rounds),
+                    "final_screen": feasible.final_screen,
+                    "canonical_model_residual_pu": (
+                        feasible.master.canonical.max_row_violation(
+                            feasible.source_values
                         )
-                    ]
-                ),
-                "new_minimizer_commitment_count": int(
-                    np.count_nonzero(strengthened.minimizing_commitment)
-                ),
-                "new_minimizer_commitment_sha256": _commitment_sha256(
-                    strengthened.minimizing_commitment
-                ),
-                "minimizer_changed": bool(
-                    np.any(strengthened.minimizing_commitment != minimizer)
-                ),
-                "cpu_replay_difference_dollars": replay_difference,
-                "host_transfer_during_coordinates": audit[
-                    "host_transfer_during_coordinates"
-                ],
-            }
-            output["passed"] = True
-            output["component_gate"] = (
-                "material" if required_lift == 0.0 or achieved_lift >= 0.01 * required_lift
-                else "insufficient_bound_lift"
+                        / float(case.base_mva)
+                    ),
+                }
             )
-    else:
-        output["root_minimizer_phase_one"] = {
-            "status": "secure",
-            "wall_time_seconds": time.perf_counter() - phase_started,
-            "round_count": len(feasible.rounds),
-            "final_screen": feasible.final_screen,
-            "canonical_model_residual_pu": (
-                feasible.master.canonical.max_row_violation(feasible.source_values)
-                / float(case.base_mva)
+            iteration_records.append(iteration_record)
+            component_gate = "root_lagrangian_minimizer_is_secure"
+            break
+    required_bound = float(prior["objective"]) * (
+        1.0 - float(config.model["mip_relative_gap_tolerance"])
+    )
+    required_lift = max(
+        0.0, required_bound - replayed_root.conservative_lower_bound
+    )
+    achieved_lift = max(
+        0.0,
+        current_evaluation.conservative_lower_bound
+        - replayed_root.conservative_lower_bound,
+    )
+    if required_lift == 0.0 or achieved_lift >= 0.01 * required_lift:
+        component_gate = "material"
+    output.update(
+        {
+            "passed": True,
+            "component_gate": component_gate,
+            "maximum_cut_iterations": maximum_iterations,
+            "coordinate_cycles_per_iteration": coordinate_cycles,
+            "cutting_plane_iterations": iteration_records,
+            "final_cut_count": len(current_cuts),
+            "final_security_pair_count": len(current_pairs),
+            "final_bound": current_evaluation.conservative_lower_bound,
+            "final_minimizer_commitment_count": int(
+                np.count_nonzero(current_evaluation.minimizing_commitment)
             ),
+            "final_minimizer_commitment_sha256": _commitment_sha256(
+                current_evaluation.minimizing_commitment
+            ),
+            "required_bound_for_gpu_incumbent_at_requested_gap": required_bound,
+            "required_lift_dollars": required_lift,
+            "achieved_lift_dollars": achieved_lift,
+            "achieved_fraction_of_required_lift": (
+                1.0 if required_lift == 0.0 else achieved_lift / required_lift
+            ),
+            "final_row_dual_count": int(current_row_dual.size),
+            "final_cut_dual_count": int(current_cut_dual.size),
         }
-        output["passed"] = True
-        output["component_gate"] = "root_lagrangian_minimizer_is_secure"
+    )
 
     output["total_wall_time_seconds"] = time.perf_counter() - started
     print("V14_ROOT_MINIMIZER_CUT_PROBE=" + json.dumps(output, sort_keys=True))
