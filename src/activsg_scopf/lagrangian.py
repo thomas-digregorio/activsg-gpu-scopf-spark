@@ -10,6 +10,7 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 
+from .canonical import CanonicalMILP
 from .commitment_cuts import (
     CommitmentCardinalityCut,
     CommitmentUpperCut,
@@ -146,6 +147,19 @@ class LagrangianEvaluation:
             }
         )
         return certificate
+
+
+@dataclass(frozen=True)
+class LagrangianMultiplierSearchModel:
+    """A bounded LP used only to propose replayable Lagrangian multipliers."""
+
+    canonical: CanonicalMILP
+    selected_coupling_positions: npt.NDArray[np.int64]
+    coupling_columns: npt.NDArray[np.int64]
+    commitment_cut_columns: npt.NDArray[np.int64]
+    epigraph_columns: npt.NDArray[np.int64]
+    initial_values: FloatArray
+    audit: dict[str, Any]
 
 
 def evaluate_lagrangian_bound_cupy(
@@ -863,6 +877,264 @@ def _generator_breakpoint_state_arrays(
         ):
             raise ScopfError("Generator breakpoint enumeration changed PMIN/PMAX")
     return dispatch, cost, commitment
+
+
+def build_lagrangian_multiplier_search_model(
+    master: ReducedMaster,
+    row_dual: npt.ArrayLike,
+    region: RegionMasks,
+    *,
+    commitment_cuts: tuple[CommitmentUpperCut, ...] = (),
+    commitment_cut_dual: npt.ArrayLike | None = None,
+    maximum_new_violated_coupling_rows: int = 256,
+    multiplier_bound: float = 10_000.0,
+    commitment_cut_multiplier_bound: float = 1_000_000.0,
+    epigraph_bound: float = 100_000_000.0,
+) -> LagrangianMultiplierSearchModel:
+    """Build a finite-state LP that searches a restricted dual support.
+
+    This LP is never itself a lower-bound authority.  It maximizes a
+    hypograph of the separable generator Lagrangian over all exact PWL
+    breakpoint states, but only on a deterministic subset of coupling rows.
+    Its returned multipliers are projected to the valid sign cone and scored
+    later by :func:`evaluate_lagrangian_bound`.  Finite variable bounds are
+    therefore safe search restrictions rather than assumptions about the
+    original SCOPF optimum.
+    """
+
+    if maximum_new_violated_coupling_rows < 0:
+        raise ScopfError("Multiplier search active-row limit must be nonnegative")
+    for value, label in (
+        (multiplier_bound, "coupling multiplier"),
+        (commitment_cut_multiplier_bound, "commitment-cut multiplier"),
+        (epigraph_bound, "epigraph"),
+    ):
+        if not np.isfinite(value) or value <= 0.0:
+            raise ScopfError(f"Multiplier search {label} bound must be positive")
+
+    generator_count = master.index.generator_source_rows.size
+    region.validate(generator_count)
+    for cut in commitment_cuts:
+        cut.validate(generator_count)
+    full_dual = np.asarray(row_dual, dtype=np.float64)
+    if full_dual.shape != (master.canonical.num_rows,) or not np.all(
+        np.isfinite(full_dual)
+    ):
+        raise ScopfError("Multiplier search initial row dual is invalid")
+    supplied_cut_dual = (
+        np.zeros(len(commitment_cuts), dtype=np.float64)
+        if commitment_cut_dual is None
+        else np.asarray(commitment_cut_dual, dtype=np.float64)
+    )
+    if supplied_cut_dual.shape != (len(commitment_cuts),) or not np.all(
+        np.isfinite(supplied_cut_dual)
+    ):
+        raise ScopfError("Multiplier search initial cut dual is invalid")
+
+    coupling_rows = sorted(master.coupling_rows, key=lambda row: row.row_name)
+    coupling_indices = np.asarray(
+        [row.row_index for row in coupling_rows], dtype=np.int64
+    )
+    coupling_dual = full_dual[coupling_indices].copy()
+    upper = np.asarray(
+        [row.kind != "balance_equality" for row in coupling_rows], dtype=bool
+    )
+    coupling_dual[upper] = np.minimum(coupling_dual[upper], 0.0)
+    cut_dual = np.minimum(supplied_cut_dual, 0.0)
+    rhs = np.asarray([row.rhs for row in coupling_rows], dtype=np.float64)
+    coefficients = np.stack(
+        [row.generator_coefficients for row in coupling_rows]
+    ).astype(np.float64, copy=False)
+    cut_coefficients = (
+        np.stack([cut.coefficients for cut in commitment_cuts]).astype(
+            np.float64, copy=False
+        )
+        if commitment_cuts
+        else np.empty((0, generator_count), dtype=np.float64)
+    )
+    dispatch_states, state_cost, state_commitment = (
+        _generator_breakpoint_state_arrays(master)
+    )
+    effective = -(coupling_dual @ coefficients)
+    cut_adjustment = (
+        -(cut_dual @ cut_coefficients)
+        if commitment_cuts
+        else np.zeros(generator_count, dtype=np.float64)
+    )
+    values = (
+        state_cost
+        + effective[:, None] * dispatch_states
+        + cut_adjustment[:, None] * state_commitment
+    )
+    valid_state = np.ones(values.shape, dtype=bool)
+    valid_state[:, 0] = ~region.fixed_on
+    valid_state[:, 1:] = (~region.fixed_off)[:, None]
+    values[~valid_state] = np.inf
+    minimizing_state = np.argmin(values, axis=1)
+    minimizing_dispatch = dispatch_states[
+        np.arange(generator_count, dtype=np.int64), minimizing_state
+    ]
+    residual = rhs - coefficients @ minimizing_dispatch
+
+    mandatory = (~upper) | (coupling_dual != 0.0)
+    inactive_violated = np.flatnonzero(
+        upper & ~mandatory & (residual < -1e-12)
+    )
+    ranked_violated = sorted(
+        (int(position) for position in inactive_violated),
+        key=lambda position: (
+            float(residual[position]),
+            coupling_rows[position].row_name,
+        ),
+    )
+    selected_mask = mandatory.copy()
+    selected_mask[
+        np.asarray(
+            ranked_violated[:maximum_new_violated_coupling_rows], dtype=np.int64
+        )
+    ] = True
+    selected = np.flatnonzero(selected_mask).astype(np.int64)
+    if not selected.size:
+        raise ScopfError("Multiplier search selected no coupling rows")
+
+    search = CanonicalMILP()
+    coupling_columns: list[int] = []
+    for position in selected:
+        row = coupling_rows[int(position)]
+        is_upper = bool(upper[int(position)])
+        coupling_columns.append(
+            search.add_variable(
+                f"lambda__{row.row_name}",
+                objective=-float(row.rhs),
+                lower=-float(multiplier_bound),
+                upper=0.0 if is_upper else float(multiplier_bound),
+            )
+        )
+    cut_columns = [
+        search.add_variable(
+            f"mu__{cut.cut_id}",
+            objective=-float(cut.rhs),
+            lower=-float(commitment_cut_multiplier_bound),
+            upper=0.0,
+        )
+        for cut in commitment_cuts
+    ]
+    epigraph_columns = [
+        search.add_variable(
+            f"generator_value__g{int(source_row) + 1:04d}",
+            objective=-1.0,
+            lower=-float(epigraph_bound),
+            upper=float(epigraph_bound),
+        )
+        for source_row in master.index.generator_source_rows
+    ]
+
+    unselected = np.flatnonzero(~selected_mask).astype(np.int64)
+    fixed_effective = (
+        -(coupling_dual[unselected] @ coefficients[unselected])
+        if unselected.size
+        else np.zeros(generator_count, dtype=np.float64)
+    )
+    state_row_count = 0
+    duplicate_state_count = 0
+    for generator in range(generator_count):
+        seen: set[tuple[float, float, int]] = set()
+        for state in np.flatnonzero(valid_state[generator]):
+            signature = (
+                float(dispatch_states[generator, state]),
+                float(state_cost[generator, state]),
+                int(state_commitment[generator, state]),
+            )
+            if signature in seen:
+                duplicate_state_count += 1
+                continue
+            seen.add(signature)
+            power = float(dispatch_states[generator, state])
+            committed = float(state_commitment[generator, state])
+            row_coefficients: dict[int, float] = {
+                epigraph_columns[generator]: 1.0
+            }
+            selected_values = coefficients[selected, generator] * power
+            for column, coefficient in zip(
+                coupling_columns, selected_values, strict=True
+            ):
+                if coefficient != 0.0:
+                    row_coefficients[column] = float(coefficient)
+            if committed:
+                for column, coefficient in zip(
+                    cut_columns,
+                    cut_coefficients[:, generator],
+                    strict=True,
+                ):
+                    if coefficient != 0.0:
+                        row_coefficients[column] = float(coefficient)
+            state_rhs = float(
+                state_cost[generator, state]
+                + fixed_effective[generator] * power
+            )
+            search.add_row(
+                f"state__g{int(master.index.generator_source_rows[generator]) + 1:04d}"
+                f"__s{int(state):02d}",
+                row_coefficients,
+                upper=state_rhs,
+            )
+            state_row_count += 1
+
+    initial_values = np.zeros(search.num_columns, dtype=np.float64)
+    initial_values[np.asarray(coupling_columns, dtype=np.int64)] = coupling_dual[
+        selected
+    ]
+    if cut_columns:
+        initial_values[np.asarray(cut_columns, dtype=np.int64)] = cut_dual
+    initial_values[np.asarray(epigraph_columns, dtype=np.int64)] = np.min(
+        values, axis=1
+    )
+    initial_residual = search.max_row_violation(initial_values)
+    if initial_residual > 1e-8:
+        raise ScopfError(
+            "Multiplier search failed to embed its initial exact certificate"
+        )
+    if np.any(initial_values < np.asarray(search.column_lower) - 1e-9) or np.any(
+        initial_values > np.asarray(search.column_upper) + 1e-9
+    ):
+        raise ScopfError("Multiplier search finite bounds exclude the initial certificate")
+
+    return LagrangianMultiplierSearchModel(
+        canonical=search,
+        selected_coupling_positions=selected,
+        coupling_columns=np.asarray(coupling_columns, dtype=np.int64),
+        commitment_cut_columns=np.asarray(cut_columns, dtype=np.int64),
+        epigraph_columns=np.asarray(epigraph_columns, dtype=np.int64),
+        initial_values=initial_values,
+        audit={
+            "policy": "restricted_active_row_finite_generator_state_dual_lp_v1",
+            "coupling_row_count": len(coupling_rows),
+            "mandatory_coupling_row_count": int(np.count_nonzero(mandatory)),
+            "inactive_violated_coupling_row_count": int(inactive_violated.size),
+            "selected_coupling_row_count": int(selected.size),
+            "selected_new_violated_coupling_row_count": int(
+                np.count_nonzero(selected_mask & ~mandatory)
+            ),
+            "maximum_new_violated_coupling_rows": int(
+                maximum_new_violated_coupling_rows
+            ),
+            "commitment_cut_count": len(commitment_cuts),
+            "generator_state_row_count": state_row_count,
+            "duplicate_generator_state_count": duplicate_state_count,
+            "columns": search.num_columns,
+            "rows": search.num_rows,
+            "nonzeros": int(search.matrix_csr().nnz),
+            "initial_canonical_row_residual": initial_residual,
+            "multiplier_bound": float(multiplier_bound),
+            "commitment_cut_multiplier_bound": float(
+                commitment_cut_multiplier_bound
+            ),
+            "epigraph_bound": float(epigraph_bound),
+            "finite_bounds_are_search_restrictions_only": True,
+            "search_lp_solution_is_never_bound_authority": True,
+            "exact_source_pmin_pmax_changed": False,
+        },
+    )
 
 
 def optimize_lagrangian_bound_cupy_smoothed(

@@ -5,6 +5,7 @@ from activsg_scopf.errors import ScopfError
 from activsg_scopf.lagrangian import (
     RegionMasks,
     _generator_breakpoint_state_arrays,
+    build_lagrangian_multiplier_search_model,
     bus_prices_from_coupling_duals,
     choose_split_generator,
     evaluate_lagrangian_bound,
@@ -77,6 +78,31 @@ def test_generator_breakpoint_minimum_matches_exact_lagrangian_subproblems() -> 
     enumerated = float(dual @ rhs + np.sum(np.min(state_values, axis=1)))
 
     assert enumerated == pytest.approx(evaluation.raw_lower_bound, abs=1e-10)
+
+
+def test_multiplier_search_lp_embeds_exact_initial_certificate_with_finite_bounds() -> None:
+    case, _ = triangle_case()
+    case.gen[1, 7] = 1.0
+    network = build_network(case)
+    master = build_reduced_master(case, network)
+    row_dual = np.zeros(master.canonical.num_rows, dtype=np.float64)
+    for row in master.coupling_rows:
+        row_dual[row.row_index] = 6.0 if row.kind == "balance_equality" else -0.25
+
+    search = build_lagrangian_multiplier_search_model(
+        master,
+        row_dual,
+        RegionMasks.root(master.index.generator_source_rows.size),
+        maximum_new_violated_coupling_rows=2,
+    )
+
+    assert search.canonical.max_row_violation(search.initial_values) <= 1e-10
+    assert np.all(np.isfinite(search.canonical.column_lower))
+    assert np.all(np.isfinite(search.canonical.column_upper))
+    assert search.audit["search_lp_solution_is_never_bound_authority"] is True
+    assert search.audit["exact_source_pmin_pmax_changed"] is False
+    assert search.audit["generator_state_row_count"] <= 24
+    assert search.selected_coupling_positions.size == search.coupling_columns.size
 
 
 def test_injection_elimination_matches_explicit_dc_solve() -> None:
