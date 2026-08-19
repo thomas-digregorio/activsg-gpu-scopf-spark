@@ -2493,6 +2493,22 @@ def build_hard_cardinality_multiplier_delta_search_model(
             }
         )
 
+    def normalize_component_column(spec: dict[str, Any]) -> None:
+        """Apply an exact diagonal change of variable to one epigraph column."""
+
+        lower = float(spec["lower"])
+        upper_bound = float(spec["upper"])
+        factor = max(1.0, abs(lower), abs(upper_bound))
+        original_scale = float(spec["scale"])
+        spec["unscaled_component_scale"] = original_scale
+        spec["column_scale_factor"] = factor
+        spec["scale"] = original_scale * factor
+        spec["lower"] = lower / factor
+        spec["upper"] = upper_bound / factor
+
+    for spec in value_specs:
+        normalize_component_column(spec)
+
     group_specs: list[dict[str, Any]] = []
     total_group_configurations = 0
     for cut, support in zip(hard_cardinality_cuts, hard_supports, strict=True):
@@ -2563,18 +2579,18 @@ def build_hard_cardinality_multiplier_delta_search_model(
             group_lower = 0.0
         if abs(group_upper) < search_coefficient_zero_tolerance:
             group_upper = 0.0
-        group_specs.append(
-            {
-                "cut": cut,
-                "support": support,
-                "configurations": configurations,
-                "configuration_center_values": configuration_center_values,
-                "base": base_group_value,
-                "scale": maximum_group_magnitude,
-                "lower": group_lower,
-                "upper": group_upper,
-            }
-        )
+        group_spec = {
+            "cut": cut,
+            "support": support,
+            "configurations": configurations,
+            "configuration_center_values": configuration_center_values,
+            "base": base_group_value,
+            "scale": maximum_group_magnitude,
+            "lower": group_lower,
+            "upper": group_upper,
+        }
+        normalize_component_column(group_spec)
+        group_specs.append(group_spec)
 
     component_scales = np.asarray(
         [
@@ -2890,6 +2906,21 @@ def build_hard_cardinality_multiplier_delta_search_model(
             ),
             "finite_column_bound_minimum_nonzero_absolute": (
                 conditioned_minima["finite_column_bound"]
+            ),
+            "epigraph_column_scaling_policy": (
+                "exact_positive_diagonal_max_abs_bound_normalization_v1"
+            ),
+            "epigraph_column_scale_factor_minimum": float(
+                min(
+                    float(spec["column_scale_factor"])
+                    for spec in (*value_specs, *group_specs)
+                )
+            ),
+            "epigraph_column_scale_factor_maximum": float(
+                max(
+                    float(spec["column_scale_factor"])
+                    for spec in (*value_specs, *group_specs)
+                )
             ),
             "search_coefficient_zero_tolerance": float(
                 search_coefficient_zero_tolerance

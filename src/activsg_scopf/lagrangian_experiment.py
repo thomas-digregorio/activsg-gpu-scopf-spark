@@ -21,6 +21,7 @@ from typing import Any
 
 import numpy as np
 
+from .canonical import CanonicalMILP
 from .cardinality import (
     CardinalitySplit,
     balanced_exact_type_group_rounding_candidates,
@@ -62,6 +63,7 @@ from .fixed_commitment import (
 )
 from .lagrangian import (
     LagrangianEvaluation,
+    LagrangianMultiplierDeltaSearchModel,
     RegionMasks,
     build_hard_cardinality_multiplier_delta_search_model,
     build_lagrangian_multiplier_delta_search_model,
@@ -160,6 +162,7 @@ ACTIVSG2000_V28_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v28"
 ACTIVSG2000_V29_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v29"
 ACTIVSG2000_V30_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v30"
 ACTIVSG2000_V31_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v31"
+ACTIVSG2000_V32_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v32"
 ACTIVSG2000_EXPERIMENT_ID_SEQUENCE = (
     ACTIVSG2000_EXPERIMENT_ID,
     ACTIVSG2000_V2_EXPERIMENT_ID,
@@ -192,6 +195,7 @@ ACTIVSG2000_EXPERIMENT_ID_SEQUENCE = (
     ACTIVSG2000_V29_EXPERIMENT_ID,
     ACTIVSG2000_V30_EXPERIMENT_ID,
     ACTIVSG2000_V31_EXPERIMENT_ID,
+    ACTIVSG2000_V32_EXPERIMENT_ID,
 )
 
 
@@ -532,6 +536,14 @@ REGISTERED_EXPERIMENTS = {
         "policy": (
             "gpu_best_first_secure_commitment_beam_plus_short_exact_replayed_"
             "proof_child_proposals_activsg2000_v31"
+        ),
+    },
+    ACTIVSG2000_V32_EXPERIMENT_ID: {
+        "case_name": "ACTIVSg2000",
+        "tag": "experiment-2000-gpu-lagrangian-v32",
+        "policy": (
+            "gpu_exact_epigraph_scaling_diversified_type_placement_and_"
+            "block_diagonal_sibling_pdlp_activsg2000_v32"
         ),
     },
 }
@@ -1237,6 +1249,35 @@ ACTIVSG2000_V31_PRIMAL_AND_PROOF_THROUGHPUT_FIX = {
     "exact_source_pmin_changed": False,
     "mathematical_original_integer_feasible_set_changed": False,
 }
+ACTIVSG2000_V32_NUMERICAL_AND_BATCH_THROUGHPUT_FIX = {
+    "comparison_baseline": "activsg2000-gpu-lagrangian-v31",
+    "completed_v31_result_preserved": True,
+    "v31_secure_primal_and_final_raw_input_replay_passed": True,
+    "v31_failed_proof_child_count": 0,
+    "v31_large_coefficient_range_advisory_count": 305,
+    "proposal_epigraph_scaling": (
+        "exact_positive_diagonal_max_abs_bound_normalization_v1"
+    ),
+    "proposal_cleanup_floor": (
+        "drop_or_snap_abs_le_1e_4_in_non_authoritative_search_lp_only_v1"
+    ),
+    "proposal_batching": (
+        "two_independent_sibling_hypograph_lps_as_one_block_diagonal_gpu_pdlp_v1"
+    ),
+    "proposal_certificate_authority": (
+        "separate_original_nonsmoothed_fp64_exact_replay_for_each_child_v1"
+    ),
+    "primal_search": (
+        "gpu_lp_derived_exact_type_counts_with_six_deterministic_same_type_"
+        "placement_variants_then_best_first_phase_one_repair_v1"
+    ),
+    "exact_minimizer_stage": (
+        "disabled_after_v31_spent_55_9_seconds_for_13_44_dollar_bound_lift_v1"
+    ),
+    "cpu_solution_data_used": False,
+    "exact_source_pmin_changed": False,
+    "mathematical_original_integer_feasible_set_changed": False,
+}
 ACTIVSG2000_V1_RUNTIME = {
     "deadline_seconds": 1800.0,
     "verification_reserve_seconds": 120.0,
@@ -1471,6 +1512,26 @@ ACTIVSG2000_V31_RUNTIME = {
     "alternative_primal_candidate_minimum_remaining_solver_seconds": 300.0,
     "always_run_gpu_primal_heuristics": False,
 }
+ACTIVSG2000_V32_RUNTIME = {
+    **ACTIVSG2000_V31_RUNTIME,
+    "centered_dual_search_coefficient_zero_tolerance": 1e-4,
+    "centered_dual_search_objective_zero_tolerance": 1e-4,
+    "proof_only_hard_cardinality_pdlp_seconds_per_batch": 0.75,
+    "proof_only_checkpoint_interval_splits": 24,
+    "alternative_primal_candidate_maximum_attempts": 72,
+    "alternative_primal_candidate_wall_seconds": 240.0,
+    "alternative_primal_candidate_minimum_remaining_solver_seconds": 260.0,
+    "balanced_type_rounding_placement_variants": [
+        "lp_descending",
+        "source_ascending",
+        "source_descending",
+        "alternating_extremes_high",
+        "stable_hash_1",
+        "stable_hash_2",
+    ],
+    "balanced_type_rounding_diversified_target_offsets": [0],
+    "minimizer_feasibility_cut_enabled": False,
+}
 ACTIVSG2000_RUNTIME_BY_EXPERIMENT_ID = dict(
     zip(
         ACTIVSG2000_EXPERIMENT_ID_SEQUENCE,
@@ -1506,6 +1567,7 @@ ACTIVSG2000_RUNTIME_BY_EXPERIMENT_ID = dict(
             ACTIVSG2000_V29_RUNTIME,
             ACTIVSG2000_V30_RUNTIME,
             ACTIVSG2000_V31_RUNTIME,
+            ACTIVSG2000_V32_RUNTIME,
         ),
         strict=True,
     )
@@ -1527,6 +1589,26 @@ class SolvedRegion:
     gpu_lagrangian: dict[str, Any]
     commitment_cuts: tuple[CommitmentUpperCut, ...] = ()
     commitment_cut_row_by_id: dict[str, int] | None = None
+
+
+@dataclass(frozen=True)
+class PreparedProofOnlyChild:
+    """One replay-certified child and its non-authoritative proposal LP."""
+
+    region_id: str
+    masks: RegionMasks
+    parent: SolvedRegion
+    master: ReducedMaster
+    commitment_cuts: tuple[CommitmentUpperCut, ...]
+    hard_cuts: tuple[CommitmentCardinalityCut, ...]
+    row_dual: np.ndarray
+    commitment_cut_dual: np.ndarray
+    evaluation: LagrangianEvaluation
+    initial_gpu: dict[str, Any]
+    initial_gpu_replay_difference_dollars: float
+    initial_gpu_minimizer_replay: dict[str, Any]
+    search: LagrangianMultiplierDeltaSearchModel
+    build_wall_time_seconds: float
 
 
 @dataclass(frozen=True)
@@ -1809,6 +1891,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
     )
     is_activsg2000_v30 = config.benchmark_id == ACTIVSG2000_V30_EXPERIMENT_ID
     is_activsg2000_v31 = config.benchmark_id == ACTIVSG2000_V31_EXPERIMENT_ID
+    is_activsg2000_v32 = config.benchmark_id == ACTIVSG2000_V32_EXPERIMENT_ID
     is_activsg2000_v26_plus = (
         config.benchmark_id in ACTIVSG2000_V26_PLUS_EXPERIMENT_IDS
     )
@@ -2234,7 +2317,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
                 "full_mip_start_polish_optimality_tolerance": 1e-10,
                 "full_mip_start_polish_primal_feasibility_tolerance": 1e-8,
             }
-            if is_activsg2000_v31
+            if (is_activsg2000_v31 or is_activsg2000_v32)
             else {
                 "minimum_refinement_launch_seconds": 19.0,
                 "proof_only_hard_cardinality_pdlp_seconds_per_child": 2.0,
@@ -2253,6 +2336,15 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
                 "full_mip_start_polish_primal_feasibility_tolerance": 1e-8,
             }
         )
+        if is_activsg2000_v32:
+            required_v27_runtime.update(
+                {
+                    "proof_only_checkpoint_interval_splits": 24,
+                    "alternative_primal_candidate_maximum_attempts": 72,
+                    "alternative_primal_candidate_wall_seconds": 240.0,
+                    "alternative_primal_candidate_minimum_remaining_solver_seconds": 260.0,
+                }
+            )
         observed_v27_runtime = {
             key: config.runtime.get(key) for key in required_v27_runtime
         }
@@ -2309,6 +2401,15 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
                 "ACTIVSg2000 GPU Lagrangian v31 primal/proof throughput identity "
                 "changed: "
                 f"expected={ACTIVSG2000_V31_PRIMAL_AND_PROOF_THROUGHPUT_FIX}, "
+                f"observed={observed_change}"
+            )
+    if is_activsg2000_v32:
+        observed_change = benchmark.get("numerical_and_batch_throughput_fix")
+        if observed_change != ACTIVSG2000_V32_NUMERICAL_AND_BATCH_THROUGHPUT_FIX:
+            raise ScopfError(
+                "ACTIVSg2000 GPU Lagrangian v32 numerical/batch throughput "
+                "identity changed: "
+                f"expected={ACTIVSG2000_V32_NUMERICAL_AND_BATCH_THROUGHPUT_FIX}, "
                 f"observed={observed_change}"
             )
     profile = config.raw["platforms"].get("dgx_spark", {})
@@ -6786,6 +6887,532 @@ def _solve_v23_hard_cardinality_region(
     )
 
 
+def _prepare_v32_proof_only_hard_cardinality_child(
+    *,
+    region_id: str,
+    masks: RegionMasks,
+    parent: SolvedRegion,
+    config: RunConfig,
+    commitment_cuts: tuple[CommitmentUpperCut, ...],
+) -> PreparedProofOnlyChild:
+    """Build one conditioned child proposal without launching a solver."""
+
+    if config.benchmark_id != ACTIVSG2000_V32_EXPERIMENT_ID:
+        raise ScopfError("The block-diagonal proof preparation is registered only for v32")
+    started = time.perf_counter()
+    master = parent.master
+    hard_cuts = tuple(cut for cut in commitment_cuts if isinstance(cut, CommitmentCardinalityCut))
+    if not hard_cuts:
+        raise ScopfError("Proof-only hard-cardinality child has no hard branch")
+    row_dual, cut_dual = _certificate_dual_arrays_for_direct_cut_replay(
+        master,
+        parent.lagrangian,
+        commitment_cuts,
+    )
+    safety = float(config.raw["benchmark"]["certificate_safety_margin_dollars"])
+    replay_tolerance = float(config.raw["benchmark"]["gpu_cpu_replay_tolerance_dollars"])
+    current = evaluate_lagrangian_bound(
+        master,
+        row_dual,
+        masks,
+        safety_margin_dollars=safety,
+        commitment_cuts=commitment_cuts,
+        commitment_cut_dual=cut_dual,
+        hard_cardinality_cuts=hard_cuts,
+    )
+    if current.conservative_lower_bound + replay_tolerance < (
+        parent.lagrangian.conservative_lower_bound
+    ):
+        raise ScopfError("Proof-only child regressed below its parent certificate")
+    initial_gpu = evaluate_lagrangian_bound_cupy(
+        master,
+        row_dual,
+        masks,
+        commitment_cuts=commitment_cuts,
+        commitment_cut_dual=cut_dual,
+        hard_cardinality_cuts=hard_cuts,
+    )
+    initial_gpu_replay_difference = abs(
+        float(initial_gpu["raw_lower_bound"]) - current.raw_lower_bound
+    )
+    if initial_gpu_replay_difference > replay_tolerance:
+        raise ScopfError("Proof-only child GPU center failed exact host replay")
+    initial_gpu_minimizer_replay = _audit_gpu_minimizing_commitment_replay(
+        candidate=np.asarray(initial_gpu["minimizing_commitment"]),
+        host_evaluation=current,
+        masks=masks,
+        hard_cardinality_cuts=hard_cuts,
+        tolerance_dollars=replay_tolerance,
+    )
+    coefficient_floor = float(config.runtime["centered_dual_search_coefficient_zero_tolerance"])
+    search = build_hard_cardinality_multiplier_delta_search_model(
+        master,
+        row_dual,
+        masks,
+        commitment_cuts=commitment_cuts,
+        commitment_cut_dual=cut_dual,
+        hard_cardinality_cuts=hard_cuts,
+        maximum_new_violated_coupling_rows=int(
+            config.runtime["centered_dual_maximum_new_coupling_rows"]
+        ),
+        coupling_trust_radius=float(
+            config.runtime["proof_only_hard_cardinality_coupling_trust_radius"]
+        ),
+        commitment_cut_trust_radius=float(
+            config.runtime["proof_only_hard_cardinality_cut_trust_radius"]
+        ),
+        search_coefficient_zero_tolerance=coefficient_floor,
+        search_objective_zero_tolerance=float(
+            config.runtime["centered_dual_search_objective_zero_tolerance"]
+        ),
+    )
+    for audit_key in (
+        "matrix_nonzero_minimum_absolute",
+        "objective_nonzero_minimum_absolute",
+        "finite_column_bound_minimum_nonzero_absolute",
+    ):
+        observed = search.audit[audit_key]
+        if observed is not None and float(observed) < coefficient_floor:
+            raise ScopfError(f"Proof-only child retained a below-floor {audit_key}")
+    if float(search.audit["finite_column_bound_maximum_absolute"]) > (
+        1.0 + 16.0 * np.finfo(np.float64).eps
+    ):
+        raise ScopfError("Proof-only child epigraph normalization left a large bound")
+    if search.audit["epigraph_column_scaling_policy"] != (
+        "exact_positive_diagonal_max_abs_bound_normalization_v1"
+    ):
+        raise ScopfError("Proof-only child epigraph scaling identity changed")
+    return PreparedProofOnlyChild(
+        region_id=region_id,
+        masks=masks,
+        parent=parent,
+        master=master,
+        commitment_cuts=commitment_cuts,
+        hard_cuts=hard_cuts,
+        row_dual=row_dual,
+        commitment_cut_dual=cut_dual,
+        evaluation=current,
+        initial_gpu=initial_gpu,
+        initial_gpu_replay_difference_dollars=initial_gpu_replay_difference,
+        initial_gpu_minimizer_replay=initial_gpu_minimizer_replay,
+        search=search,
+        build_wall_time_seconds=time.perf_counter() - started,
+    )
+
+
+def _block_diagonal_continuous_models(
+    models: tuple[CanonicalMILP, ...],
+    initial_values: tuple[np.ndarray, ...],
+) -> tuple[CanonicalMILP, tuple[slice, ...], np.ndarray, dict[str, Any]]:
+    """Combine independent continuous LPs without changing either block."""
+
+    if len(models) < 2 or len(models) != len(initial_values):
+        raise ScopfError("Block-diagonal PDLP batching requires matching model blocks")
+    combined = CanonicalMILP()
+    slices: list[slice] = []
+    combined_initial_parts: list[np.ndarray] = []
+    block_records: list[dict[str, Any]] = []
+    for block_index, (model, block_initial) in enumerate(zip(models, initial_values, strict=True)):
+        if any(model.integrality):
+            raise ScopfError("Block-diagonal PDLP batching received an integer model")
+        values = np.asarray(block_initial, dtype=np.float64)
+        if values.shape != (model.num_columns,) or not np.all(np.isfinite(values)):
+            raise ScopfError("Block-diagonal PDLP batching received an invalid start")
+        column_start = combined.num_columns
+        for column in range(model.num_columns):
+            combined.add_variable(
+                f"b{block_index:02d}__{model.variable_names[column]}",
+                objective=float(model.objective[column]),
+                lower=float(model.column_lower[column]),
+                upper=float(model.column_upper[column]),
+            )
+        column_stop = combined.num_columns
+        for row in range(model.num_rows):
+            columns, coefficients = model.row_entries(row)
+            combined.add_row(
+                f"b{block_index:02d}__{model.row_names[row]}",
+                {
+                    column_start + int(column): float(coefficient)
+                    for column, coefficient in zip(
+                        columns,
+                        coefficients,
+                        strict=True,
+                    )
+                },
+                lower=float(model.row_lower[row]),
+                upper=float(model.row_upper[row]),
+            )
+        slices.append(slice(column_start, column_stop))
+        combined_initial_parts.append(values.copy())
+        block_records.append(
+            {
+                "block": block_index,
+                "column_start": column_start,
+                "column_stop": column_stop,
+                "columns": model.num_columns,
+                "rows": model.num_rows,
+                "nonzeros": int(model.matrix_csr().nnz),
+                "initial_canonical_row_residual": model.max_row_violation(values),
+            }
+        )
+    combined_initial = np.concatenate(combined_initial_parts)
+    combined_residual = combined.max_row_violation(combined_initial)
+    if combined_residual > 1e-12:
+        raise ScopfError("Block-diagonal PDLP start no longer embeds both centers")
+    matrix_absolute = np.abs(combined.matrix_csr().data)
+    objective_absolute = np.abs(np.asarray(combined.objective, dtype=np.float64))
+    finite_bounds = np.concatenate(
+        (
+            np.abs(np.asarray(combined.column_lower, dtype=np.float64)),
+            np.abs(np.asarray(combined.column_upper, dtype=np.float64)),
+        )
+    )
+    return (
+        combined,
+        tuple(slices),
+        combined_initial,
+        {
+            "policy": "exact_independent_block_diagonal_continuous_lp_v1",
+            "block_count": len(models),
+            "blocks": block_records,
+            "columns": combined.num_columns,
+            "rows": combined.num_rows,
+            "nonzeros": int(matrix_absolute.size),
+            "initial_canonical_row_residual": combined_residual,
+            "matrix_nonzero_minimum_absolute": (
+                None if not matrix_absolute.size else float(np.min(matrix_absolute))
+            ),
+            "matrix_nonzero_maximum_absolute": (
+                None if not matrix_absolute.size else float(np.max(matrix_absolute))
+            ),
+            "objective_nonzero_minimum_absolute": (
+                None
+                if not np.any(objective_absolute > 0.0)
+                else float(np.min(objective_absolute[objective_absolute > 0.0]))
+            ),
+            "finite_column_bound_maximum_absolute": float(np.max(finite_bounds)),
+            "mathematical_cross_block_coupling_added": False,
+        },
+    )
+
+
+def _finalize_v32_proof_only_hard_cardinality_child(
+    *,
+    prepared: PreparedProofOnlyChild,
+    proposed_values: np.ndarray | None,
+    shared_solve: ContinuousSolveResult,
+    shared_solver_budget_seconds: float,
+    shared_solver_wall_time_seconds: float,
+    shared_solver_allocation_fraction: float,
+    block_index: int,
+    config: RunConfig,
+) -> SolvedRegion:
+    """Replay one block's proposal and retain only an exact monotone bound."""
+
+    finalize_started = time.perf_counter()
+    master = prepared.master
+    row_dual = prepared.row_dual.copy()
+    cut_dual = prepared.commitment_cut_dual.copy()
+    current = prepared.evaluation
+    safety = float(config.raw["benchmark"]["certificate_safety_margin_dollars"])
+    replay_tolerance = float(config.raw["benchmark"]["gpu_cpu_replay_tolerance_dollars"])
+    pass_record: dict[str, Any] = {
+        "pass": 1,
+        "build_wall_time_seconds": prepared.build_wall_time_seconds,
+        "solver_budget_seconds": (shared_solver_budget_seconds * shared_solver_allocation_fraction),
+        "solver_wall_time_seconds": (
+            shared_solver_wall_time_seconds * shared_solver_allocation_fraction
+        ),
+        "shared_solver_budget_seconds": shared_solver_budget_seconds,
+        "shared_solver_wall_time_seconds": shared_solver_wall_time_seconds,
+        "shared_solver_allocation_fraction": shared_solver_allocation_fraction,
+        "block_index": block_index,
+        "center_conservative_lower_bound": current.conservative_lower_bound,
+        "search_model": prepared.search.audit,
+        "search_solve": _solve_summary(shared_solve),
+        "search_lp_solution_used_as_bound": False,
+    }
+    if proposed_values is None or not np.all(np.isfinite(proposed_values)):
+        pass_record["status"] = "no_finite_proposal_parent_certificate_retained"
+    else:
+        candidate_row_dual, candidate_cut_dual, reconstruction = (
+            expand_lagrangian_multiplier_delta_candidate(
+                master,
+                prepared.search,
+                proposed_values,
+            )
+        )
+        candidate = evaluate_lagrangian_bound(
+            master,
+            candidate_row_dual,
+            prepared.masks,
+            safety_margin_dollars=safety,
+            commitment_cuts=prepared.commitment_cuts,
+            commitment_cut_dual=candidate_cut_dual,
+            hard_cardinality_cuts=prepared.hard_cuts,
+        )
+        center_bound = current.conservative_lower_bound
+        accepted = candidate.conservative_lower_bound > center_bound
+        pass_record.update(
+            {
+                "status": (
+                    "exact_candidate_accepted" if accepted else "exact_candidate_rejected_monotone"
+                ),
+                "candidate_conservative_lower_bound": (candidate.conservative_lower_bound),
+                "exact_candidate_improvement_over_center_dollars": (
+                    candidate.conservative_lower_bound - center_bound
+                ),
+                "candidate_reconstruction": reconstruction,
+            }
+        )
+        if accepted:
+            current = candidate
+            row_dual = candidate_row_dual
+            cut_dual = candidate_cut_dual
+
+    final_gpu = evaluate_lagrangian_bound_cupy(
+        master,
+        row_dual,
+        prepared.masks,
+        commitment_cuts=prepared.commitment_cuts,
+        commitment_cut_dual=cut_dual,
+        hard_cardinality_cuts=prepared.hard_cuts,
+    )
+    final_gpu_replay_difference = abs(float(final_gpu["raw_lower_bound"]) - current.raw_lower_bound)
+    if final_gpu_replay_difference > replay_tolerance:
+        raise ScopfError("Proof-only child final GPU certificate failed host replay")
+    final_gpu_minimizer_replay = _audit_gpu_minimizing_commitment_replay(
+        candidate=np.asarray(final_gpu["minimizing_commitment"]),
+        host_evaluation=current,
+        masks=prepared.masks,
+        hard_cardinality_cuts=prepared.hard_cuts,
+        tolerance_dollars=replay_tolerance,
+    )
+    finalize_wall = time.perf_counter() - finalize_started
+    allocated_wall = (
+        prepared.build_wall_time_seconds
+        + shared_solver_wall_time_seconds * shared_solver_allocation_fraction
+        + finalize_wall
+    )
+    audit = {
+        **final_gpu,
+        "policy": (
+            "proof_only_exact_disjoint_cardinality_block_diagonal_gpu_pdlp_proposal_exact_replay_v2"
+        ),
+        "passes": [pass_record],
+        "pass_count": 1,
+        "wall_time_seconds": allocated_wall,
+        "total_wall_time_seconds": allocated_wall,
+        "build_wall_time_seconds": prepared.build_wall_time_seconds,
+        "finalize_wall_time_seconds": finalize_wall,
+        "shared_solver_wall_time_seconds": shared_solver_wall_time_seconds,
+        "shared_solver_allocation_fraction": shared_solver_allocation_fraction,
+        "block_index": block_index,
+        "initial_gpu_host_replay_difference_dollars": (
+            prepared.initial_gpu_replay_difference_dollars
+        ),
+        "final_gpu_host_replay_difference_dollars": final_gpu_replay_difference,
+        "initial_gpu_minimizer_replay": prepared.initial_gpu_minimizer_replay,
+        "final_gpu_minimizer_replay": final_gpu_minimizer_replay,
+        "parent_conservative_lower_bound": (prepared.parent.lagrangian.conservative_lower_bound),
+        "child_conservative_lower_bound": current.conservative_lower_bound,
+        "bound_lift_over_parent_dollars": (
+            current.conservative_lower_bound - prepared.parent.lagrangian.conservative_lower_bound
+        ),
+        "best_raw_lower_bound": current.raw_lower_bound,
+        "best_minimizing_commitment": current.minimizing_commitment,
+        "best_commitment_cut_dual": cut_dual,
+        "hard_cardinality_cut_count": len(prepared.hard_cuts),
+        "hard_cardinality_cut_ids": [cut.cut_id for cut in prepared.hard_cuts],
+        "child_phase_one_solved": False,
+        "ordinary_cost_lp_solved": False,
+        "search_lp_solution_used_as_bound": False,
+        "exact_host_replay_is_bound_authority": True,
+        "cpu_problem_solution_data_used": False,
+        "exact_source_pmin_changed": False,
+    }
+    synthetic_solve = ContinuousSolveResult(
+        status="ProofOnlyBlockDiagonalPDLPProposedExactReplayed",
+        optimal=False,
+        primal_objective=None,
+        dual_objective=None,
+        values=None,
+        native_primal=None,
+        native_row_dual=None,
+        solve_time_seconds=allocated_wall,
+        statistics={
+            "error_status": "Success",
+            "solved_by": ("Block_Diagonal_PDLP_Proposal_then_Exact_FP64_Hard_Cardinality_Replay"),
+            "relaxation_solution_role": ("lower_bound_certificate_only_no_child_primal_claim"),
+            "shared_block_diagonal_solver": True,
+            "ordinary_cost_lp_solved": False,
+            "child_phase_one_solved": False,
+            "search_lp_solution_used_as_bound": False,
+        },
+    )
+    return SolvedRegion(
+        region_id=prepared.region_id,
+        masks=prepared.masks,
+        master=master,
+        solve=synthetic_solve,
+        canonical_row_dual=row_dual,
+        lagrangian=current,
+        commitment=prepared.parent.commitment.copy(),
+        security_pairs=prepared.parent.security_pairs,
+        rounds=[
+            {
+                "round": 1,
+                "adapter_wall_time_seconds": allocated_wall,
+                "solve": {
+                    "status": synthetic_solve.status,
+                    "optimal": False,
+                    "primal_objective": None,
+                    "dual_objective": None,
+                    "native_solve_time_seconds": allocated_wall,
+                    "solved_by": synthetic_solve.statistics["solved_by"],
+                },
+                "proof_only_hard_cardinality": {
+                    "child_phase_one_solved": False,
+                    "ordinary_cost_lp_solved": False,
+                    "branching_reference_inherited": True,
+                    "gpu_dual_search": audit,
+                },
+            }
+        ],
+        final_screen={
+            "scope": "not_applicable_proof_only_child_no_primal_claim",
+            "new_violated_pairs": None,
+            "maximum_violation_pu": None,
+        },
+        gpu_lagrangian=audit,
+        commitment_cuts=prepared.commitment_cuts,
+        commitment_cut_row_by_id={
+            cut.cut_id: master.canonical.row_names.index(cut.cut_id)
+            for cut in prepared.commitment_cuts
+            if cut.cut_id in master.canonical.row_names
+        },
+    )
+
+
+def _solve_v32_proof_only_hard_cardinality_pair(
+    *,
+    child_specs: tuple[
+        tuple[
+            str,
+            RegionMasks,
+            tuple[CommitmentUpperCut, ...],
+        ],
+        tuple[
+            str,
+            RegionMasks,
+            tuple[CommitmentUpperCut, ...],
+        ],
+    ],
+    parent: SolvedRegion,
+    case: Any,
+    config: RunConfig,
+    deadline: Deadline,
+) -> tuple[dict[str, SolvedRegion], dict[str, Any]]:
+    """Advance both disjunctive children in one GPU-resident PDLP launch."""
+
+    if config.benchmark_id != ACTIVSG2000_V32_EXPERIMENT_ID:
+        raise ScopfError("The block-diagonal proof pair engine is registered only for v32")
+    if int(config.runtime["proof_only_hard_cardinality_pdlp_maximum_passes"]) != 1:
+        raise ScopfError("v32 block-diagonal proof pairs require exactly one proposal pass")
+    deadline.require("v32 block-diagonal proof-only sibling pair")
+    batch_started = time.perf_counter()
+    prepared = tuple(
+        _prepare_v32_proof_only_hard_cardinality_child(
+            region_id=region_id,
+            masks=masks,
+            parent=parent,
+            config=config,
+            commitment_cuts=commitment_cuts,
+        )
+        for region_id, masks, commitment_cuts in child_specs
+    )
+    combined, column_slices, combined_initial, model_audit = _block_diagonal_continuous_models(
+        tuple(child.search.canonical for child in prepared),
+        tuple(child.search.initial_values for child in prepared),
+    )
+    coefficient_floor = float(config.runtime["centered_dual_search_coefficient_zero_tolerance"])
+    for audit_key in (
+        "matrix_nonzero_minimum_absolute",
+        "objective_nonzero_minimum_absolute",
+    ):
+        observed = model_audit[audit_key]
+        if observed is not None and float(observed) < coefficient_floor:
+            raise ScopfError(f"Block-diagonal proof model retained a below-floor {audit_key}")
+    if float(model_audit["finite_column_bound_maximum_absolute"]) > (
+        1.0 + 16.0 * np.finfo(np.float64).eps
+    ):
+        raise ScopfError("Block-diagonal proof model retained a large finite bound")
+
+    profile = config.raw["platforms"]["dgx_spark"]
+    solve_budget = min(
+        deadline.solver_budget(),
+        float(config.runtime["proof_only_hard_cardinality_pdlp_seconds_per_batch"]),
+    )
+    solve_started = time.perf_counter()
+    solve = solve_cuopt_continuous_pdlp(
+        combined,
+        time_limit_seconds=solve_budget,
+        optimality_tolerance=float(config.runtime["centered_dual_optimality_tolerance"]),
+        primal_feasibility_tolerance=float(
+            config.runtime["centered_dual_primal_feasibility_tolerance"]
+        ),
+        certificate_residual_tolerance=float(
+            config.runtime["centered_dual_certificate_residual_tolerance"]
+        ),
+        native_scaling_mode="none",
+        native_base_mva=float(case.base_mva),
+        log_to_console=True,
+        per_constraint_residual=True,
+        presolve=0,
+        initial_native_primal=combined_initial,
+        pdlp_solver_mode=int(profile.get("pdlp_solver_mode_native", 1)),
+    )
+    solve_wall = time.perf_counter() - solve_started
+    proposed_blocks: tuple[np.ndarray | None, ...]
+    if solve.values is None:
+        proposed_blocks = (None, None)
+    else:
+        combined_values = np.asarray(solve.values, dtype=np.float64)
+        if combined_values.shape != (combined.num_columns,):
+            raise ScopfError("Block-diagonal PDLP returned an invalid solution dimension")
+        proposed_blocks = tuple(
+            combined_values[column_slice].copy() for column_slice in column_slices
+        )
+    allocation_fraction = 1.0 / len(prepared)
+    children = {
+        child.region_id: _finalize_v32_proof_only_hard_cardinality_child(
+            prepared=child,
+            proposed_values=proposal,
+            shared_solve=solve,
+            shared_solver_budget_seconds=solve_budget,
+            shared_solver_wall_time_seconds=solve_wall,
+            shared_solver_allocation_fraction=allocation_fraction,
+            block_index=block_index,
+            config=config,
+        )
+        for block_index, (child, proposal) in enumerate(zip(prepared, proposed_blocks, strict=True))
+    }
+    batch_audit = {
+        "policy": "one_block_diagonal_cuopt_pdlp_launch_for_two_siblings_v1",
+        "child_region_ids": [child.region_id for child in prepared],
+        "model": model_audit,
+        "solver_budget_seconds": solve_budget,
+        "solver_wall_time_seconds": solve_wall,
+        "solve": _solve_summary(solve),
+        "total_wall_time_seconds": time.perf_counter() - batch_started,
+        "proposal_solution_is_bound_authority": False,
+        "each_child_exact_fp64_replay_required": True,
+        "cpu_solution_data_used": False,
+    }
+    return children, batch_audit
+
+
+
 def _solve_v26_proof_only_hard_cardinality_region(
     *,
     region_id: str,
@@ -9504,12 +10131,46 @@ def run_gpu_lagrangian_experiment(
                     raise ScopfError(
                         "v18/v19 balanced type-rounding target identity changed"
                     )
+                placement_variants = tuple(
+                    str(value)
+                    for value in config.runtime.get(
+                        "balanced_type_rounding_placement_variants",
+                        ["lp_descending"],
+                    )
+                )
+                diversified_target_offsets = tuple(
+                    int(value)
+                    for value in config.runtime.get(
+                        "balanced_type_rounding_diversified_target_offsets",
+                        [0],
+                    )
+                )
+                if config.benchmark_id == ACTIVSG2000_V32_EXPERIMENT_ID:
+                    expected_placement_variants = (
+                        "lp_descending",
+                        "source_ascending",
+                        "source_descending",
+                        "alternating_extremes_high",
+                        "stable_hash_1",
+                        "stable_hash_2",
+                    )
+                    if placement_variants != expected_placement_variants:
+                        raise ScopfError("v32 exact-type placement identity changed")
+                    if diversified_target_offsets != (0,):
+                        raise ScopfError("v32 diversified target-offset identity changed")
                 for balanced, audit in balanced_exact_type_group_rounding_candidates(
                     root.master,
                     root.commitment,
                     target_offsets=target_offsets,
+                    placement_variants=placement_variants,
+                    diversified_target_offsets=diversified_target_offsets,
                 ):
                     balanced_candidate_audits.append(audit)
+                    placement_suffix = (
+                        f"_placement_{audit['placement_variant']}"
+                        if "placement_variant" in audit
+                        else ""
+                    )
                     beam_candidates.append(
                         (
                             root,
@@ -9517,6 +10178,7 @@ def run_gpu_lagrangian_experiment(
                             (
                                 "root_pdlp_balanced_type_count_"
                                 f"{int(audit['global_commitment_count'])}"
+                                f"{placement_suffix}"
                             ),
                             audit,
                         )
@@ -9549,7 +10211,10 @@ def run_gpu_lagrangian_experiment(
             payload["alternative_primal_candidate_beam"] = {
                 "status": "running",
                 "policy": (
-                    "best_first_phase_one_violation_with_balanced_type_seeds_v2"
+                    "best_first_phase_one_violation_with_diversified_exact_type_"
+                    "placements_v3"
+                    if config.benchmark_id == ACTIVSG2000_V32_EXPERIMENT_ID
+                    else "best_first_phase_one_violation_with_balanced_type_seeds_v2"
                     if use_best_first_repair
                     else "breadth_first_pending_repairs_then_root_thresholds_v1"
                 ),
@@ -10508,9 +11173,26 @@ def run_gpu_lagrangian_experiment(
         if (
             config.benchmark_id in ACTIVSG2000_V15_PLUS_EXPERIMENT_IDS
             and best_primal is not None
+            and not bool(config.runtime["minimizer_feasibility_cut_enabled"])
         ):
-            if not bool(config.runtime["minimizer_feasibility_cut_enabled"]):
+            if config.benchmark_id != ACTIVSG2000_V32_EXPERIMENT_ID:
                 raise ScopfError("v15 exact-minimizer separation was disabled")
+            payload["minimizer_feasibility_cut_policy"] = {
+                "enabled": False,
+                "status": "disabled_by_registered_v32_runtime_policy",
+                "reason": (
+                    "v31_measured_low_bound_lift_per_wall_second_reallocated_to_"
+                    "diversified_primal_and_disjunctive_proof_search"
+                ),
+                "cpu_commitment_dispatch_objective_or_bound_seeded": False,
+            }
+            save()
+
+        if (
+            config.benchmark_id in ACTIVSG2000_V15_PLUS_EXPERIMENT_IDS
+            and best_primal is not None
+            and bool(config.runtime["minimizer_feasibility_cut_enabled"])
+        ):
             minimizer_loop_started = time.perf_counter()
             maximum_minimizer_iterations = int(
                 config.runtime["minimizer_feasibility_cut_maximum_iterations"]
@@ -11289,6 +11971,9 @@ def run_gpu_lagrangian_experiment(
             tentative_outcomes: list[dict[str, Any]] = []
             split_failed = False
             child_specs: list[dict[str, Any]] = []
+            proof_only_pair_specs: list[
+                tuple[str, RegionMasks, tuple[CommitmentUpperCut, ...]]
+            ] = []
             for child_id, child_masks, child_cuts in (
                 (off_id, off_masks, off_cuts),
                 (on_id, on_masks, on_cuts),
@@ -11302,6 +11987,11 @@ def run_gpu_lagrangian_experiment(
                     config.benchmark_id
                     in ACTIVSG2000_PROOF_ONLY_HARD_CARDINALITY_EXPERIMENT_IDS
                 ):
+                    if config.benchmark_id == ACTIVSG2000_V32_EXPERIMENT_ID:
+                        proof_only_pair_specs.append(
+                            (child_id, child_masks, child_cuts)
+                        )
+                        continue
                     payload["active_stage"] = (
                         f"proof_only_hard_cardinality_{child_id}"
                     )
@@ -11573,6 +12263,50 @@ def run_gpu_lagrangian_experiment(
                             else None
                         ),
                     }
+                )
+
+            if proof_only_pair_specs:
+                if len(proof_only_pair_specs) != 2:
+                    raise ScopfError(
+                        "v32 block-diagonal proof split did not produce two siblings"
+                    )
+                payload["active_stage"] = (
+                    f"proof_only_hard_cardinality_pair_{off_id}_{on_id}"
+                )
+                paired_children, paired_audit = (
+                    _solve_v32_proof_only_hard_cardinality_pair(
+                        child_specs=(
+                            proof_only_pair_specs[0],
+                            proof_only_pair_specs[1],
+                        ),
+                        parent=parent,
+                        case=case,
+                        config=config,
+                        deadline=deadline,
+                    )
+                )
+                solved_children.update(paired_children)
+                payload.setdefault("parallel_child_batches", []).append(paired_audit)
+                for child_id in (off_id, on_id):
+                    proof_child = paired_children[child_id]
+                    tentative_outcomes.append(
+                        {
+                            "region_id": child_id,
+                            "status": "proof_only_hard_cardinality_solved",
+                            "conservative_lower_bound": (
+                                proof_child.lagrangian.conservative_lower_bound
+                            ),
+                            "hard_cardinality_cut_count": len(
+                                proof_child.lagrangian.hard_cardinality_cut_ids
+                            ),
+                            "shared_block_diagonal_gpu_solve": True,
+                        }
+                    )
+                    payload["pending_disjunctive_split"][
+                        "completed_child_region_ids"
+                    ].append(child_id)
+                payload["pending_disjunctive_split"]["tentative_outcomes"] = (
+                    tentative_outcomes
                 )
 
             if split_failed:

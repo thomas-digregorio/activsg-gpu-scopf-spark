@@ -61,6 +61,32 @@ def test_balanced_type_group_rounding_controls_global_count() -> None:
         assert audit["cpu_solution_data_used"] is False
 
 
+def test_balanced_type_group_rounding_diversifies_same_type_placement() -> None:
+    master = _two_identical_type_master()
+
+    candidates = balanced_exact_type_group_rounding_candidates(
+        master,
+        np.asarray([0.70, 0.60]),
+        target_offsets=(0,),
+        placement_variants=(
+            "lp_descending",
+            "source_ascending",
+            "source_descending",
+        ),
+        diversified_target_offsets=(0,),
+    )
+
+    assert [audit["placement_variant"] for _candidate, audit in candidates] == [
+        "lp_descending",
+        "source_ascending",
+        "source_descending",
+    ]
+    np.testing.assert_array_equal(candidates[0][0], np.asarray([1.0, 0.0]))
+    np.testing.assert_array_equal(candidates[1][0], np.asarray([1.0, 0.0]))
+    np.testing.assert_array_equal(candidates[2][0], np.asarray([0.0, 1.0]))
+    assert all(audit["cpu_solution_data_used"] is False for _candidate, audit in candidates)
+
+
 def test_cardinality_cut_roundtrip_rows_and_exhaustive_cover() -> None:
     master = _two_identical_type_master()
     exact_type_subsets = tuple(

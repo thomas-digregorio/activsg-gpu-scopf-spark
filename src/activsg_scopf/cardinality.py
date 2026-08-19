@@ -295,6 +295,8 @@ def balanced_exact_type_group_rounding_candidates(
     commitments: npt.ArrayLike,
     *,
     target_offsets: tuple[int, ...] = (-1, 0, 1),
+    placement_variants: tuple[str, ...] = ("lp_descending",),
+    diversified_target_offsets: tuple[int, ...] = (0,),
 ) -> tuple[tuple[np.ndarray, dict[str, Any]], ...]:
     """Globally balance exact-type counts around the aggregate LP count.
 
@@ -316,9 +318,91 @@ def balanced_exact_type_group_rounding_candidates(
         isinstance(offset, bool) or not isinstance(offset, int) for offset in target_offsets
     ):
         raise ScopfError("Balanced type-group target offsets must be nonempty integers")
+    allowed_placement_variants = {
+        "lp_descending",
+        "source_ascending",
+        "source_descending",
+        "alternating_extremes_high",
+        "stable_hash_1",
+        "stable_hash_2",
+    }
+    if (
+        not placement_variants
+        or len(set(placement_variants)) != len(placement_variants)
+        or placement_variants[0] != "lp_descending"
+        or any(variant not in allowed_placement_variants for variant in placement_variants)
+    ):
+        raise ScopfError(
+            "Balanced type-group placement variants must be unique, registered, "
+            "and start with lp_descending"
+        )
+    if any(
+        isinstance(offset, bool) or not isinstance(offset, int)
+        for offset in diversified_target_offsets
+    ):
+        raise ScopfError("Diversified placement target offsets must be integers")
+    diversified_offset_set = set(diversified_target_offsets)
+    legacy_lp_placement_policy = placement_variants == ("lp_descending",)
 
     clipped = np.clip(values, 0.0, 1.0)
     source_rows = np.asarray(master.index.generator_source_rows, dtype=np.int64) + 1
+
+    def placement_order(
+        positions: npt.NDArray[np.int64], *, variant: str
+    ) -> tuple[int, ...]:
+        ordered_positions = tuple(int(position) for position in positions)
+        if variant == "lp_descending":
+            return tuple(
+                sorted(
+                    ordered_positions,
+                    key=lambda position: (
+                        -float(clipped[position]),
+                        int(source_rows[position]),
+                    ),
+                )
+            )
+        if variant == "source_ascending":
+            return tuple(
+                sorted(
+                    ordered_positions,
+                    key=lambda position: int(source_rows[position]),
+                )
+            )
+        if variant == "source_descending":
+            return tuple(
+                sorted(
+                    ordered_positions,
+                    key=lambda position: -int(source_rows[position]),
+                )
+            )
+        if variant == "alternating_extremes_high":
+            stable = sorted(
+                ordered_positions,
+                key=lambda position: int(source_rows[position]),
+            )
+            alternating: list[int] = []
+            lower = 0
+            upper = len(stable) - 1
+            while lower <= upper:
+                alternating.append(stable[upper])
+                upper -= 1
+                if lower <= upper:
+                    alternating.append(stable[lower])
+                    lower += 1
+            return tuple(alternating)
+        salt = variant.rsplit("_", 1)[1]
+        return tuple(
+            sorted(
+                ordered_positions,
+                key=lambda position: (
+                    hashlib.sha256(
+                        f"{salt}:{int(source_rows[position])}".encode("ascii")
+                    ).digest(),
+                    int(source_rows[position]),
+                ),
+            )
+        )
+
     groups = exact_cost_type_groups(master)
     group_data: list[dict[str, Any]] = []
     floor_total = 0
@@ -327,15 +411,6 @@ def balanced_exact_type_group_rounding_candidates(
         lower = min(int(positions.size), max(0, int(floor(lp_sum + 1e-12))))
         fractional_part = max(0.0, min(1.0, lp_sum - lower))
         can_round_up = lower < int(positions.size) and fractional_part > 1e-10
-        order = tuple(
-            sorted(
-                (int(position) for position in positions),
-                key=lambda position: (
-                    -float(clipped[position]),
-                    int(source_rows[position]),
-                ),
-            )
-        )
         group_data.append(
             {
                 "group_index": group_index,
@@ -345,7 +420,10 @@ def balanced_exact_type_group_rounding_candidates(
                 "floor_count": lower,
                 "fractional_part": fractional_part,
                 "can_round_up": can_round_up,
-                "placement_order": order,
+                "placement_orders": {
+                    variant: placement_order(positions, variant=variant)
+                    for variant in placement_variants
+                },
             }
         )
         floor_total += lower
@@ -364,59 +442,71 @@ def balanced_exact_type_group_rounding_candidates(
     )
 
     candidates: list[tuple[np.ndarray, dict[str, Any]]] = []
-    seen_targets: set[int] = set()
+    seen_candidates: set[tuple[int, str]] = set()
     for offset in target_offsets:
         requested_target = center_target + int(offset)
         target = min(maximum_target, max(floor_total, requested_target))
-        if target in seen_targets:
-            continue
-        seen_targets.add(target)
-        ceil_group_indices = {
-            int(group["group_index"])
-            for group in ranked_fractional_groups[: target - floor_total]
-        }
-        rounded = np.zeros(generator_count, dtype=np.float64)
-        records: list[dict[str, Any]] = []
-        for group in group_data:
-            count = int(group["floor_count"]) + int(
-                int(group["group_index"]) in ceil_group_indices
-            )
-            selected = tuple(group["placement_order"][:count])
-            rounded[np.asarray(selected, dtype=np.int64)] = 1.0
-            records.append(
-                {
-                    "source_rows": list(group["source_rows"]),
-                    "lp_sum": float(group["lp_sum"]),
-                    "floor_count": int(group["floor_count"]),
-                    "rounded_up": bool(int(group["group_index"]) in ceil_group_indices),
-                    "rounded_count": count,
-                    "selected_source_rows": [int(source_rows[position]) for position in selected],
-                }
-            )
-        observed_count = int(np.count_nonzero(rounded))
-        if observed_count != target:
-            raise ScopfError("Balanced type-group rounding missed its global target")
-        candidates.append(
-            (
-                rounded,
-                {
-                    "policy": (
-                        "global_dependent_exact_pmin_pmax_pwl_type_count_"
-                        "then_lp_placement_v1"
-                    ),
-                    "target_offset": int(offset),
-                    "requested_global_commitment_count": requested_target,
-                    "global_commitment_count": target,
-                    "aggregate_lp_commitment_count": aggregate_lp_count,
-                    "global_floor_count": floor_total,
-                    "global_maximum_dependent_rounding_count": maximum_target,
-                    "rounded_up_type_group_count": target - floor_total,
-                    "type_group_count": len(group_data),
-                    "groups": records,
-                    "candidate_only_not_feasibility_proof": True,
-                    "exact_source_pmin_pmax_retained": True,
-                    "cpu_solution_data_used": False,
-                },
-            )
+        active_variants = (
+            placement_variants
+            if int(offset) in diversified_offset_set
+            else ("lp_descending",)
         )
+        for variant in active_variants:
+            identity = (target, variant)
+            if identity in seen_candidates:
+                continue
+            seen_candidates.add(identity)
+            ceil_group_indices = {
+                int(group["group_index"])
+                for group in ranked_fractional_groups[: target - floor_total]
+            }
+            rounded = np.zeros(generator_count, dtype=np.float64)
+            records: list[dict[str, Any]] = []
+            for group in group_data:
+                count = int(group["floor_count"]) + int(
+                    int(group["group_index"]) in ceil_group_indices
+                )
+                selected = tuple(group["placement_orders"][variant][:count])
+                rounded[np.asarray(selected, dtype=np.int64)] = 1.0
+                records.append(
+                    {
+                        "source_rows": list(group["source_rows"]),
+                        "lp_sum": float(group["lp_sum"]),
+                        "floor_count": int(group["floor_count"]),
+                        "rounded_up": bool(
+                            int(group["group_index"]) in ceil_group_indices
+                        ),
+                        "rounded_count": count,
+                        "selected_source_rows": [
+                            int(source_rows[position]) for position in selected
+                        ],
+                    }
+                )
+            observed_count = int(np.count_nonzero(rounded))
+            if observed_count != target:
+                raise ScopfError("Balanced type-group rounding missed its global target")
+            audit = {
+                "policy": (
+                    "global_dependent_exact_pmin_pmax_pwl_type_count_"
+                    "then_lp_placement_v1"
+                    if legacy_lp_placement_policy
+                    else "global_dependent_exact_pmin_pmax_pwl_type_count_"
+                    "then_diversified_placement_v2"
+                ),
+                "target_offset": int(offset),
+                "requested_global_commitment_count": requested_target,
+                "global_commitment_count": target,
+                "aggregate_lp_commitment_count": aggregate_lp_count,
+                "global_floor_count": floor_total,
+                "global_maximum_dependent_rounding_count": maximum_target,
+                "rounded_up_type_group_count": target - floor_total,
+                "type_group_count": len(group_data),
+                "groups": records,
+                "candidate_only_not_feasibility_proof": True,
+                "exact_source_pmin_pmax_retained": True,
+                "cpu_solution_data_used": False,
+            }
+            if not legacy_lp_placement_policy:
+                audit["placement_variant"] = variant
+            candidates.append((rounded, audit))
     return tuple(candidates)
