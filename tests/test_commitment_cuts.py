@@ -83,6 +83,53 @@ def test_binary_knapsack_cover_strengthens_mixed_sign_parent_cut() -> None:
     assert reference_only.violation(reference) == pytest.approx(0.7)
 
 
+def test_weight_dominance_extended_cover_is_valid_and_replayable() -> None:
+    source = np.asarray([1, 0, 0], dtype=np.int8)
+    parent = CommitmentFeasibilityCut(
+        cut_id="fc_test_extended_cover",
+        coefficients=np.asarray([4.0, -3.0, -3.0]),
+        rhs=-0.5,
+        source_commitment_sha256=hashlib.sha256(source.tobytes()).hexdigest(),
+        conservative_source_violation_pu=4.5,
+    )
+    rows = np.asarray([11, 12, 13], dtype=np.int64)
+    # The fractional reference selects rows 12 and 13 as the strict core.
+    # Row 11 is then a valid extension because its weight (4) dominates the
+    # maximum core weight (3).
+    reference = np.asarray([0.0, 0.0, 0.0], dtype=np.float64)
+
+    cover, audit = derive_binary_knapsack_cover_cut(
+        source_cut=parent,
+        generator_source_rows=rows,
+        source_commitment=source,
+        separation_reference=reference,
+        extend_cover=True,
+    )
+
+    np.testing.assert_array_equal(cover.coefficients, np.asarray([1.0, -1.0, -1.0]))
+    assert cover.rhs == -1.0
+    assert cover.core_cover_source_rows == (12, 13)
+    assert cover.extended_source_rows == (11,)
+    assert cover.extension_weight_threshold == 3.0
+    assert audit["verification"]["core_cover_size"] == 2
+    assert audit["verification"]["extended_item_count"] == 1
+    for encoded in range(8):
+        binary = np.asarray([(encoded >> position) & 1 for position in range(3)])
+        if parent.violation(binary) <= 0.0:
+            assert cover.violation(binary) <= 0.0
+
+    serialized = cover.as_dict(rows)
+    assert serialized["certificate_kind"] == (
+        "binary_knapsack_extended_cover_from_commitment_cut_v2"
+    )
+    rebuilt = commitment_cover_cut_from_record(serialized, rows)
+    generic = commitment_upper_cut_from_record(serialized, rows)
+    np.testing.assert_array_equal(rebuilt.coefficients, cover.coefficients)
+    assert generic.cut_id == cover.cut_id
+    replay = verify_binary_knapsack_cover_derivation(parent, rebuilt, rows)
+    assert replay["passed"] is True
+
+
 def test_binary_knapsack_cover_rejects_nonmatching_source_commitment() -> None:
     source = np.asarray([1, 1], dtype=np.int8)
     parent = CommitmentFeasibilityCut(

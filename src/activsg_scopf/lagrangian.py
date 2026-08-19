@@ -1167,15 +1167,16 @@ def build_lagrangian_multiplier_delta_search_model(
     coupling_trust_radius: float = 100.0,
     commitment_cut_trust_radius: float = 10_000.0,
     search_coefficient_zero_tolerance: float = 1e-8,
+    search_objective_zero_tolerance: float = 0.0,
 ) -> LagrangianMultiplierDeltaSearchModel:
     """Build a numerically scaled local LP for multiplier proposals.
 
     The physical multipliers are represented as ``center + radius * delta``.
     Every delta starts at zero, and each generator hypograph is shifted by its
     exact value at the center.  Positive row scaling and one positive objective
-    scaling then keep the search LP near unit magnitude without changing its
-    optimizer.  The finite trust box changes only this proposal problem: every
-    returned point is still projected and scored by the exact nonsmoothed
+    scaling keep the search LP near unit magnitude.  Optional tiny coefficient
+    cleanup can change only this proposal problem, as can the finite trust box:
+    every returned point is still projected and scored by the exact nonsmoothed
     Lagrangian evaluator before it can become a lower-bound certificate.
     """
 
@@ -1192,6 +1193,11 @@ def build_lagrangian_multiplier_delta_search_model(
         or search_coefficient_zero_tolerance < 0.0
     ):
         raise ScopfError("Delta multiplier search cleanup tolerance is invalid")
+    if (
+        not np.isfinite(search_objective_zero_tolerance)
+        or search_objective_zero_tolerance < 0.0
+    ):
+        raise ScopfError("Delta multiplier search objective cleanup tolerance is invalid")
 
     generator_count = master.index.generator_source_rows.size
     region.validate(generator_count)
@@ -1393,12 +1399,34 @@ def build_lagrangian_multiplier_delta_search_model(
         )
     )
     objective_normalizer = float(max(1.0, np.max(objective_terms)))
+    coupling_objective = -coupling_physical_objective / objective_normalizer
+    cut_objective = -cut_physical_objective / objective_normalizer
+    epigraph_objective = -epigraph_scales / objective_normalizer
+    all_objective = np.concatenate(
+        (coupling_objective, cut_objective, epigraph_objective)
+    )
+    dropped_objective = (all_objective != 0.0) & (
+        np.abs(all_objective) <= search_objective_zero_tolerance
+    )
+    dropped_search_objective_coefficient_count = int(
+        np.count_nonzero(dropped_objective)
+    )
+    maximum_dropped_search_objective_coefficient = (
+        0.0
+        if not dropped_search_objective_coefficient_count
+        else float(np.max(np.abs(all_objective[dropped_objective])))
+    )
+    all_objective[dropped_objective] = 0.0
+    coupling_end = coupling_objective.size
+    cut_end = coupling_end + cut_objective.size
+    coupling_objective = all_objective[:coupling_end]
+    cut_objective = all_objective[coupling_end:cut_end]
+    epigraph_objective = all_objective[cut_end:]
     search = CanonicalMILP()
     coupling_columns = [
         search.add_variable(
             f"delta_lambda__{coupling_rows[int(position)].row_name}",
-            objective=-float(coupling_physical_objective[offset])
-            / objective_normalizer,
+            objective=float(coupling_objective[offset]),
             lower=float(coupling_delta_lower[offset]),
             upper=float(coupling_delta_upper[offset]),
         )
@@ -1407,8 +1435,7 @@ def build_lagrangian_multiplier_delta_search_model(
     cut_columns = [
         search.add_variable(
             f"delta_mu__{cut.cut_id}",
-            objective=-float(cut_physical_objective[offset])
-            / objective_normalizer,
+            objective=float(cut_objective[offset]),
             lower=float(cut_delta_lower[offset]),
             upper=float(cut_delta_upper[offset]),
         )
@@ -1417,8 +1444,7 @@ def build_lagrangian_multiplier_delta_search_model(
     epigraph_columns = [
         search.add_variable(
             f"delta_generator_value__g{int(source_row) + 1:04d}",
-            objective=-float(epigraph_scales[generator])
-            / objective_normalizer,
+            objective=float(epigraph_objective[generator]),
             lower=float(epigraph_lower[generator]),
             upper=float(epigraph_upper[generator]),
         )
@@ -1561,13 +1587,26 @@ def build_lagrangian_multiplier_delta_search_model(
             "search_coefficient_zero_tolerance": float(
                 search_coefficient_zero_tolerance
             ),
+            "search_objective_zero_tolerance": float(
+                search_objective_zero_tolerance
+            ),
             "dropped_search_coefficient_count": dropped_search_coefficient_count,
             "maximum_absolute_dropped_search_coefficient": (
                 maximum_dropped_search_coefficient
             ),
+            "dropped_search_objective_coefficient_count": (
+                dropped_search_objective_coefficient_count
+            ),
+            "maximum_absolute_dropped_search_objective_coefficient": (
+                maximum_dropped_search_objective_coefficient
+            ),
             "center_is_exact_nonsmoothed_certificate": True,
             "row_scaling_is_exact_positive_scaling": True,
             "objective_scaling_is_exact_positive_scaling": True,
+            "objective_cleanup_preserves_search_optimizer": (
+                dropped_search_objective_coefficient_count == 0
+            ),
+            "objective_cleanup_changes_certificate": False,
             "finite_bounds_are_search_restrictions_only": True,
             "search_lp_solution_is_never_bound_authority": True,
             "exact_replay_after_candidate_reconstruction_required": True,

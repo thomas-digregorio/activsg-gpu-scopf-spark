@@ -151,6 +151,18 @@ def test_delta_multiplier_search_is_unit_scaled_and_replays_exact_center() -> No
     assert search.audit["search_lp_solution_is_never_bound_authority"] is True
     assert search.audit["exact_source_pmin_pmax_changed"] is False
 
+    objective_cleaned = build_lagrangian_multiplier_delta_search_model(
+        master,
+        row_dual,
+        region,
+        maximum_new_violated_coupling_rows=2,
+        coupling_trust_radius=50.0,
+        search_objective_zero_tolerance=1.0,
+    )
+    assert np.count_nonzero(objective_cleaned.canonical.objective) == 0
+    assert objective_cleaned.audit["dropped_search_objective_coefficient_count"] > 0
+    assert objective_cleaned.audit["search_lp_solution_is_never_bound_authority"] is True
+
 
 def test_delta_multiplier_candidate_is_box_clipped_and_sign_valid() -> None:
     case, _ = triangle_case()

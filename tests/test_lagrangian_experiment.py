@@ -36,6 +36,9 @@ from activsg_scopf.lagrangian_experiment import (
     ACTIVSG2000_V18_EXPERIMENT_ID,
     ACTIVSG2000_V18_PRIMAL_SEARCH_FIX,
     ACTIVSG2000_V18_RUNTIME,
+    ACTIVSG2000_V19_EXPERIMENT_ID,
+    ACTIVSG2000_V19_NUMERICAL_EXTENDED_COVER_FIX,
+    ACTIVSG2000_V19_RUNTIME,
     EXPERIMENT_ID,
     EXPERIMENT_TAG,
     PrimalCandidatePolicy,
@@ -620,6 +623,35 @@ def test_registered_activsg2000_v18_primal_search_is_fail_closed() -> None:
     v18.raw["runtime"]["balanced_type_rounding_target_offsets"] = [-2, 0, 1]
     with pytest.raises(ScopfError, match="runtime policy changed"):
         validate_lagrangian_experiment_config(v18)
+
+
+def test_registered_activsg2000_v19_numerical_extended_cover_fix_is_fail_closed() -> None:
+    v18 = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v18.json")
+    v19 = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v19.json")
+    registration = validate_lagrangian_experiment_config(v19)
+
+    assert v19.benchmark_id == ACTIVSG2000_V19_EXPERIMENT_ID
+    assert registration["benchmark"]["required_git_tag"] == (
+        "experiment-2000-gpu-lagrangian-v19"
+    )
+    assert v19.raw["raw_inputs"] == v18.raw["raw_inputs"]
+    assert v19.runtime == ACTIVSG2000_V19_RUNTIME
+    assert v19.runtime["deadline_seconds"] == 900.0
+    assert v19.model["reduced_coefficient_zero_tolerance"] == 1e-5
+    assert v19.runtime["feasibility_cut_coefficient_zero_tolerance"] == 1e-5
+    assert v19.runtime["centered_dual_search_coefficient_zero_tolerance"] == 1e-5
+    assert v19.runtime["centered_dual_search_objective_zero_tolerance"] == 1e-5
+    assert v19.runtime["extended_cover_enabled"] is True
+    assert v19.runtime["benders_parent_master_policy"] == "cover_only_when_available"
+    assert registration["benchmark"]["numerical_extended_cover_fix"] == (
+        ACTIVSG2000_V19_NUMERICAL_EXTENDED_COVER_FIX
+    )
+    assert registration["benchmark"]["numerical_extended_cover_fix"][
+        "cpu_solution_data_used"
+    ] is False
+    v19.raw["runtime"]["extended_cover_enabled"] = False
+    with pytest.raises(ScopfError, match="runtime policy changed"):
+        validate_lagrangian_experiment_config(v19)
 
 
 def test_gpu_lagrangian_timing_accepts_centered_and_legacy_audits() -> None:

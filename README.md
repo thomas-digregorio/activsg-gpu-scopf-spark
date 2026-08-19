@@ -168,6 +168,20 @@ the failure. The v3 correction rejects only that binary candidate and continues
 the deterministic candidate queue; it does not call the full model infeasible.
 See the [v3 correction contract](docs/gpu-lagrangian-2000-v3.md).
 
+The current `activsg2000-gpu-lagrangian-v19` numerical-fix run preserves the
+v18 model, exact source PMIN/PMAX, 0.1% target, and 900-second boundary. It
+removes only tiny solver-row coefficients with a box-derived outward RHS
+relaxation, cleans tiny matrix and objective terms only in the non-authoritative
+centered multiplier proposal LP, and independently replays every proposed dual
+against the exact FP64 Lagrangian. A replayable Benders parent remains proof
+evidence, while its stronger signed-unit weight-dominance extended cover is the
+GPU-master row when available. The one-shot commands are:
+
+```bash
+bash scripts/spark-build-2000-gpu-lagrangian-v19.sh
+bash scripts/spark-run-2000-gpu-lagrangian-v19.sh
+```
+
 ## MIP-gap sensitivity experiments
 
 The separately registered `activsg10k-gap-sensitivity-v2` experiment runs the
