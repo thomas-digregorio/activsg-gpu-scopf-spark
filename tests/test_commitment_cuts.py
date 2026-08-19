@@ -1,16 +1,23 @@
+import hashlib
+
 import numpy as np
 import pytest
 
 from activsg_scopf.commitment_cuts import (
+    CommitmentFeasibilityCut,
     _relax_commitment_cut_coefficient_dust,
     build_commitment_cardinality_cut,
     commitment_capacity_cut_from_record,
+    commitment_cover_cut_from_record,
     commitment_feasibility_cut_from_record,
     commitment_upper_cut_from_record,
+    derive_binary_knapsack_cover_cut,
     derive_commitment_capacity_cut,
     derive_commitment_feasibility_cut,
     generate_commitment_cut_repairs,
+    verify_binary_knapsack_cover_derivation,
 )
+from activsg_scopf.errors import ScopfError
 from activsg_scopf.fixed_commitment import build_fixed_commitment_projection
 from activsg_scopf.lagrangian import (
     RegionMasks,
@@ -24,6 +31,73 @@ from activsg_scopf.phase_one import build_phase_one_model, phase_one_certificate
 from activsg_scopf.reduced import CouplingRow, build_reduced_master, fix_commitments
 
 from .helpers import triangle_case
+
+
+def test_binary_knapsack_cover_strengthens_mixed_sign_parent_cut() -> None:
+    source = np.asarray([1, 0, 1], dtype=np.int8)
+    parent = CommitmentFeasibilityCut(
+        cut_id="fc_test_mixed",
+        coefficients=np.asarray([4.0, -3.0, 2.0]),
+        rhs=1.0,
+        source_commitment_sha256=hashlib.sha256(source.tobytes()).hexdigest(),
+        conservative_source_violation_pu=5.0,
+    )
+    rows = np.asarray([11, 12, 13], dtype=np.int64)
+    reference = np.asarray([0.8, 0.1, 0.2])
+
+    cover, audit = derive_binary_knapsack_cover_cut(
+        source_cut=parent,
+        generator_source_rows=rows,
+        source_commitment=source,
+        separation_reference=reference,
+    )
+
+    np.testing.assert_array_equal(cover.coefficients, np.asarray([1.0, -1.0, 0.0]))
+    assert cover.rhs == 0.0
+    assert cover.violation(source) == 1.0
+    assert cover.violation(reference) == pytest.approx(0.7)
+    assert audit["verification"]["continuous_relaxation_strengthened"] is True
+    assert audit["verification"]["original_binary_feasible_set_changed"] is False
+    for encoded in range(8):
+        binary = np.asarray([(encoded >> position) & 1 for position in range(3)])
+        if parent.violation(binary) <= 0.0:
+            assert cover.violation(binary) <= 0.0
+
+    serialized = cover.as_dict(rows)
+    rebuilt = commitment_cover_cut_from_record(serialized, rows)
+    generic = commitment_upper_cut_from_record(serialized, rows)
+    np.testing.assert_array_equal(rebuilt.coefficients, cover.coefficients)
+    assert generic.cut_id == cover.cut_id
+    replay = verify_binary_knapsack_cover_derivation(parent, rebuilt, rows)
+    assert replay["passed"] is True
+
+    reference_only, reference_audit = derive_binary_knapsack_cover_cut(
+        source_cut=parent,
+        generator_source_rows=rows,
+        source_commitment=None,
+        separation_reference=reference,
+    )
+    np.testing.assert_array_equal(reference_only.coefficients, cover.coefficients)
+    assert reference_audit["source_parent_violation_pu"] is None
+    assert reference_only.violation(reference) == pytest.approx(0.7)
+
+
+def test_binary_knapsack_cover_rejects_nonmatching_source_commitment() -> None:
+    source = np.asarray([1, 1], dtype=np.int8)
+    parent = CommitmentFeasibilityCut(
+        cut_id="fc_test_source",
+        coefficients=np.asarray([2.0, 2.0]),
+        rhs=3.0,
+        source_commitment_sha256=hashlib.sha256(source.tobytes()).hexdigest(),
+        conservative_source_violation_pu=1.0,
+    )
+
+    with pytest.raises(ScopfError, match="does not match"):
+        derive_binary_knapsack_cover_cut(
+            source_cut=parent,
+            generator_source_rows=np.asarray([1, 2]),
+            source_commitment=np.asarray([1, 0], dtype=np.int8),
+        )
 
 
 def test_cut_coordinate_uses_local_delta_below_absolute_objective_ulp() -> None:

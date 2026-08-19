@@ -173,6 +173,129 @@ class CommitmentCapacityCut:
 
 
 @dataclass(frozen=True)
+class CommitmentCoverCut:
+    """A binary knapsack-cover inequality implied by another valid cut.
+
+    A mixed-sign parent inequality ``a @ u <= b`` is rewritten with
+    ``z_g = u_g`` for positive ``a_g`` and ``z_g = 1 - u_g`` for negative
+    ``a_g``.  This gives ``sum(abs(a_g) z_g) <= B``.  Any subset whose
+    weight exceeds ``B`` cannot have every ``z_g`` equal to one, yielding a
+    unit-coefficient cover inequality.  Unlike the parent projection cut,
+    that cover can strengthen the continuous commitment relaxation.
+    """
+
+    cut_id: str
+    coefficients: FloatArray
+    rhs: float
+    source_cut_id: str
+    source_cut_kind: str
+    cover_source_rows: tuple[int, ...]
+    complemented_source_rows: tuple[int, ...]
+    transformed_rhs: float
+    cover_weight_sum: float
+    conservative_cover_excess: float
+    cover_safety_margin: float
+    source_commitment_sha256: str
+    separation_reference_sha256: str
+    separation_reference_violation: float
+    derivation_strategy: str
+
+    def validate(self, generator_count: int) -> None:
+        if self.coefficients.shape != (generator_count,) or not np.all(
+            np.isfinite(self.coefficients)
+        ):
+            raise ScopfError("Commitment cover cut has invalid coefficients")
+        nonzero = np.flatnonzero(self.coefficients != 0.0)
+        if nonzero.size == 0 or not np.all(
+            np.isin(self.coefficients[nonzero], (-1.0, 1.0))
+        ):
+            raise ScopfError("Commitment cover cut coefficients are not signed unit values")
+        if tuple(sorted(self.cover_source_rows)) != self.cover_source_rows or len(
+            set(self.cover_source_rows)
+        ) != len(self.cover_source_rows):
+            raise ScopfError("Commitment cover cut source rows are not unique and sorted")
+        if len(self.cover_source_rows) != int(nonzero.size):
+            raise ScopfError("Commitment cover cut source-row identity is inconsistent")
+        if tuple(sorted(self.complemented_source_rows)) != self.complemented_source_rows:
+            raise ScopfError("Commitment cover cut complemented rows are not sorted")
+        if not set(self.complemented_source_rows).issubset(self.cover_source_rows):
+            raise ScopfError("Commitment cover cut complements a row outside its cover")
+        positive_count = int(np.count_nonzero(self.coefficients > 0.0))
+        if self.rhs != float(positive_count - 1):
+            raise ScopfError("Commitment cover cut RHS is inconsistent")
+        scalars = (
+            self.rhs,
+            self.transformed_rhs,
+            self.cover_weight_sum,
+            self.conservative_cover_excess,
+            self.cover_safety_margin,
+            self.separation_reference_violation,
+        )
+        if not all(isfinite(value) for value in scalars):
+            raise ScopfError("Commitment cover cut has a nonfinite scalar")
+        if self.cover_safety_margin < 0.0 or self.conservative_cover_excess <= 0.0:
+            raise ScopfError("Commitment cover cut lacks a positive conservative excess")
+        if not self.source_cut_id or not self.source_cut_kind or not self.derivation_strategy:
+            raise ScopfError("Commitment cover cut lacks derivation identity")
+        for digest in (
+            self.source_commitment_sha256,
+            self.separation_reference_sha256,
+        ):
+            if len(digest) != 64 or any(
+                character not in "0123456789abcdef" for character in digest
+            ):
+                raise ScopfError("Commitment cover cut has an invalid SHA-256 identity")
+
+    def violation(self, commitment: npt.ArrayLike) -> float:
+        values = np.asarray(commitment, dtype=np.float64)
+        self.validate(values.size)
+        if values.shape != self.coefficients.shape or not np.all(np.isfinite(values)):
+            raise ScopfError("Commitment cover cut received invalid commitment values")
+        return fsum(
+            [-self.rhs]
+            + [
+                float(self.coefficients[position] * values[position])
+                for position in np.flatnonzero(self.coefficients)
+            ]
+        )
+
+    def as_dict(self, generator_source_rows: npt.ArrayLike) -> dict[str, Any]:
+        rows = np.asarray(generator_source_rows, dtype=np.int64)
+        self.validate(rows.size)
+        nonzero = np.flatnonzero(self.coefficients != 0.0)
+        observed_cover = tuple(int(row) for row in rows[nonzero])
+        observed_complemented = tuple(
+            int(rows[position])
+            for position in nonzero
+            if self.coefficients[position] < 0.0
+        )
+        if observed_cover != self.cover_source_rows:
+            raise ScopfError("Commitment cover cut source-row replay mismatch")
+        if observed_complemented != self.complemented_source_rows:
+            raise ScopfError("Commitment cover cut complement replay mismatch")
+        return {
+            "certificate_kind": "binary_knapsack_cover_from_commitment_cut_v1",
+            "cut_id": self.cut_id,
+            "source_cut_id": self.source_cut_id,
+            "source_cut_kind": self.source_cut_kind,
+            "cover_source_rows": list(self.cover_source_rows),
+            "complemented_source_rows": list(self.complemented_source_rows),
+            "rhs": self.rhs,
+            "transformed_rhs": self.transformed_rhs,
+            "cover_weight_sum": self.cover_weight_sum,
+            "conservative_cover_excess": self.conservative_cover_excess,
+            "cover_safety_margin": self.cover_safety_margin,
+            "source_commitment_sha256": self.source_commitment_sha256,
+            "separation_reference_sha256": self.separation_reference_sha256,
+            "separation_reference_violation": self.separation_reference_violation,
+            "derivation_strategy": self.derivation_strategy,
+            "coefficient_sha256": hashlib.sha256(self.coefficients.tobytes()).hexdigest(),
+            "validity": "binary_knapsack_cover_implied_by_replayable_commitment_upper_cut",
+            "exact_source_pmin_pmax_changed": False,
+        }
+
+
+@dataclass(frozen=True)
 class CommitmentCardinalityCut:
     """One branch inequality on an integer-valued commitment subset.
 
@@ -240,7 +363,10 @@ class CommitmentCardinalityCut:
 
 
 type CommitmentUpperCut = (
-    CommitmentFeasibilityCut | CommitmentCapacityCut | CommitmentCardinalityCut
+    CommitmentFeasibilityCut
+    | CommitmentCapacityCut
+    | CommitmentCoverCut
+    | CommitmentCardinalityCut
 )
 
 
@@ -289,6 +415,335 @@ def build_commitment_cardinality_cut(
     )
     cut.validate(rows.size)
     return cut
+
+
+def _commitment_cut_certificate_kind(cut: CommitmentUpperCut) -> str:
+    if isinstance(cut, CommitmentFeasibilityCut):
+        return "phase_one_binary_benders_feasibility_cut_v1"
+    if isinstance(cut, CommitmentCapacityCut):
+        return "conditional_dispatch_row_capacity_cut_v1"
+    if isinstance(cut, CommitmentCoverCut):
+        return "binary_knapsack_cover_from_commitment_cut_v1"
+    if isinstance(cut, CommitmentCardinalityCut):
+        return "binary_commitment_cardinality_branch_v1"
+    raise ScopfError("Unknown commitment upper-cut type")
+
+
+def derive_binary_knapsack_cover_cut(
+    *,
+    source_cut: CommitmentFeasibilityCut | CommitmentCapacityCut,
+    generator_source_rows: npt.ArrayLike,
+    source_commitment: npt.ArrayLike | None,
+    separation_reference: npt.ArrayLike | None = None,
+) -> tuple[CommitmentCoverCut, dict[str, Any]]:
+    """Strengthen one valid binary upper inequality with a cover cut.
+
+    The returned inequality is valid for every binary point satisfying the
+    source cut.  Candidate cover selection may use a fractional GPU LP point,
+    but that point affects only which valid cover is selected, never validity.
+    """
+
+    rows = np.asarray(generator_source_rows, dtype=np.int64)
+    source_cut.validate(rows.size)
+    if rows.ndim != 1 or len(set(int(row) for row in rows)) != int(rows.size):
+        raise ScopfError("Binary cover derivation received invalid source identity")
+    binary: IntArray | None = None
+    if source_commitment is not None:
+        binary = np.asarray(source_commitment, dtype=np.int8)
+        if binary.shape != (rows.size,) or np.any((binary != 0) & (binary != 1)):
+            raise ScopfError("Binary cover derivation received an invalid commitment")
+        source_digest = hashlib.sha256(binary.tobytes()).hexdigest()
+        if source_digest != source_cut.source_commitment_sha256:
+            raise ScopfError("Binary cover source commitment does not match its parent cut")
+    else:
+        source_digest = source_cut.source_commitment_sha256
+        if separation_reference is None:
+            raise ScopfError(
+                "Binary cover without a source commitment requires a separation reference"
+            )
+
+    if separation_reference is None:
+        assert binary is not None
+        reference = binary.astype(np.float64)
+    else:
+        reference = np.asarray(separation_reference, dtype=np.float64)
+        if reference.shape != (rows.size,) or not np.all(np.isfinite(reference)):
+            raise ScopfError("Binary cover separation reference has invalid shape or values")
+        reference_tolerance = 1e-7
+        if np.any(reference < -reference_tolerance) or np.any(
+            reference > 1.0 + reference_tolerance
+        ):
+            raise ScopfError("Binary cover separation reference lies outside [0, 1]")
+        reference = np.clip(reference, 0.0, 1.0)
+
+    parent = np.asarray(source_cut.coefficients, dtype=np.float64)
+    positive = parent > 0.0
+    negative = parent < 0.0
+    support = np.flatnonzero(positive | negative)
+    if support.size == 0:
+        raise ScopfError("Binary cover parent cut has empty support")
+    weights = np.abs(parent)
+    transformed_rhs = fsum(
+        [float(source_cut.rhs)]
+        + [-float(parent[position]) for position in np.flatnonzero(negative)]
+    )
+    total_weight = fsum(float(weights[position]) for position in support)
+    safety_margin = 64.0 * np.finfo(np.float64).eps * max(
+        1.0, abs(transformed_rhs), total_weight
+    )
+    source_z: FloatArray | None = None
+    if binary is not None:
+        source_z = np.where(positive, binary, 1 - binary).astype(np.float64)
+        source_weight = fsum(
+            float(weights[position] * source_z[position]) for position in support
+        )
+        if source_weight - transformed_rhs <= safety_margin:
+            raise ScopfError(
+                "Binary cover parent is not conservatively violated by its source"
+            )
+    reference_z = np.where(positive, reference, 1.0 - reference)
+    deficits = 1.0 - reference_z
+
+    def candidate_from_order(
+        ordered_positions: list[int], strategy: str
+    ) -> tuple[tuple[int, ...], str] | None:
+        selected: list[int] = []
+        selected_weight = 0.0
+        for position in ordered_positions:
+            if weights[position] <= 0.0:
+                continue
+            selected.append(position)
+            selected_weight = fsum(float(weights[index]) for index in selected)
+            if selected_weight - transformed_rhs > safety_margin:
+                break
+        if selected_weight - transformed_rhs <= safety_margin:
+            return None
+        # Removing a member always strengthens the fractional separation.  Try
+        # the largest reference deficits first while preserving a conservative
+        # strict cover.  Stable source-row ties make the result deterministic.
+        removal_order = sorted(
+            selected,
+            key=lambda position: (
+                -float(deficits[position]),
+                float(weights[position]),
+                int(rows[position]),
+            ),
+        )
+        for position in removal_order:
+            if position not in selected:
+                continue
+            trial = [index for index in selected if index != position]
+            trial_weight = fsum(float(weights[index]) for index in trial)
+            if trial_weight - transformed_rhs > safety_margin:
+                selected = trial
+        return tuple(sorted(selected)), strategy
+
+    orderings: list[tuple[list[int], str]] = [
+        (
+            sorted(
+                (int(position) for position in support),
+                key=lambda position: (
+                    float(deficits[position]) / float(weights[position]),
+                    float(deficits[position]),
+                    -float(weights[position]),
+                    int(rows[position]),
+                ),
+            ),
+            "fractional_deficit_per_weight_v1",
+        ),
+        (
+            sorted(
+                (int(position) for position in support),
+                key=lambda position: (
+                    -float(reference_z[position]),
+                    -float(weights[position]),
+                    int(rows[position]),
+                ),
+            ),
+            "fractional_value_then_weight_v1",
+        ),
+    ]
+    if source_z is not None:
+        source_active = [
+            int(position)
+            for position in support
+            if source_z[int(position)] == 1.0
+        ]
+        orderings.insert(
+            0,
+            (
+                sorted(
+                    source_active,
+                    key=lambda position: (
+                        -float(weights[position]),
+                        int(rows[position]),
+                    ),
+                ),
+                "source_active_largest_weight_then_reference_minimal_v1",
+            ),
+        )
+    candidates: list[tuple[float, int, float, str, tuple[int, ...]]] = []
+    for ordering, strategy in orderings:
+        candidate = candidate_from_order(ordering, strategy)
+        if candidate is None:
+            continue
+        positions, candidate_strategy = candidate
+        reference_cover_violation = 1.0 - fsum(
+            float(deficits[position]) for position in positions
+        )
+        candidate_weight = fsum(float(weights[position]) for position in positions)
+        candidates.append(
+            (
+                reference_cover_violation,
+                -len(positions),
+                candidate_weight - transformed_rhs,
+                candidate_strategy,
+                positions,
+            )
+        )
+    if not candidates:
+        raise ScopfError("Binary cover derivation could not construct a strict cover")
+    _, _, raw_excess, strategy, selected_positions = max(
+        candidates,
+        key=lambda item: (item[0], item[1], item[2], item[3]),
+    )
+    selected = np.asarray(selected_positions, dtype=np.int64)
+    cover_weight_sum = fsum(float(weights[position]) for position in selected)
+    conservative_excess = cover_weight_sum - transformed_rhs - safety_margin
+    if conservative_excess <= 0.0:
+        raise ScopfError("Binary cover lost its strict excess after safety margin")
+
+    coefficients = np.zeros(rows.size, dtype=np.float64)
+    coefficients[selected[positive[selected]]] = 1.0
+    coefficients[selected[negative[selected]]] = -1.0
+    positive_count = int(np.count_nonzero(coefficients > 0.0))
+    rhs = float(positive_count - 1)
+    cover_rows = tuple(int(rows[position]) for position in selected)
+    complemented_rows = tuple(
+        int(rows[position]) for position in selected if negative[position]
+    )
+    reference_sha = hashlib.sha256(reference.astype(np.float64).tobytes()).hexdigest()
+    identity = json.dumps(
+        {
+            "source_cut_id": source_cut.cut_id,
+            "cover_source_rows": cover_rows,
+            "complemented_source_rows": complemented_rows,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    cut = CommitmentCoverCut(
+        cut_id="kc_" + hashlib.sha256(identity).hexdigest()[:24],
+        coefficients=coefficients,
+        rhs=rhs,
+        source_cut_id=source_cut.cut_id,
+        source_cut_kind=_commitment_cut_certificate_kind(source_cut),
+        cover_source_rows=cover_rows,
+        complemented_source_rows=complemented_rows,
+        transformed_rhs=transformed_rhs,
+        cover_weight_sum=cover_weight_sum,
+        conservative_cover_excess=conservative_excess,
+        cover_safety_margin=safety_margin,
+        source_commitment_sha256=source_digest,
+        separation_reference_sha256=reference_sha,
+        separation_reference_violation=0.0,
+        derivation_strategy=strategy,
+    )
+    reference_violation = cut.violation(reference)
+    cut = CommitmentCoverCut(
+        **{
+            **cut.__dict__,
+            "separation_reference_violation": reference_violation,
+        }
+    )
+    cut.validate(rows.size)
+    verification = verify_binary_knapsack_cover_derivation(source_cut, cut, rows)
+    return cut, {
+        "derivation": "mixed_sign_binary_knapsack_cover_v1",
+        "source_cut_id": source_cut.cut_id,
+        "source_cut_kind": _commitment_cut_certificate_kind(source_cut),
+        "source_parent_violation_pu": (
+            None if binary is None else source_cut.violation(binary)
+        ),
+        "source_cover_violation": None if binary is None else cut.violation(binary),
+        "separation_reference_violation": reference_violation,
+        "verification": verification,
+        "cut": cut.as_dict(rows),
+    }
+
+
+def verify_binary_knapsack_cover_derivation(
+    source_cut: CommitmentFeasibilityCut | CommitmentCapacityCut,
+    cover_cut: CommitmentCoverCut,
+    generator_source_rows: npt.ArrayLike,
+) -> dict[str, Any]:
+    """Replay a cover's strict-weight proof against its source inequality."""
+
+    rows = np.asarray(generator_source_rows, dtype=np.int64)
+    source_cut.validate(rows.size)
+    cover_cut.validate(rows.size)
+    if cover_cut.source_cut_id != source_cut.cut_id or (
+        cover_cut.source_cut_kind != _commitment_cut_certificate_kind(source_cut)
+    ):
+        raise ScopfError("Binary cover references the wrong parent cut")
+    by_row = {int(row): position for position, row in enumerate(rows)}
+    if any(row not in by_row for row in cover_cut.cover_source_rows):
+        raise ScopfError("Binary cover references an unknown generator row")
+    selected = np.asarray(
+        [by_row[row] for row in cover_cut.cover_source_rows], dtype=np.int64
+    )
+    parent = np.asarray(source_cut.coefficients, dtype=np.float64)
+    if np.any(parent[selected] == 0.0):
+        raise ScopfError("Binary cover selects a zero-weight parent coefficient")
+    expected_complemented = tuple(
+        int(rows[position]) for position in selected if parent[position] < 0.0
+    )
+    if expected_complemented != cover_cut.complemented_source_rows:
+        raise ScopfError("Binary cover complement signs do not match its parent")
+    expected_coefficients = np.zeros(rows.size, dtype=np.float64)
+    expected_coefficients[selected[parent[selected] > 0.0]] = 1.0
+    expected_coefficients[selected[parent[selected] < 0.0]] = -1.0
+    if not np.array_equal(expected_coefficients, cover_cut.coefficients):
+        raise ScopfError("Binary cover coefficients do not replay from its parent")
+    negative = np.flatnonzero(parent < 0.0)
+    transformed_rhs = fsum(
+        [float(source_cut.rhs)]
+        + [-float(parent[position]) for position in negative]
+    )
+    total_weight = fsum(float(abs(parent[position])) for position in np.flatnonzero(parent))
+    safety_margin = 64.0 * np.finfo(np.float64).eps * max(
+        1.0, abs(transformed_rhs), total_weight
+    )
+    cover_weight_sum = fsum(float(abs(parent[position])) for position in selected)
+    conservative_excess = cover_weight_sum - transformed_rhs - safety_margin
+    tolerance = 8.0 * np.finfo(np.float64).eps * max(
+        1.0, abs(transformed_rhs), cover_weight_sum, total_weight
+    )
+    for observed, expected, label in (
+        (cover_cut.transformed_rhs, transformed_rhs, "transformed RHS"),
+        (cover_cut.cover_weight_sum, cover_weight_sum, "cover weight"),
+        (cover_cut.cover_safety_margin, safety_margin, "cover safety margin"),
+        (
+            cover_cut.conservative_cover_excess,
+            conservative_excess,
+            "conservative cover excess",
+        ),
+    ):
+        if abs(observed - expected) > tolerance:
+            raise ScopfError(f"Binary cover {label} failed replay")
+    if conservative_excess <= 0.0:
+        raise ScopfError("Binary cover is not strictly valid after numerical margin")
+    return {
+        "passed": True,
+        "source_cut_id": source_cut.cut_id,
+        "cover_size": int(selected.size),
+        "transformed_rhs": transformed_rhs,
+        "cover_weight_sum": cover_weight_sum,
+        "cover_safety_margin": safety_margin,
+        "conservative_cover_excess": conservative_excess,
+        "original_binary_feasible_set_changed": False,
+        "continuous_relaxation_strengthened": True,
+    }
 
 
 def commitment_cardinality_cut_from_record(
@@ -445,6 +900,75 @@ def commitment_capacity_cut_from_record(
     return cut
 
 
+def commitment_cover_cut_from_record(
+    record: dict[str, Any], generator_source_rows: npt.ArrayLike
+) -> CommitmentCoverCut:
+    """Rebuild a serialized binary cover from public generator-row identity."""
+
+    rows = np.asarray(generator_source_rows, dtype=np.int64)
+    if rows.ndim != 1 or len(set(int(row) for row in rows)) != int(rows.size):
+        raise ScopfError("Serialized cover-cut generator identity is invalid")
+    by_row = {int(row): position for position, row in enumerate(rows)}
+    cover_rows = tuple(int(row) for row in record["cover_source_rows"])
+    complemented_rows = tuple(
+        int(row) for row in record["complemented_source_rows"]
+    )
+    if any(row not in by_row for row in cover_rows):
+        raise ScopfError("Serialized cover cut references an unknown generator")
+    if not set(complemented_rows).issubset(cover_rows):
+        raise ScopfError("Serialized cover cut has an invalid complemented subset")
+    complemented = set(complemented_rows)
+    coefficients = np.zeros(rows.size, dtype=np.float64)
+    for source_row in cover_rows:
+        coefficients[by_row[source_row]] = (
+            -1.0 if source_row in complemented else 1.0
+        )
+    cut = CommitmentCoverCut(
+        cut_id=str(record["cut_id"]),
+        coefficients=coefficients,
+        rhs=float(record["rhs"]),
+        source_cut_id=str(record["source_cut_id"]),
+        source_cut_kind=str(record["source_cut_kind"]),
+        cover_source_rows=cover_rows,
+        complemented_source_rows=complemented_rows,
+        transformed_rhs=float(record["transformed_rhs"]),
+        cover_weight_sum=float(record["cover_weight_sum"]),
+        conservative_cover_excess=float(record["conservative_cover_excess"]),
+        cover_safety_margin=float(record["cover_safety_margin"]),
+        source_commitment_sha256=str(record["source_commitment_sha256"]),
+        separation_reference_sha256=str(record["separation_reference_sha256"]),
+        separation_reference_violation=float(
+            record["separation_reference_violation"]
+        ),
+        derivation_strategy=str(record["derivation_strategy"]),
+    )
+    cut.validate(rows.size)
+    expected = cut.as_dict(rows)
+    for key in (
+        "certificate_kind",
+        "cut_id",
+        "source_cut_id",
+        "source_cut_kind",
+        "cover_source_rows",
+        "complemented_source_rows",
+        "rhs",
+        "transformed_rhs",
+        "cover_weight_sum",
+        "conservative_cover_excess",
+        "cover_safety_margin",
+        "source_commitment_sha256",
+        "separation_reference_sha256",
+        "separation_reference_violation",
+        "derivation_strategy",
+        "coefficient_sha256",
+        "validity",
+        "exact_source_pmin_pmax_changed",
+    ):
+        if record.get(key) != expected[key]:
+            raise ScopfError(f"Serialized cover cut identity mismatch for {key}")
+    return cut
+
+
 def commitment_upper_cut_from_record(
     record: dict[str, Any], generator_source_rows: npt.ArrayLike
 ) -> CommitmentUpperCut:
@@ -455,6 +979,8 @@ def commitment_upper_cut_from_record(
         return commitment_feasibility_cut_from_record(record, generator_source_rows)
     if kind == "conditional_dispatch_row_capacity_cut_v1":
         return commitment_capacity_cut_from_record(record, generator_source_rows)
+    if kind == "binary_knapsack_cover_from_commitment_cut_v1":
+        return commitment_cover_cut_from_record(record, generator_source_rows)
     if kind == "binary_commitment_cardinality_branch_v1":
         return commitment_cardinality_cut_from_record(record, generator_source_rows)
     raise ScopfError(f"Unknown serialized commitment-cut kind: {kind!r}")
