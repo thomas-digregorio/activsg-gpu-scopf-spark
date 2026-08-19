@@ -19,6 +19,7 @@ from activsg_scopf.lagrangian_experiment import (
     ACTIVSG2000_V9_EXPERIMENT_ID,
     ACTIVSG2000_V10_EXPERIMENT_ID,
     ACTIVSG2000_V11_EXPERIMENT_ID,
+    ACTIVSG2000_V12_EXPERIMENT_ID,
     EXPERIMENT_ID,
     EXPERIMENT_TAG,
     PrimalCandidatePolicy,
@@ -226,9 +227,7 @@ def test_registered_activsg2000_v5_numerical_fix_is_fail_closed() -> None:
     registration = validate_lagrangian_experiment_config(v5)
 
     assert v5.benchmark_id == ACTIVSG2000_V5_EXPERIMENT_ID
-    assert registration["benchmark"]["required_git_tag"] == (
-        "experiment-2000-gpu-lagrangian-v5"
-    )
+    assert registration["benchmark"]["required_git_tag"] == ("experiment-2000-gpu-lagrangian-v5")
     assert v5.raw["raw_inputs"] == v4.raw["raw_inputs"]
     assert v5.model == v4.model
     assert v5.runtime["root_canonical_residual_refinement_attempts"] == 1
@@ -248,9 +247,7 @@ def test_registered_activsg2000_v6_numerical_runtime_fix_is_fail_closed() -> Non
     registration = validate_lagrangian_experiment_config(v6)
 
     assert v6.benchmark_id == ACTIVSG2000_V6_EXPERIMENT_ID
-    assert registration["benchmark"]["required_git_tag"] == (
-        "experiment-2000-gpu-lagrangian-v6"
-    )
+    assert registration["benchmark"]["required_git_tag"] == ("experiment-2000-gpu-lagrangian-v6")
     assert v6.raw["raw_inputs"] == v5.raw["raw_inputs"]
     assert v6.model == v5.model
     assert v6.runtime["deadline_seconds"] == 990.0
@@ -260,8 +257,7 @@ def test_registered_activsg2000_v6_numerical_runtime_fix_is_fail_closed() -> Non
     assert v6.raw["platforms"]["dgx_spark"]["save_best_primal_so_far"] is True
     fix = registration["benchmark"]["numerical_and_runtime_fix"]
     assert fix["primal_generator"] == (
-        "reduced_gpu_heuristics_then_sparse_full_gpu_heuristics_"
-        "with_complete_gpu_feasible_start_v3"
+        "reduced_gpu_heuristics_then_sparse_full_gpu_heuristics_with_complete_gpu_feasible_start_v3"
     )
     assert fix["partial_mip_start_policy"] == (
         "never_submit_unextended_commitment_as_native_full_assignment"
@@ -277,18 +273,14 @@ def test_registered_activsg2000_v7_numerical_robustness_is_fail_closed() -> None
     registration = validate_lagrangian_experiment_config(v7)
 
     assert v7.benchmark_id == ACTIVSG2000_V7_EXPERIMENT_ID
-    assert registration["benchmark"]["required_git_tag"] == (
-        "experiment-2000-gpu-lagrangian-v7"
-    )
+    assert registration["benchmark"]["required_git_tag"] == ("experiment-2000-gpu-lagrangian-v7")
     assert v7.raw["raw_inputs"] == v6.raw["raw_inputs"]
     assert v7.model == v6.model
     assert v7.runtime == v6.runtime
     v7_profile = dict(v7.raw["platforms"]["dgx_spark"])
     assert v7_profile == v6.raw["platforms"]["dgx_spark"]
     fix = registration["benchmark"]["numerical_robustness_fix"]
-    assert fix["same_shape_pdlp_continuation"] == (
-        "optimal_complete_state_else_raw_primal_dual_v3"
-    )
+    assert fix["same_shape_pdlp_continuation"] == ("optimal_complete_state_else_raw_primal_dual_v3")
     assert fix["cost_polish_initial_dual_policy"] == (
         "verified_phase_one_primal_only_because_phase_one_dual_has_different_objective"
     )
@@ -301,9 +293,7 @@ def test_registered_activsg2000_v7_numerical_robustness_is_fail_closed() -> None
     assert fix["barrier_policy"] == (
         "disabled_after_first_newton_step_nan_factorization_diagnostic"
     )
-    assert fix["pricing_policy"] == (
-        "fail_closed_if_repair_breaks_primal_dual_complementarity"
-    )
+    assert fix["pricing_policy"] == ("fail_closed_if_repair_breaks_primal_dual_complementarity")
     assert fix["repair_residual_budget_fraction"] == 0.5
     v7.raw["benchmark"]["numerical_robustness_fix"]["failed_v6_run_preserved"] = False
     with pytest.raises(ScopfError, match="numerical-robustness identity changed"):
@@ -316,9 +306,7 @@ def test_registered_activsg2000_v8_certificate_controller_is_fail_closed() -> No
     registration = validate_lagrangian_experiment_config(v8)
 
     assert v8.benchmark_id == ACTIVSG2000_V8_EXPERIMENT_ID
-    assert registration["benchmark"]["required_git_tag"] == (
-        "experiment-2000-gpu-lagrangian-v8"
-    )
+    assert registration["benchmark"]["required_git_tag"] == ("experiment-2000-gpu-lagrangian-v8")
     assert v8.raw["raw_inputs"] == v7.raw["raw_inputs"]
     assert v8.model == v7.model
     assert v8.runtime["maximum_primal_repairs"] == 64
@@ -344,9 +332,7 @@ def test_registered_activsg2000_v9_compact_replay_fix_is_fail_closed() -> None:
     registration = validate_lagrangian_experiment_config(v9)
 
     assert v9.benchmark_id == ACTIVSG2000_V9_EXPERIMENT_ID
-    assert registration["benchmark"]["required_git_tag"] == (
-        "experiment-2000-gpu-lagrangian-v9"
-    )
+    assert registration["benchmark"]["required_git_tag"] == ("experiment-2000-gpu-lagrangian-v9")
     assert v9.raw["raw_inputs"] == v8.raw["raw_inputs"]
     assert v9.model == v8.model
     assert v9.runtime == v8.runtime
@@ -371,9 +357,7 @@ def test_registered_activsg2000_v10_cardinality_refinement_is_fail_closed() -> N
     registration = validate_lagrangian_experiment_config(v10)
 
     assert v10.benchmark_id == ACTIVSG2000_V10_EXPERIMENT_ID
-    assert registration["benchmark"]["required_git_tag"] == (
-        "experiment-2000-gpu-lagrangian-v10"
-    )
+    assert registration["benchmark"]["required_git_tag"] == ("experiment-2000-gpu-lagrangian-v10")
     assert v10.raw["raw_inputs"] == v9.raw["raw_inputs"]
     assert v10.model == v9.model
     assert v10.runtime["maximum_frontier_regions"] == 256
@@ -381,9 +365,9 @@ def test_registered_activsg2000_v10_cardinality_refinement_is_fail_closed() -> N
     assert registration["benchmark"]["cardinality_refinement"]["child_phase_one"] == (
         "disabled_after_zero_of_83_v9_prunes"
     )
-    assert registration["benchmark"]["cardinality_refinement"][
-        "minimum_cardinality_subset_size"
-    ] == 2
+    assert (
+        registration["benchmark"]["cardinality_refinement"]["minimum_cardinality_subset_size"] == 2
+    )
     assert registration["benchmark"]["cardinality_refinement"]["binary_fallback"] == (
         "only_after_no_fractional_multi_unit_sum_remains"
     )
@@ -391,9 +375,12 @@ def test_registered_activsg2000_v10_cardinality_refinement_is_fail_closed() -> N
         "row_name_mapped_parent_dual_only_because_parent_primal_violates_"
         "the_new_cardinality_branch_v2"
     )
-    assert registration["benchmark"]["cardinality_refinement"][
-        "cpu_commitment_dispatch_objective_or_bound_seeded"
-    ] is False
+    assert (
+        registration["benchmark"]["cardinality_refinement"][
+            "cpu_commitment_dispatch_objective_or_bound_seeded"
+        ]
+        is False
+    )
     v10.raw["benchmark"]["cardinality_refinement"][
         "mathematical_original_integer_optimum_changed"
     ] = True
@@ -407,24 +394,44 @@ def test_registered_activsg2000_v11_numerical_runtime_fix_is_fail_closed() -> No
     registration = validate_lagrangian_experiment_config(v11)
 
     assert v11.benchmark_id == ACTIVSG2000_V11_EXPERIMENT_ID
-    assert registration["benchmark"]["required_git_tag"] == (
-        "experiment-2000-gpu-lagrangian-v11"
-    )
+    assert registration["benchmark"]["required_git_tag"] == ("experiment-2000-gpu-lagrangian-v11")
     assert v11.raw["raw_inputs"] == v10.raw["raw_inputs"]
     assert v11.model == v10.model
     assert v11.runtime["parallel_child_solver_contexts"] == 1
     assert v11.runtime["gpu_primal_seed_seconds"] == 1.0
     assert v11.runtime["minimum_refinement_launch_seconds"] == 195.0
     assert v11.runtime["lagrangian_diagonal_preconditioning"] is True
-    assert registration["benchmark"]["certificate_controller_fix"][
-        "gpu_cut_lower_bound_used"
-    ] is True
+    assert (
+        registration["benchmark"]["certificate_controller_fix"]["gpu_cut_lower_bound_used"] is True
+    )
     fix = registration["benchmark"]["numerical_runtime_fix"]
     assert fix["failed_v10_run_preserved"] is True
     assert fix["cpu_commitment_dispatch_objective_or_bound_seeded"] is False
     v11.raw["runtime"]["parallel_child_solver_contexts"] = 2
     with pytest.raises(ScopfError, match="runtime policy changed"):
         validate_lagrangian_experiment_config(v11)
+
+
+def test_registered_activsg2000_v12_numerical_throughput_fix_is_fail_closed() -> None:
+    v11 = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v11.json")
+    v12 = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v12.json")
+    registration = validate_lagrangian_experiment_config(v12)
+
+    assert v12.benchmark_id == ACTIVSG2000_V12_EXPERIMENT_ID
+    assert registration["benchmark"]["required_git_tag"] == ("experiment-2000-gpu-lagrangian-v12")
+    assert v12.raw["raw_inputs"] == v11.raw["raw_inputs"]
+    assert v12.model == v11.model
+    assert v12.runtime["minimum_refinement_launch_seconds"] == 215.0
+    assert v12.runtime["phase_one_precheck_optimality_tolerance"] == 1e-10
+    assert v12.runtime["feasibility_cut_coefficient_zero_tolerance"] == 1e-8
+    fix = registration["benchmark"]["numerical_throughput_fix"]
+    assert fix["v11_result_preserved"] is True
+    assert fix["exact_source_pmin_changed"] is False
+    assert fix["mathematical_original_integer_optimum_changed"] is False
+    assert fix["cpu_commitment_dispatch_objective_or_bound_seeded"] is False
+    v12.raw["runtime"]["phase_one_precheck_optimality_tolerance"] = 1e-8
+    with pytest.raises(ScopfError, match="runtime policy changed"):
+        validate_lagrangian_experiment_config(v12)
 
 
 def test_phase_one_native_dual_maps_lower_upper_and_equality_rows() -> None:
@@ -746,11 +753,7 @@ def test_v5_root_refines_optimal_solution_that_misses_canonical_residual(
 
     def fake_solve(model, **kwargs):
         solve_calls.append(kwargs)
-        values = (
-            np.zeros(model.num_columns)
-            if len(solve_calls) == 1
-            else feasible_values(model)
-        )
+        values = np.zeros(model.num_columns) if len(solve_calls) == 1 else feasible_values(model)
         return ContinuousSolveResult(
             status="Optimal",
             optimal=True,
@@ -821,15 +824,15 @@ def test_v5_root_refines_optimal_solution_that_misses_canonical_residual(
     refinement = solved.rounds[0]["canonical_residual_refinement"]
     assert refinement["accepted"] is True
     assert len(refinement["attempts"]) == 1
-    assert solved.rounds[0]["pre_refinement_primal_acceptance"][
-        "canonical_model_residual_passed"
-    ] is False
-    assert solved.rounds[0]["primal_acceptance"][
-        "canonical_model_residual_passed"
-    ] is True
-    assert solved.rounds[0]["pre_refinement_primal_acceptance"][
-        "worst_canonical_row"
-    ]["row_name"] == "lag_balance"
+    assert (
+        solved.rounds[0]["pre_refinement_primal_acceptance"]["canonical_model_residual_passed"]
+        is False
+    )
+    assert solved.rounds[0]["primal_acceptance"]["canonical_model_residual_passed"] is True
+    assert (
+        solved.rounds[0]["pre_refinement_primal_acceptance"]["worst_canonical_row"]["row_name"]
+        == "lag_balance"
+    )
 
 
 def test_region_continues_without_screening_a_primal_infeasible_pdlp_iterate(

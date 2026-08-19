@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 
 from activsg_scopf.commitment_cuts import (
+    _relax_commitment_cut_coefficient_dust,
     commitment_feasibility_cut_from_record,
     commitment_upper_cut_from_record,
     derive_commitment_feasibility_cut,
@@ -18,6 +19,32 @@ from activsg_scopf.phase_one import build_phase_one_model, phase_one_certificate
 from activsg_scopf.reduced import CouplingRow, build_reduced_master, fix_commitments
 
 from .helpers import triangle_case
+
+
+def test_commitment_cut_dust_cleanup_is_an_outward_relaxation() -> None:
+    coefficients = np.asarray([1e-12, -2e-12, 0.5, -0.25])
+    source = np.asarray([1, 0, 1, 0], dtype=np.int8)
+    rhs = 0.1
+    source_violation = float(coefficients @ source - rhs)
+
+    cleaned, cleaned_rhs, cleaned_source_violation, audit = _relax_commitment_cut_coefficient_dust(
+        coefficients=coefficients,
+        rhs=rhs,
+        source_commitment=source,
+        source_violation_pu=source_violation,
+        requested_zero_tolerance=1e-8,
+    )
+
+    np.testing.assert_array_equal(cleaned, np.asarray([0.0, 0.0, 0.5, -0.25]))
+    assert cleaned_rhs == pytest.approx(rhs + 2e-12)
+    assert cleaned_source_violation > 0.0
+    assert audit["dropped_coefficient_count"] == 2
+    assert audit["outward_rhs_relaxation"] == pytest.approx(2e-12)
+    assert audit["original_feasible_commitment_can_be_removed"] is False
+    for encoded in range(16):
+        binary = np.asarray([(encoded >> position) & 1 for position in range(4)])
+        if float(coefficients @ binary) <= rhs:
+            assert float(cleaned @ binary) <= cleaned_rhs
 
 
 def test_phase_one_dual_lifts_to_global_exact_pmin_pmax_commitment_cut() -> None:
@@ -56,9 +83,7 @@ def test_phase_one_dual_lifts_to_global_exact_pmin_pmax_commitment_cut() -> None
     )
     dual = np.zeros(phase.num_rows)
     for position, name in enumerate(phase.row_names):
-        if name.endswith("__lower__lag_balance") or name.endswith(
-            "__upper__test_transfer_limit"
-        ):
+        if name.endswith("__lower__lag_balance") or name.endswith("__upper__test_transfer_limit"):
             dual[position] = -0.005
     certificate = phase_one_certificate(
         phase,
@@ -85,12 +110,8 @@ def test_phase_one_dual_lifts_to_global_exact_pmin_pmax_commitment_cut() -> None
     assert audit["conservative_source_replay_difference_pu"] < 1e-14
 
     serialized_cut = cut.as_dict(source_rows)
-    rebuilt_cut = commitment_feasibility_cut_from_record(
-        serialized_cut, source_rows + 1
-    )
-    generic_cut = commitment_upper_cut_from_record(
-        serialized_cut, source_rows + 1
-    )
+    rebuilt_cut = commitment_feasibility_cut_from_record(serialized_cut, source_rows + 1)
+    generic_cut = commitment_upper_cut_from_record(serialized_cut, source_rows + 1)
     assert rebuilt_cut.cut_id == cut.cut_id
     np.testing.assert_array_equal(rebuilt_cut.coefficients, cut.coefficients)
     assert generic_cut.cut_id == cut.cut_id
@@ -127,9 +148,7 @@ def test_phase_one_dual_lifts_to_global_exact_pmin_pmax_commitment_cut() -> None
     )
     assert serialized["certificate_kind"].endswith("commitment_upper_cuts_v3")
     assert replayed.raw_lower_bound == pytest.approx(evaluation.raw_lower_bound)
-    np.testing.assert_array_equal(
-        replayed.minimizing_commitment, evaluation.minimizing_commitment
-    )
+    np.testing.assert_array_equal(replayed.minimizing_commitment, evaluation.minimizing_commitment)
     compact = evaluation.as_dict(source_rows + 1, compact=True)
     compact_replayed = replay_lagrangian_certificate(
         master,
@@ -137,9 +156,7 @@ def test_phase_one_dual_lifts_to_global_exact_pmin_pmax_commitment_cut() -> None
         RegionMasks.root(2),
         commitment_cuts_by_id={cut.cut_id: cut},
     )
-    assert compact["serialization"] == (
-        "sparse_nonzero_dual_order_independent_identity_v3"
-    )
+    assert compact["serialization"] == ("sparse_nonzero_dual_order_independent_identity_v3")
     assert "generator_subproblems" not in compact
     assert "effective_dispatch_coefficient_sha256" not in compact
     assert compact_replayed.conservative_lower_bound == pytest.approx(

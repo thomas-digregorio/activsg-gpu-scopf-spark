@@ -57,18 +57,16 @@ class CommitmentFeasibilityCut:
     def as_dict(self, generator_source_rows: npt.ArrayLike) -> dict[str, Any]:
         rows = np.asarray(generator_source_rows, dtype=np.int64)
         self.validate(rows.size)
-        canonical_coefficients = np.where(
-            self.coefficients == 0.0, 0.0, self.coefficients
-        ).astype(np.float64, copy=False)
+        canonical_coefficients = np.where(self.coefficients == 0.0, 0.0, self.coefficients).astype(
+            np.float64, copy=False
+        )
         nonzero = np.flatnonzero(canonical_coefficients != 0.0)
         return {
             "certificate_kind": "phase_one_binary_benders_feasibility_cut_v1",
             "cut_id": self.cut_id,
             "source_commitment_sha256": self.source_commitment_sha256,
             "rhs": self.rhs,
-            "conservative_source_violation_pu": (
-                self.conservative_source_violation_pu
-            ),
+            "conservative_source_violation_pu": (self.conservative_source_violation_pu),
             "generator_coefficient_count": int(rows.size),
             "nonzero_generator_coefficient_count": int(nonzero.size),
             "generator_coefficients": [
@@ -78,12 +76,9 @@ class CommitmentFeasibilityCut:
                 }
                 for position in nonzero
             ],
-            "coefficient_sha256": hashlib.sha256(
-                canonical_coefficients.tobytes()
-            ).hexdigest(),
+            "coefficient_sha256": hashlib.sha256(canonical_coefficients.tobytes()).hexdigest(),
             "validity": (
-                "necessary_for_zero_violation_dispatch_with_exact_conditional_"
-                "source_pmin_pmax"
+                "necessary_for_zero_violation_dispatch_with_exact_conditional_source_pmin_pmax"
             ),
             "exact_source_pmin_pmax_changed": False,
         }
@@ -150,9 +145,7 @@ class CommitmentCardinalityCut:
             "branch_side": self.branch_side,
             "integer_threshold": self.integer_threshold,
             "rhs": self.rhs,
-            "coefficient_sha256": hashlib.sha256(
-                self.coefficients.tobytes()
-            ).hexdigest(),
+            "coefficient_sha256": hashlib.sha256(self.coefficients.tobytes()).hexdigest(),
             "validity": "integer_sum_disjunction_over_source_binary_commitments",
             "exact_source_pmin_pmax_changed": False,
         }
@@ -184,9 +177,7 @@ def build_commitment_cardinality_cut(
     coefficients = np.zeros(rows.size, dtype=np.float64)
     sign = 1.0 if branch_side == "at_most" else -1.0
     coefficients[positions] = sign
-    rhs = float(integer_threshold) if branch_side == "at_most" else -float(
-        integer_threshold
-    )
+    rhs = float(integer_threshold) if branch_side == "at_most" else -float(integer_threshold)
     identity = json.dumps(
         {
             "subset_id": subset_id,
@@ -282,9 +273,7 @@ def commitment_feasibility_cut_from_record(
         coefficients=coefficients,
         rhs=float(record["rhs"]),
         source_commitment_sha256=str(record["source_commitment_sha256"]),
-        conservative_source_violation_pu=float(
-            record["conservative_source_violation_pu"]
-        ),
+        conservative_source_violation_pu=float(record["conservative_source_violation_pu"]),
     )
     cut.validate(rows.size)
     expected = cut.as_dict(rows - 1)
@@ -315,13 +304,9 @@ def commitment_upper_cut_from_record(
 
     kind = str(record.get("certificate_kind", ""))
     if kind == "phase_one_binary_benders_feasibility_cut_v1":
-        return commitment_feasibility_cut_from_record(
-            record, generator_source_rows
-        )
+        return commitment_feasibility_cut_from_record(record, generator_source_rows)
     if kind == "binary_commitment_cardinality_branch_v1":
-        return commitment_cardinality_cut_from_record(
-            record, generator_source_rows
-        )
+        return commitment_cardinality_cut_from_record(record, generator_source_rows)
     raise ScopfError(f"Unknown serialized commitment-cut kind: {kind!r}")
 
 
@@ -366,16 +351,110 @@ def _phase_dual_by_source_side(
     by_source_side: dict[tuple[str, str], float] = {}
     for semantic, value in by_semantic.items():
         parts = semantic.split("__", 2)
-        if len(parts) != 3 or parts[0] != "phase1" or parts[1] not in {
-            "lower",
-            "upper",
-        }:
+        if (
+            len(parts) != 3
+            or parts[0] != "phase1"
+            or parts[1]
+            not in {
+                "lower",
+                "upper",
+            }
+        ):
             raise ScopfError(f"Malformed semantic Phase-I row key: {semantic!r}")
         key = (parts[2], parts[1])
         if key in by_source_side:
             raise ScopfError("Phase-I cut derivation found a duplicate source row side")
         by_source_side[key] = min(float(value), 0.0)
     return by_source_side
+
+
+def _relax_commitment_cut_coefficient_dust(
+    *,
+    coefficients: npt.ArrayLike,
+    rhs: float,
+    source_commitment: npt.ArrayLike,
+    source_violation_pu: float,
+    requested_zero_tolerance: float,
+) -> tuple[FloatArray, float, float, dict[str, Any]]:
+    """Drop tiny upper-cut coefficients without excluding any binary point.
+
+    For ``a @ u <= b`` and dropped coefficients ``d``, use ``a' = a - d``
+    and ``b' = b + sum(max(-d, 0))``.  Then ``a' @ u <= b'`` for every
+    ``u in [0, 1]`` satisfying the original inequality.  The tolerance is
+    also capped so the certificate's source commitment remains cut by a
+    wide, auditable margin.
+    """
+
+    values = np.asarray(coefficients, dtype=np.float64)
+    binary = np.asarray(source_commitment, dtype=np.int8)
+    if values.ndim != 1 or binary.shape != values.shape:
+        raise ScopfError("Commitment-cut coefficient cleanup received invalid shapes")
+    if np.any(~np.isfinite(values)) or np.any((binary != 0) & (binary != 1)):
+        raise ScopfError("Commitment-cut coefficient cleanup received invalid values")
+    if not isfinite(rhs) or not isfinite(source_violation_pu):
+        raise ScopfError("Commitment-cut coefficient cleanup received a nonfinite scalar")
+    if source_violation_pu <= 0.0:
+        raise ScopfError("Commitment-cut coefficient cleanup requires a positive source cut")
+    if not isfinite(requested_zero_tolerance) or requested_zero_tolerance < 0.0:
+        raise ScopfError("Commitment-cut coefficient tolerance must be nonnegative")
+
+    adaptive_cap = source_violation_pu / (4.0 * max(1, values.size))
+    effective_tolerance = min(requested_zero_tolerance, adaptive_cap)
+    drop = (
+        (values != 0.0) & (np.abs(values) <= effective_tolerance)
+        if effective_tolerance > 0.0
+        else np.zeros(values.shape, dtype=bool)
+    )
+    removed = values[drop]
+    outward_rhs_relaxation = fsum(max(-float(value), 0.0) for value in removed)
+    cleaned = values.copy()
+    cleaned[drop] = 0.0
+    cleaned = np.where(cleaned == 0.0, 0.0, cleaned).astype(np.float64, copy=False)
+    cleaned_rhs = float(rhs + outward_rhs_relaxation)
+    cleaned_source_violation = fsum(
+        [
+            -cleaned_rhs,
+            *(float(cleaned[position]) for position in np.flatnonzero(binary)),
+        ]
+    )
+    removed_absolute_mass = fsum(abs(float(value)) for value in removed)
+    worst_binary_strengthening = max(
+        0.0,
+        fsum(max(-float(value), 0.0) for value in removed) - outward_rhs_relaxation,
+    )
+    if worst_binary_strengthening > 8.0 * np.finfo(np.float64).eps * max(
+        1.0, abs(rhs), abs(cleaned_rhs)
+    ):
+        raise ScopfError("Commitment-cut coefficient cleanup strengthened the cut")
+    if cleaned_source_violation <= 0.0:
+        raise ScopfError("Commitment-cut coefficient cleanup removed the source violation")
+    if source_violation_pu - cleaned_source_violation > (
+        removed_absolute_mass + 8.0 * np.finfo(np.float64).eps * max(1.0, abs(source_violation_pu))
+    ):
+        raise ScopfError("Commitment-cut cleanup loss exceeded removed coefficient mass")
+
+    return (
+        cleaned,
+        cleaned_rhs,
+        cleaned_source_violation,
+        {
+            "policy": "drop_coefficient_dust_with_outward_rhs_relaxation_v1",
+            "requested_zero_tolerance": requested_zero_tolerance,
+            "adaptive_source_violation_cap": adaptive_cap,
+            "effective_zero_tolerance": effective_tolerance,
+            "dropped_coefficient_count": int(np.count_nonzero(drop)),
+            "maximum_dropped_absolute_coefficient": (
+                0.0 if removed.size == 0 else float(np.max(np.abs(removed)))
+            ),
+            "dropped_absolute_coefficient_mass": removed_absolute_mass,
+            "outward_rhs_relaxation": outward_rhs_relaxation,
+            "source_violation_before_cleanup_pu": source_violation_pu,
+            "source_violation_after_cleanup_pu": cleaned_source_violation,
+            "worst_binary_strengthening_pu": worst_binary_strengthening,
+            "original_feasible_commitment_can_be_removed": False,
+            "original_milp_feasible_set_changed": False,
+        },
+    )
 
 
 def derive_commitment_feasibility_cut(
@@ -385,6 +464,7 @@ def derive_commitment_feasibility_cut(
     phase_certificate: dict[str, Any],
     source_commitment: npt.ArrayLike,
     replay_tolerance_pu: float,
+    coefficient_zero_tolerance: float = 0.0,
 ) -> tuple[CommitmentFeasibilityCut, dict[str, Any]]:
     """Lift one replayed fixed-u Phase-I dual into a global binary cut.
 
@@ -418,20 +498,14 @@ def derive_commitment_feasibility_cut(
     for (row_name, side), multiplier in sorted(by_source_side.items()):
         coupling = coupling_by_name.get(row_name)
         if coupling is None:
-            raise ScopfError(
-                f"Phase-I cut row {row_name!r} is not a source coupling row"
-            )
+            raise ScopfError(f"Phase-I cut row {row_name!r} is not a source coupling row")
         row = int(coupling.row_index)
         if side == "upper":
             bound = float(row_upper[row])
-            coefficients = np.asarray(
-                coupling.generator_coefficients, dtype=np.float64
-            )
+            coefficients = np.asarray(coupling.generator_coefficients, dtype=np.float64)
         else:
             bound = -float(row_lower[row])
-            coefficients = -np.asarray(
-                coupling.generator_coefficients, dtype=np.float64
-            )
+            coefficients = -np.asarray(coupling.generator_coefficients, dtype=np.float64)
         if not isfinite(bound):
             raise ScopfError("Phase-I cut references a nonfinite source-row side")
         constant_terms.append(multiplier * bound)
@@ -474,11 +548,18 @@ def derive_commitment_feasibility_cut(
     raw_difference = abs(raw_at_source - replayed_raw)
     conservative_difference = abs(conservative_at_source - replayed_conservative)
     if max(raw_difference, conservative_difference) > replay_tolerance_pu:
-        raise ScopfError(
-            "Lifted Phase-I commitment cut does not reproduce the source certificate"
-        )
+        raise ScopfError("Lifted Phase-I commitment cut does not reproduce the source certificate")
 
     rhs = -conservative_constant
+    online_values, rhs, cleaned_source_violation, cleanup_audit = (
+        _relax_commitment_cut_coefficient_dust(
+            coefficients=online_values,
+            rhs=rhs,
+            source_commitment=binary,
+            source_violation_pu=conservative_at_source,
+            requested_zero_tolerance=coefficient_zero_tolerance,
+        )
+    )
     source_sha = hashlib.sha256(binary.tobytes()).hexdigest()
     identity_bytes = (
         source_sha.encode("ascii")
@@ -490,10 +571,10 @@ def derive_commitment_feasibility_cut(
         coefficients=online_values,
         rhs=rhs,
         source_commitment_sha256=source_sha,
-        conservative_source_violation_pu=conservative_at_source,
+        conservative_source_violation_pu=cleaned_source_violation,
     )
     cut.validate(source_rows.size)
-    if abs(cut.violation(binary) - conservative_at_source) > replay_tolerance_pu:
+    if abs(cut.violation(binary) - cleaned_source_violation) > replay_tolerance_pu:
         raise ScopfError("Commitment-cut source violation failed its affine replay")
     return cut, {
         "derivation": "phase_one_box_dual_conditional_pmin_pmax_lift_v1",
@@ -504,6 +585,7 @@ def derive_commitment_feasibility_cut(
         "rho_box_term": rho_box_term,
         "nonzero_phase_row_dual_count": len(used_sides),
         "nonzero_phase_row_duals": used_sides,
+        "coefficient_cleanup": cleanup_audit,
         "cut": cut.as_dict(source_rows),
     }
 
@@ -584,9 +666,7 @@ def generate_commitment_cut_repairs(
                     1e-12,
                     abs(
                         float(
-                            economics[position]
-                            if binary[position] == 0
-                            else -economics[position]
+                            economics[position] if binary[position] == 0 else -economics[position]
                         )
                     ),
                 ),
