@@ -10,7 +10,16 @@ from activsg_scopf.deadline import Deadline
 from activsg_scopf.errors import PrimalCandidateRejected, ScopfError
 from activsg_scopf.lagrangian import RegionMasks
 from activsg_scopf.lagrangian_experiment import (
+    ACTIVSG2000_ALL_EXPERIMENT_IDS,
+    ACTIVSG2000_BEST_FIRST_REPAIR_EXPERIMENT_IDS,
+    ACTIVSG2000_DIVERSIFIED_PRIMAL_SEARCH_EXPERIMENT_IDS,
     ACTIVSG2000_EXPERIMENT_ID,
+    ACTIVSG2000_EXPERIMENT_ID_SEQUENCE,
+    ACTIVSG2000_FIXED_COMMITMENT_COST_PROJECTION_EXPERIMENT_IDS,
+    ACTIVSG2000_FIXED_COMMITMENT_FEASIBILITY_EXPERIMENT_IDS,
+    ACTIVSG2000_GPU_PRIMAL_HEURISTIC_EXPERIMENT_IDS,
+    ACTIVSG2000_PHASE_ONE_CHILD_EXPERIMENT_IDS,
+    ACTIVSG2000_PHASE_ONE_FIRST_EXPERIMENT_IDS,
     ACTIVSG2000_V4_EXPERIMENT_ID,
     ACTIVSG2000_V5_EXPERIMENT_ID,
     ACTIVSG2000_V6_EXPERIMENT_ID,
@@ -42,10 +51,14 @@ from activsg_scopf.lagrangian_experiment import (
     ACTIVSG2000_V20_EXPERIMENT_ID,
     ACTIVSG2000_V20_RUNTIME,
     ACTIVSG2000_V20_SECURITY_ROW_NUMERICAL_FIX,
+    ACTIVSG2000_V21_CANDIDATE_PIPELINE_REGISTRATION_FIX,
+    ACTIVSG2000_V21_EXPERIMENT_ID,
+    ACTIVSG2000_V21_RUNTIME,
     EXPERIMENT_ID,
     EXPERIMENT_TAG,
     PrimalCandidatePolicy,
     RegionAttemptRejected,
+    _activsg2000_solver_path_registration,
     _gpu_lagrangian_wall_time,
     _load_cpu_comparison,
     _map_phase_one_dual_to_source_native,
@@ -684,6 +697,45 @@ def test_registered_activsg2000_v20_security_row_numerical_fix_is_fail_closed() 
     v20.raw["model"]["security_row_maximum_raw_violation_envelope_pu"] = 9e-6
     with pytest.raises(ScopfError, match="security-row envelope"):
         validate_lagrangian_experiment_config(v20)
+
+
+def test_registered_activsg2000_v21_candidate_pipeline_is_fail_closed() -> None:
+    v20 = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v20.json")
+    v21 = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v21.json")
+    registration = validate_lagrangian_experiment_config(v21)
+
+    assert v21.benchmark_id == ACTIVSG2000_V21_EXPERIMENT_ID
+    assert registration["benchmark"]["required_git_tag"] == (
+        "experiment-2000-gpu-lagrangian-v21"
+    )
+    assert v21.raw["raw_inputs"] == v20.raw["raw_inputs"]
+    assert v21.model == v20.model
+    assert v21.runtime == ACTIVSG2000_V21_RUNTIME
+    assert registration["benchmark"]["candidate_pipeline_registration_fix"] == (
+        ACTIVSG2000_V21_CANDIDATE_PIPELINE_REGISTRATION_FIX
+    )
+    assert ACTIVSG2000_EXPERIMENT_ID_SEQUENCE[-1] == ACTIVSG2000_V21_EXPERIMENT_ID
+    assert set(ACTIVSG2000_EXPERIMENT_ID_SEQUENCE) == set(
+        ACTIVSG2000_ALL_EXPERIMENT_IDS
+    )
+    for feature_ids in (
+        ACTIVSG2000_FIXED_COMMITMENT_FEASIBILITY_EXPERIMENT_IDS,
+        ACTIVSG2000_FIXED_COMMITMENT_COST_PROJECTION_EXPERIMENT_IDS,
+        ACTIVSG2000_PHASE_ONE_CHILD_EXPERIMENT_IDS,
+        ACTIVSG2000_PHASE_ONE_FIRST_EXPERIMENT_IDS,
+        ACTIVSG2000_DIVERSIFIED_PRIMAL_SEARCH_EXPERIMENT_IDS,
+        ACTIVSG2000_BEST_FIRST_REPAIR_EXPERIMENT_IDS,
+        ACTIVSG2000_GPU_PRIMAL_HEURISTIC_EXPERIMENT_IDS,
+    ):
+        assert ACTIVSG2000_V21_EXPERIMENT_ID in feature_ids
+    assert all(
+        _activsg2000_solver_path_registration(ACTIVSG2000_V21_EXPERIMENT_ID).values()
+    )
+    v21.raw["benchmark"]["candidate_pipeline_registration_fix"][
+        "v20_candidate_policy_was_null"
+    ] = False
+    with pytest.raises(ScopfError, match="candidate-pipeline identity changed"):
+        validate_lagrangian_experiment_config(v21)
 
 
 def test_gpu_lagrangian_timing_accepts_centered_and_legacy_audits() -> None:

@@ -184,6 +184,26 @@ bash scripts/spark-build-2000-gpu-lagrangian-v20.sh
 bash scripts/spark-run-2000-gpu-lagrangian-v20.sh
 ```
 
+The immutable v20 run confirmed that correction: its three-round root solve
+ended with an exhaustive maximum N-1 violation of `3.85572234620213e-6` p.u.,
+below the registered `1e-5` p.u. tolerance. It did not produce an incumbent,
+however, because two older hand-written version gates stopped at v19. That made
+the v20 candidate policy `null` and sent the first commitment directly into
+four long ordinary cost-PDLP attempts instead of the bounded projected Phase-I
+pipeline.
+
+The v21 controller correction leaves the v20 numerical row fix, mathematical
+model, exact source PMIN/PMAX, tolerances, and 900-second deadline unchanged.
+ACTIVSg2000 versions now have one ordered registration sequence and named
+monotone capability sets. The candidate controller fails closed at startup if
+v21 is missing any required feasibility-first, cost-projection, child-Phase-I,
+diversification, best-first, or GPU-heuristic route. The one-shot commands are:
+
+```bash
+bash scripts/spark-build-2000-gpu-lagrangian-v21.sh
+bash scripts/spark-run-2000-gpu-lagrangian-v21.sh
+```
+
 ## MIP-gap sensitivity experiments
 
 The separately registered `activsg10k-gap-sensitivity-v2` experiment runs the
