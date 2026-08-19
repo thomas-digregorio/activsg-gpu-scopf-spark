@@ -1,0 +1,131 @@
+{
+  "schema_version": "1.0.0",
+  "benchmark_id": "activsg2000-gpu-lagrangian-v24",
+  "frozen_identity": {
+    "commit": "ae5f6ee893a49f59bd49f0b4a6b11b4594c67b6f",
+    "tag": "experiment-2000-gpu-lagrangian-v24",
+    "config_sha256": "ba9449c2f1a055b1a5e74755aafb94389cc5db2f48563952484e2f313325e632"
+  },
+  "source_identity": {
+    "case_file": "case_ACTIVSg2000.m",
+    "case_sha256": "8d00618de8fd10bf35a599f59d2deebfecd0d86e28fcff73219ad7c4ebab860b",
+    "contingency_file": "contab_ACTIVSg2000.m",
+    "contingency_sha256": "198b39f0381925a4ddacbe2148973cb1d93ddfe220303829cf87b16d45190bba"
+  },
+  "raw_artifacts": {
+    "result_path": "/home/dgxsparktd/activsg-gpu-scopf-spark/results/experiments/activsg2000-gpu-lagrangian-v24-dgx-spark.json",
+    "result_bytes": 46409615,
+    "result_sha256": "fd03b0156d0a7271cdabd57af8ffc459ed1aaae8830802b32e742bec8285b1ce",
+    "run_registry_sha256": "0ce162d80180bf53b03b378adab3f9a1ad00c9bcdae764b1bafe057672d5edd6",
+    "launcher_log_sha256": "901054bf0762449a228967dcaf4fbf9d486576680539007d01cc51379b6f084c",
+    "worker_console_log_sha256": "10b3565745f995c56afd8a9d08a0a929a8516d6a4092ec33cd95c2a0f7e689a9",
+    "checkpoint_sha256": "08bbdca1e762a22e20a81353cd1869a23c1d83a4ce0120587666596e1dacc2ed"
+  },
+  "outcome": {
+    "status": "incomplete_refinement_budget_reserve_reached",
+    "elapsed_seconds": 871.3137413750228,
+    "total_wall_time_seconds": 873.003703919996,
+    "objective": 1142133.305099282,
+    "bound": 1130040.7470977695,
+    "bound_status": "independently_replayed_current_frontier",
+    "relative_gap": 0.010587694052456742,
+    "requested_relative_gap": 0.001,
+    "commitment_count": 331,
+    "secure_primal": true,
+    "gap_certified": false,
+    "success_gate_passed": false
+  },
+  "verification": {
+    "passed": true,
+    "checked_valid_outages": 2740,
+    "checked_security_sides": 17563400,
+    "maximum_model_residual_pu": 2.460183168295771e-12,
+    "maximum_security_violation_pu": 4.674901411760857e-6,
+    "maximum_integrality_violation": 0.0,
+    "objective_difference": 1.6298145055770874e-9
+  },
+  "lower_bound_verification": {
+    "passed": true,
+    "frontier_region_count": 27,
+    "active_master_cache_builds": 4,
+    "active_master_cache_hits": 23,
+    "direct_commitment_cut_replay": true,
+    "validated_global_feasibility_cut_count": 32,
+    "validated_capacity_cut_count": 2,
+    "validated_cover_cut_count": 34,
+    "recorded_global_lower_bound": 1130040.7470977695,
+    "replayed_global_lower_bound": 1130040.7470977695,
+    "global_bound_difference_dollars": 0.0,
+    "maximum_region_replay_difference_dollars": 0.0
+  },
+  "work_counts": {
+    "successful_disjunctive_splits": 26,
+    "rolled_back_disjunctive_splits": 0,
+    "solved_regions": 53,
+    "frontier_regions": 27,
+    "phase_one_prechecks": 52,
+    "secure_incumbent_checkpoints": 2,
+    "global_feasibility_cuts": 32,
+    "global_cover_cuts": 34,
+    "analytic_capacity_cuts": 2
+  },
+  "numerical_audit": {
+    "native_solver_invocations_in_worker_log": 120,
+    "large_coefficient_range_advisories": 0,
+    "barrier_numerical_warnings": 0,
+    "free_variable_warnings": 0,
+    "mip_start_rejections": 0,
+    "infeasible_status_text": 0,
+    "nan_status_text": 0,
+    "native_matrix_minimum_reported_coefficient": 2e-6,
+    "native_matrix_maximum_reported_coefficient": 1.0,
+    "maximum_reported_coefficient_ratio": 500000.0,
+    "absolute_primal_tolerance_1e_8_invocations": 64,
+    "absolute_primal_tolerance_1e_10_invocations": 56,
+    "v22_large_coefficient_range_advisories": 21
+  },
+  "hard_cardinality_diagnostic": {
+    "child_cost_dual_pdlp_seconds": 0.0,
+    "hard_cardinality_gpu_wall_seconds": 2.2765015248733107,
+    "frontier_leaves_with_positive_local_bound_lift": 26,
+    "maximum_local_bound_lift_dollars": 12378.79792899359,
+    "minimum_leaf_hard_cardinality_cut_count": 26,
+    "minimum_leaf_bound_lift_dollars": 0.0,
+    "interpretation": "exact hard-cardinality evaluation is cheap and valid, but one all-at-least path retains the inherited bound and pins the global proof"
+  },
+  "timings_seconds": {
+    "raw_input_loading": 0.016937248990871012,
+    "network_and_reduced_model_build": 1.428115748014534,
+    "relaxation_pdlp_adapter_wall": 250.72945277110557,
+    "relaxation_cupy_screening_wall": 3.590462839958491,
+    "fixed_commitment_pdlp_adapter_wall": 88.85066275997087,
+    "fixed_commitment_projected_phase_one_pdlp_adapter_wall": 1.5397901129617821,
+    "fixed_commitment_projected_cupy_screening_wall": 0.3732109740085434,
+    "exact_minimizer_feasibility_cut_wall": 56.128732306009624,
+    "phase_one_precheck_pdlp_adapter_wall": 106.84747207310284,
+    "cupy_lagrangian_evaluation_wall": 4.949460314906901,
+    "independent_lagrangian_raw_input_replay_wall": 67.24741878698114,
+    "independent_verification": 0.40095141698839143,
+    "result_serialization": 0.1599345569848083,
+    "attributed_nonoverlapping_total": 582.2626019099844,
+    "remaining_controller_model_build_and_checkpoint_overhead": 290.7411020100117
+  },
+  "v22_boundary": {
+    "v22_total_wall_time_seconds": 807.7501387360098,
+    "v22_objective": 1138259.7152461566,
+    "v22_bound": 1130027.3075553812,
+    "v22_relative_gap": 0.007232451065875623,
+    "v24_seconds_more_than_v22": 65.2535651839862,
+    "v24_bound_lift_over_v22_dollars": 13.4395423883,
+    "v24_objective_increase_over_v22_dollars": 3873.5898531254
+  },
+  "cpu_boundary": {
+    "comparison_performed_only_after_gpu_status_was_final": true,
+    "laptop_end_to_end_seconds": 1007.3702709000063,
+    "laptop_relative_gap": 0.0007763998859633739,
+    "laptop_objective": 1133479.3855011363,
+    "gpu_seconds_less_than_cpu": 134.3665669800103,
+    "gpu_percent_less_wall_time": 13.338349449201465,
+    "comparable_successful_solution": false
+  }
+}
