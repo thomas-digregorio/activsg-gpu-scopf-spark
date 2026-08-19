@@ -1,10 +1,12 @@
 import numpy as np
 import pytest
 
+from activsg_scopf.commitment_cuts import build_commitment_cardinality_cut
 from activsg_scopf.errors import ScopfError
 from activsg_scopf.lagrangian import (
     RegionMasks,
     _generator_breakpoint_state_arrays,
+    build_hard_cardinality_multiplier_delta_search_model,
     build_lagrangian_multiplier_delta_search_model,
     build_lagrangian_multiplier_search_model,
     bus_prices_from_coupling_duals,
@@ -26,6 +28,7 @@ from activsg_scopf.reduced import (
     security_pair_record,
 )
 from activsg_scopf.screening import ContingencyScreener, SecurityPair
+from activsg_scopf.solvers.highs import solve_highs
 
 from .helpers import triangle_case
 
@@ -200,6 +203,91 @@ def test_delta_multiplier_search_can_include_every_coupling_row() -> None:
     assert search.selected_coupling_positions.size == len(master.coupling_rows)
     assert search.audit["include_all_coupling_rows"] is True
     assert search.canonical.max_row_violation(search.initial_values) <= 1e-12
+
+
+def test_hard_cardinality_delta_search_exactly_embeds_center() -> None:
+    case, _ = triangle_case()
+    case.gen[1, 7] = 1.0
+    master = build_reduced_master(case, build_network(case))
+    source_rows = master.index.generator_source_rows + 1
+    hard_cut = build_commitment_cardinality_cut(
+        generator_source_rows=source_rows,
+        subset_positions=np.asarray([0, 1], dtype=np.int64),
+        subset_id="tiny_pair",
+        branch_side="at_least",
+        integer_threshold=1,
+    )
+    row_dual = np.zeros(master.canonical.num_rows, dtype=np.float64)
+    for row in master.coupling_rows:
+        row_dual[row.row_index] = 6.0 if row.kind == "balance_equality" else -0.25
+    region = RegionMasks.root(2)
+    center = evaluate_lagrangian_bound(
+        master,
+        row_dual,
+        region,
+        safety_margin_dollars=0.0,
+        commitment_cuts=(hard_cut,),
+        commitment_cut_dual=np.zeros(1, dtype=np.float64),
+        hard_cardinality_cuts=(hard_cut,),
+    )
+
+    search = build_hard_cardinality_multiplier_delta_search_model(
+        master,
+        row_dual,
+        region,
+        commitment_cuts=(hard_cut,),
+        commitment_cut_dual=np.zeros(1, dtype=np.float64),
+        hard_cardinality_cuts=(hard_cut,),
+        maximum_new_violated_coupling_rows=2,
+        coupling_trust_radius=50.0,
+    )
+    candidate_row_dual, candidate_cut_dual, audit = (
+        expand_lagrangian_multiplier_delta_candidate(
+            master, search, search.initial_values
+        )
+    )
+    replayed = evaluate_lagrangian_bound(
+        master,
+        candidate_row_dual,
+        region,
+        safety_margin_dollars=0.0,
+        commitment_cuts=(hard_cut,),
+        commitment_cut_dual=candidate_cut_dual,
+        hard_cardinality_cuts=(hard_cut,),
+    )
+
+    assert search.canonical.max_row_violation(search.initial_values) <= 1e-12
+    assert replayed.raw_lower_bound == pytest.approx(center.raw_lower_bound, abs=1e-10)
+    assert audit["maximum_search_box_projection"] == 0.0
+    hard_column = int(search.commitment_cut_delta_columns[0])
+    assert search.canonical.column_lower[hard_column] == 0.0
+    assert search.canonical.column_upper[hard_column] == 0.0
+    assert search.audit["hard_group_configuration_count"] == 3
+    assert search.audit["hard_cardinality_hypograph_is_exact_inside_search_box"] is True
+
+    solved = solve_highs(
+        search.canonical,
+        time_limit_seconds=2.0,
+        mip_relative_gap=0.0,
+        threads=1,
+    )
+    assert solved.values is not None
+    optimized_row_dual, optimized_cut_dual, _ = (
+        expand_lagrangian_multiplier_delta_candidate(master, search, solved.values)
+    )
+    optimized = evaluate_lagrangian_bound(
+        master,
+        optimized_row_dual,
+        region,
+        safety_margin_dollars=0.0,
+        commitment_cuts=(hard_cut,),
+        commitment_cut_dual=optimized_cut_dual,
+        hard_cardinality_cuts=(hard_cut,),
+    )
+    predicted_lift = -float(solved.objective) * search.objective_normalizer
+    assert optimized.raw_lower_bound - center.raw_lower_bound == pytest.approx(
+        predicted_lift, abs=1e-7
+    )
 
 
 def test_injection_elimination_matches_explicit_dc_solve() -> None:

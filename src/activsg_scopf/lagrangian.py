@@ -2164,6 +2164,704 @@ def build_lagrangian_multiplier_delta_search_model(
     )
 
 
+def build_hard_cardinality_multiplier_delta_search_model(
+    master: ReducedMaster,
+    row_dual: npt.ArrayLike,
+    region: RegionMasks,
+    *,
+    commitment_cuts: tuple[CommitmentUpperCut, ...],
+    commitment_cut_dual: npt.ArrayLike,
+    hard_cardinality_cuts: tuple[CommitmentCardinalityCut, ...],
+    maximum_new_violated_coupling_rows: int = 384,
+    coupling_trust_radius: float = 100.0,
+    commitment_cut_trust_radius: float = 10_000.0,
+    search_coefficient_zero_tolerance: float = 1e-8,
+    search_objective_zero_tolerance: float = 0.0,
+    maximum_group_configurations: int = 4_096,
+    include_all_coupling_rows: bool = False,
+) -> LagrangianMultiplierDeltaSearchModel:
+    """Build an exact, conditioned dual proposal LP for disjoint hard groups.
+
+    The ordinary centered search represents each free generator by one
+    hypograph.  A hard cardinality branch couples a small set of generators,
+    so this variant gives every grouped generator an on-state hypograph and
+    gives the group one additional hypograph row for each feasible binary
+    commitment pattern.  The resulting proposal LP is exact inside its finite
+    multiplier box.  Its solution still becomes a certificate only after the
+    original nonsmoothed evaluator replays it.
+    """
+
+    if maximum_new_violated_coupling_rows < 0:
+        raise ScopfError("Hard-cardinality search active-row limit is negative")
+    if maximum_group_configurations < 1:
+        raise ScopfError("Hard-cardinality configuration limit must be positive")
+    for value, label in (
+        (coupling_trust_radius, "coupling trust radius"),
+        (commitment_cut_trust_radius, "commitment-cut trust radius"),
+    ):
+        if not np.isfinite(value) or value <= 0.0:
+            raise ScopfError(f"Hard-cardinality search {label} must be positive")
+    for value, label in (
+        (search_coefficient_zero_tolerance, "coefficient cleanup tolerance"),
+        (search_objective_zero_tolerance, "objective cleanup tolerance"),
+    ):
+        if not np.isfinite(value) or value < 0.0:
+            raise ScopfError(f"Hard-cardinality search {label} is invalid")
+
+    generator_count = master.index.generator_source_rows.size
+    region.validate(generator_count)
+    for cut in commitment_cuts:
+        cut.validate(generator_count)
+    hard_ids, hard_supports = _validate_disjoint_hard_cardinality_cuts(
+        hard_cardinality_cuts,
+        generator_count=generator_count,
+        available_cut_ids={cut.cut_id for cut in commitment_cuts},
+    )
+    if not hard_cardinality_cuts:
+        raise ScopfError("Hard-cardinality search requires at least one hard group")
+
+    full_dual = np.asarray(row_dual, dtype=np.float64)
+    if full_dual.shape != (master.canonical.num_rows,) or not np.all(
+        np.isfinite(full_dual)
+    ):
+        raise ScopfError("Hard-cardinality search initial row dual is invalid")
+    supplied_cut_dual = np.asarray(commitment_cut_dual, dtype=np.float64)
+    if supplied_cut_dual.shape != (len(commitment_cuts),) or not np.all(
+        np.isfinite(supplied_cut_dual)
+    ):
+        raise ScopfError("Hard-cardinality search initial cut dual is invalid")
+
+    coupling_rows = sorted(master.coupling_rows, key=lambda row: row.row_name)
+    coupling_indices = np.asarray(
+        [row.row_index for row in coupling_rows], dtype=np.int64
+    )
+    coupling_dual = full_dual[coupling_indices].copy()
+    upper = np.asarray(
+        [row.kind != "balance_equality" for row in coupling_rows], dtype=bool
+    )
+    coupling_dual[upper] = np.minimum(coupling_dual[upper], 0.0)
+    base_row_dual = full_dual.copy()
+    base_row_dual[coupling_indices] = coupling_dual
+
+    cut_dual = np.minimum(supplied_cut_dual, 0.0)
+    hard_cut_positions = np.asarray(
+        [cut.cut_id in hard_ids for cut in commitment_cuts], dtype=bool
+    )
+    if np.any(np.abs(cut_dual[hard_cut_positions]) > 0.0):
+        raise ScopfError("Hard cardinality cuts cannot carry search multipliers")
+    cut_dual[hard_cut_positions] = 0.0
+    rhs = np.asarray([row.rhs for row in coupling_rows], dtype=np.float64)
+    coefficients = np.stack(
+        [row.generator_coefficients for row in coupling_rows]
+    ).astype(np.float64, copy=False)
+    cut_coefficients = np.stack([cut.coefficients for cut in commitment_cuts]).astype(
+        np.float64, copy=False
+    )
+    dispatch_states, state_cost, _state_commitment = (
+        _generator_breakpoint_state_arrays(master)
+    )
+    effective = -(coupling_dual @ coefficients)
+    cut_adjustment = -(cut_dual @ cut_coefficients)
+    on_state_values = (
+        state_cost[:, 1:]
+        + effective[:, None] * dispatch_states[:, 1:]
+        + cut_adjustment[:, None]
+    )
+    base_on_minimum = np.min(on_state_values, axis=1)
+    if not np.all(np.isfinite(base_on_minimum)):
+        raise ScopfError("Hard-cardinality search has a nonfinite on-state value")
+
+    center = evaluate_lagrangian_bound(
+        master,
+        base_row_dual,
+        region,
+        safety_margin_dollars=0.0,
+        commitment_cuts=commitment_cuts,
+        commitment_cut_dual=cut_dual,
+        hard_cardinality_cuts=hard_cardinality_cuts,
+    )
+    minimizing_on_state = np.argmin(on_state_values, axis=1) + 1
+    minimizing_dispatch = np.zeros(generator_count, dtype=np.float64)
+    committed = center.minimizing_commitment.astype(bool)
+    minimizing_dispatch[committed] = dispatch_states[
+        np.flatnonzero(committed), minimizing_on_state[committed]
+    ]
+    residual = rhs - coefficients @ minimizing_dispatch
+
+    mandatory = (~upper) | (coupling_dual != 0.0)
+    inactive_violated = np.flatnonzero(
+        upper & ~mandatory & (residual < -1e-12)
+    )
+    ranked_violated = sorted(
+        (int(position) for position in inactive_violated),
+        key=lambda position: (
+            float(residual[position]),
+            coupling_rows[position].row_name,
+        ),
+    )
+    selected_mask = (
+        np.ones(len(coupling_rows), dtype=bool)
+        if include_all_coupling_rows
+        else mandatory.copy()
+    )
+    if not include_all_coupling_rows:
+        selected_mask[
+            np.asarray(
+                ranked_violated[:maximum_new_violated_coupling_rows], dtype=np.int64
+            )
+        ] = True
+    selected = np.flatnonzero(selected_mask).astype(np.int64)
+    if not selected.size:
+        raise ScopfError("Hard-cardinality search selected no coupling rows")
+
+    coupling_centers = coupling_dual[selected].copy()
+    coupling_steps = np.full(
+        selected.size, float(coupling_trust_radius), dtype=np.float64
+    )
+    coupling_delta_lower = np.full(selected.size, -1.0, dtype=np.float64)
+    coupling_delta_upper = np.ones(selected.size, dtype=np.float64)
+    selected_upper = upper[selected]
+    coupling_delta_upper[selected_upper] = np.minimum(
+        1.0,
+        -coupling_centers[selected_upper] / coupling_steps[selected_upper],
+    )
+    coupling_delta_upper = np.maximum(
+        coupling_delta_upper, coupling_delta_lower
+    )
+    coupling_delta_upper[
+        np.abs(coupling_delta_upper) < search_coefficient_zero_tolerance
+    ] = 0.0
+
+    cut_steps = np.full(
+        len(commitment_cuts),
+        float(commitment_cut_trust_radius),
+        dtype=np.float64,
+    )
+    cut_delta_lower = np.full(len(commitment_cuts), -1.0, dtype=np.float64)
+    cut_delta_upper = np.minimum(
+        np.ones(len(commitment_cuts), dtype=np.float64),
+        -cut_dual / cut_steps,
+    )
+    cut_delta_upper = np.maximum(cut_delta_upper, cut_delta_lower)
+    cut_delta_lower[hard_cut_positions] = 0.0
+    cut_delta_upper[hard_cut_positions] = 0.0
+    cut_delta_upper[
+        np.abs(cut_delta_upper) < search_coefficient_zero_tolerance
+    ] = 0.0
+
+    coupling_physical_objective = rhs[selected] * coupling_steps
+    cut_physical_objective = (
+        np.asarray([cut.rhs for cut in commitment_cuts], dtype=np.float64)
+        * cut_steps
+    )
+    cut_physical_objective[hard_cut_positions] = 0.0
+    all_delta_lower = np.concatenate((coupling_delta_lower, cut_delta_lower))
+    all_delta_upper = np.concatenate((coupling_delta_upper, cut_delta_upper))
+
+    grouped = np.zeros(generator_count, dtype=bool)
+    for support in hard_supports:
+        grouped[support] = True
+    ungrouped_positions = np.flatnonzero(~grouped).astype(np.int64)
+
+    def state_descriptor(
+        generator: int,
+        states: npt.NDArray[np.int64],
+        base_value: float,
+    ) -> tuple[list[tuple[int, float, float, float]], float, float, float, int]:
+        descriptors: list[tuple[int, float, float, float]] = []
+        seen: set[tuple[float, float, int]] = set()
+        physical_lower = np.inf
+        physical_upper = np.inf
+        maximum_row_magnitude = 1.0
+        duplicates = 0
+        for state in states:
+            position = int(state)
+            power = float(dispatch_states[generator, position])
+            state_is_on = float(position != 0)
+            cost = float(state_cost[generator, position])
+            signature = (power, cost, int(state_is_on))
+            if signature in seen:
+                duplicates += 1
+                continue
+            seen.add(signature)
+            physical_state_value = float(
+                cost
+                + effective[generator] * power
+                + cut_adjustment[generator] * state_is_on
+            )
+            shifted_rhs = physical_state_value - base_value
+            coupling_values = (
+                coefficients[selected, generator] * power * coupling_steps
+            )
+            cut_values = (
+                cut_coefficients[:, generator] * state_is_on * cut_steps
+            )
+            all_values = np.concatenate((coupling_values, cut_values))
+            maximizing_box = np.where(
+                all_values >= 0.0, all_delta_upper, all_delta_lower
+            )
+            minimizing_box = np.where(
+                all_values >= 0.0, all_delta_lower, all_delta_upper
+            )
+            state_physical_lower = shifted_rhs - float(
+                all_values @ maximizing_box
+            )
+            state_physical_upper = shifted_rhs - float(
+                all_values @ minimizing_box
+            )
+            physical_lower = min(physical_lower, state_physical_lower)
+            physical_upper = min(physical_upper, state_physical_upper)
+            maximum_row_magnitude = max(
+                maximum_row_magnitude,
+                abs(shifted_rhs),
+                float(np.max(np.abs(all_values))) if all_values.size else 0.0,
+            )
+            descriptors.append((position, power, state_is_on, shifted_rhs))
+        if not descriptors:
+            raise ScopfError("Hard-cardinality search omitted every generator state")
+        scaled_lower = min(0.0, physical_lower / maximum_row_magnitude)
+        scaled_upper = max(0.0, physical_upper / maximum_row_magnitude)
+        if abs(scaled_lower) < search_coefficient_zero_tolerance:
+            scaled_lower = 0.0
+        if abs(scaled_upper) < search_coefficient_zero_tolerance:
+            scaled_upper = 0.0
+        return (
+            descriptors,
+            maximum_row_magnitude,
+            scaled_lower,
+            scaled_upper,
+            duplicates,
+        )
+
+    value_specs: list[dict[str, Any]] = []
+    value_spec_by_generator: dict[int, int] = {}
+    duplicate_state_count = 0
+    for generator in ungrouped_positions:
+        valid_states: list[int] = []
+        if not region.fixed_on[int(generator)]:
+            valid_states.append(0)
+        if not region.fixed_off[int(generator)]:
+            valid_states.extend(range(1, dispatch_states.shape[1]))
+        state_indices = np.asarray(valid_states, dtype=np.int64)
+        state_values = np.concatenate(
+            (
+                np.asarray([0.0], dtype=np.float64)
+                if 0 in valid_states
+                else np.empty(0, dtype=np.float64),
+                on_state_values[int(generator)]
+                if not region.fixed_off[int(generator)]
+                else np.empty(0, dtype=np.float64),
+            )
+        )
+        base_value = float(np.min(state_values))
+        descriptors, scale, lower_bound, upper_bound, duplicates = state_descriptor(
+            int(generator), state_indices, base_value
+        )
+        duplicate_state_count += duplicates
+        value_specs.append(
+            {
+                "kind": "ungrouped_component",
+                "generator": int(generator),
+                "base": base_value,
+                "states": descriptors,
+                "scale": scale,
+                "lower": lower_bound,
+                "upper": upper_bound,
+                "objective_component": True,
+            }
+        )
+
+    for generator in np.flatnonzero(grouped):
+        descriptors, scale, lower_bound, upper_bound, duplicates = state_descriptor(
+            int(generator),
+            np.arange(1, dispatch_states.shape[1], dtype=np.int64),
+            float(base_on_minimum[int(generator)]),
+        )
+        duplicate_state_count += duplicates
+        value_spec_by_generator[int(generator)] = len(value_specs)
+        value_specs.append(
+            {
+                "kind": "grouped_on_value",
+                "generator": int(generator),
+                "base": float(base_on_minimum[int(generator)]),
+                "states": descriptors,
+                "scale": scale,
+                "lower": lower_bound,
+                "upper": upper_bound,
+                "objective_component": False,
+            }
+        )
+
+    group_specs: list[dict[str, Any]] = []
+    total_group_configurations = 0
+    for cut, support in zip(hard_cardinality_cuts, hard_supports, strict=True):
+        support_size = int(support.size)
+        if support_size >= 63:
+            raise ScopfError("Hard-cardinality group is too large to enumerate")
+        configurations: list[npt.NDArray[np.int64]] = []
+        for mask in range(1 << support_size):
+            selected_positions = support[
+                np.asarray(
+                    [bool(mask & (1 << offset)) for offset in range(support_size)],
+                    dtype=bool,
+                )
+            ]
+            selected_mask_local = np.zeros(generator_count, dtype=bool)
+            selected_mask_local[selected_positions] = True
+            if np.any(region.fixed_on[support] & ~selected_mask_local[support]) or np.any(
+                region.fixed_off[support] & selected_mask_local[support]
+            ):
+                continue
+            count = int(selected_positions.size)
+            if cut.branch_side == "at_most":
+                feasible = count <= int(cut.integer_threshold)
+            else:
+                feasible = count >= int(cut.integer_threshold)
+            if feasible:
+                configurations.append(selected_positions.astype(np.int64, copy=False))
+        if not configurations:
+            raise ScopfError("Hard-cardinality group has no feasible configuration")
+        total_group_configurations += len(configurations)
+        if total_group_configurations > maximum_group_configurations:
+            raise ScopfError("Hard-cardinality configuration limit exceeded")
+        configuration_center_values = np.asarray(
+            [
+                fsum(float(base_on_minimum[position]) for position in configuration)
+                for configuration in configurations
+            ],
+            dtype=np.float64,
+        )
+        base_group_value = float(np.min(configuration_center_values))
+        configuration_lower: list[float] = []
+        configuration_upper: list[float] = []
+        maximum_group_magnitude = 1.0
+        for configuration, center_value in zip(
+            configurations, configuration_center_values, strict=True
+        ):
+            specs = [value_specs[value_spec_by_generator[int(g)]] for g in configuration]
+            physical_lower = float(center_value - base_group_value) + fsum(
+                float(spec["scale"]) * float(spec["lower"]) for spec in specs
+            )
+            physical_upper = float(center_value - base_group_value) + fsum(
+                float(spec["scale"]) * float(spec["upper"]) for spec in specs
+            )
+            configuration_lower.append(physical_lower)
+            configuration_upper.append(physical_upper)
+            maximum_group_magnitude = max(
+                maximum_group_magnitude,
+                abs(float(center_value - base_group_value)),
+                *(float(spec["scale"]) for spec in specs),
+            )
+        group_lower = min(0.0, min(configuration_lower) / maximum_group_magnitude)
+        group_upper = max(0.0, min(configuration_upper) / maximum_group_magnitude)
+        group_specs.append(
+            {
+                "cut": cut,
+                "support": support,
+                "configurations": configurations,
+                "configuration_center_values": configuration_center_values,
+                "base": base_group_value,
+                "scale": maximum_group_magnitude,
+                "lower": group_lower,
+                "upper": group_upper,
+            }
+        )
+
+    component_scales = np.asarray(
+        [
+            float(spec["scale"])
+            for spec in value_specs
+            if bool(spec["objective_component"])
+        ]
+        + [float(spec["scale"]) for spec in group_specs],
+        dtype=np.float64,
+    )
+    objective_terms = np.concatenate(
+        (
+            np.abs(coupling_physical_objective),
+            np.abs(cut_physical_objective),
+            component_scales,
+        )
+    )
+    objective_normalizer = float(max(1.0, np.max(objective_terms)))
+    coupling_objective = -coupling_physical_objective / objective_normalizer
+    cut_objective = -cut_physical_objective / objective_normalizer
+    value_objective = np.asarray(
+        [
+            -float(spec["scale"]) / objective_normalizer
+            if bool(spec["objective_component"])
+            else 0.0
+            for spec in value_specs
+        ],
+        dtype=np.float64,
+    )
+    group_objective = np.asarray(
+        [-float(spec["scale"]) / objective_normalizer for spec in group_specs],
+        dtype=np.float64,
+    )
+    all_objective = np.concatenate(
+        (coupling_objective, cut_objective, value_objective, group_objective)
+    )
+    dropped_objective = (all_objective != 0.0) & (
+        np.abs(all_objective) <= search_objective_zero_tolerance
+    )
+    dropped_search_objective_coefficient_count = int(
+        np.count_nonzero(dropped_objective)
+    )
+    maximum_dropped_search_objective_coefficient = (
+        0.0
+        if not dropped_search_objective_coefficient_count
+        else float(np.max(np.abs(all_objective[dropped_objective])))
+    )
+    all_objective[dropped_objective] = 0.0
+
+    search = CanonicalMILP()
+    offset = 0
+    coupling_columns = [
+        search.add_variable(
+            f"hard_delta_lambda__{coupling_rows[int(position)].row_name}",
+            objective=float(all_objective[offset + index]),
+            lower=float(coupling_delta_lower[index]),
+            upper=float(coupling_delta_upper[index]),
+        )
+        for index, position in enumerate(selected)
+    ]
+    offset += len(coupling_columns)
+    cut_columns = [
+        search.add_variable(
+            f"hard_delta_mu__{cut.cut_id}",
+            objective=float(all_objective[offset + index]),
+            lower=float(cut_delta_lower[index]),
+            upper=float(cut_delta_upper[index]),
+        )
+        for index, cut in enumerate(commitment_cuts)
+    ]
+    offset += len(cut_columns)
+    value_columns: list[int] = []
+    for index, spec in enumerate(value_specs):
+        generator = int(spec["generator"])
+        value_columns.append(
+            search.add_variable(
+                f"hard_delta_value__g{int(master.index.generator_source_rows[generator]) + 1:04d}",
+                objective=float(all_objective[offset + index]),
+                lower=float(spec["lower"]),
+                upper=float(spec["upper"]),
+            )
+        )
+    offset += len(value_columns)
+    group_columns = [
+        search.add_variable(
+            f"hard_delta_group__{spec['cut'].cut_id}",
+            objective=float(all_objective[offset + index]),
+            lower=float(spec["lower"]),
+            upper=float(spec["upper"]),
+        )
+        for index, spec in enumerate(group_specs)
+    ]
+
+    dropped_search_coefficient_count = 0
+    maximum_dropped_search_coefficient = 0.0
+    row_scale_minimum = np.inf
+    row_scale_maximum = 0.0
+    state_row_count = 0
+    for spec_index, spec in enumerate(value_specs):
+        generator = int(spec["generator"])
+        value_scale = float(spec["scale"])
+        for state, power, state_is_on, shifted_rhs in spec["states"]:
+            coupling_values = (
+                coefficients[selected, generator] * float(power) * coupling_steps
+            )
+            cut_values = (
+                cut_coefficients[:, generator] * float(state_is_on) * cut_steps
+            )
+            maximum_coefficient = max(
+                value_scale,
+                float(np.max(np.abs(coupling_values)))
+                if coupling_values.size
+                else 0.0,
+                float(np.max(np.abs(cut_values))) if cut_values.size else 0.0,
+            )
+            row_scale = max(1.0, abs(float(shifted_rhs)), maximum_coefficient)
+            row_scale_minimum = min(row_scale_minimum, row_scale)
+            row_scale_maximum = max(row_scale_maximum, row_scale)
+            row_coefficients: dict[int, float] = {
+                value_columns[spec_index]: value_scale / row_scale
+            }
+            for column, physical_coefficient in zip(
+                coupling_columns, coupling_values, strict=True
+            ):
+                scaled = float(physical_coefficient / row_scale)
+                if abs(scaled) <= search_coefficient_zero_tolerance:
+                    if scaled != 0.0:
+                        dropped_search_coefficient_count += 1
+                        maximum_dropped_search_coefficient = max(
+                            maximum_dropped_search_coefficient, abs(scaled)
+                        )
+                    continue
+                row_coefficients[column] = scaled
+            for column, physical_coefficient in zip(
+                cut_columns, cut_values, strict=True
+            ):
+                scaled = float(physical_coefficient / row_scale)
+                if abs(scaled) <= search_coefficient_zero_tolerance:
+                    if scaled != 0.0:
+                        dropped_search_coefficient_count += 1
+                        maximum_dropped_search_coefficient = max(
+                            maximum_dropped_search_coefficient, abs(scaled)
+                        )
+                    continue
+                row_coefficients[column] = scaled
+            search.add_row(
+                f"hard_state__g{int(master.index.generator_source_rows[generator]) + 1:04d}"
+                f"__s{int(state):02d}",
+                row_coefficients,
+                upper=float(shifted_rhs) / row_scale,
+            )
+            state_row_count += 1
+
+    configuration_row_count = 0
+    for group_index, (group_spec, group_column) in enumerate(
+        zip(group_specs, group_columns, strict=True)
+    ):
+        group_scale = float(group_spec["scale"])
+        for configuration_index, (configuration, center_value) in enumerate(
+            zip(
+                group_spec["configurations"],
+                group_spec["configuration_center_values"],
+                strict=True,
+            )
+        ):
+            rhs_value = float(center_value) - float(group_spec["base"])
+            member_specs = [
+                value_specs[value_spec_by_generator[int(generator)]]
+                for generator in configuration
+            ]
+            maximum_coefficient = max(
+                group_scale,
+                *(float(spec["scale"]) for spec in member_specs),
+            )
+            row_scale = max(1.0, abs(rhs_value), maximum_coefficient)
+            row_scale_minimum = min(row_scale_minimum, row_scale)
+            row_scale_maximum = max(row_scale_maximum, row_scale)
+            row_coefficients = {group_column: group_scale / row_scale}
+            for generator in configuration:
+                spec_index = value_spec_by_generator[int(generator)]
+                row_coefficients[value_columns[spec_index]] = (
+                    -float(value_specs[spec_index]["scale"]) / row_scale
+                )
+            search.add_row(
+                f"hard_configuration__h{group_index:03d}__c{configuration_index:04d}",
+                row_coefficients,
+                upper=rhs_value / row_scale,
+            )
+            configuration_row_count += 1
+
+    initial_values = np.zeros(search.num_columns, dtype=np.float64)
+    initial_residual = search.max_row_violation(initial_values)
+    if initial_residual > 1e-12:
+        raise ScopfError(
+            "Hard-cardinality search failed to embed its exact center certificate"
+        )
+    matrix = search.matrix_csr()
+    matrix_absolute = np.abs(matrix.data)
+    objective_absolute = np.abs(np.asarray(search.objective, dtype=np.float64))
+    finite_column_bounds = np.concatenate(
+        (
+            np.abs(np.asarray(search.column_lower, dtype=np.float64)),
+            np.abs(np.asarray(search.column_upper, dtype=np.float64)),
+        )
+    )
+    return LagrangianMultiplierDeltaSearchModel(
+        canonical=search,
+        selected_coupling_positions=selected,
+        coupling_delta_columns=np.asarray(coupling_columns, dtype=np.int64),
+        coupling_centers=coupling_centers,
+        coupling_step_scales=coupling_steps,
+        commitment_cut_delta_columns=np.asarray(cut_columns, dtype=np.int64),
+        commitment_cut_centers=cut_dual,
+        commitment_cut_step_scales=cut_steps,
+        epigraph_delta_columns=np.asarray(
+            [*value_columns, *group_columns], dtype=np.int64
+        ),
+        base_row_dual=base_row_dual,
+        initial_values=initial_values,
+        objective_normalizer=objective_normalizer,
+        audit={
+            "policy": "centered_exact_disjoint_hard_cardinality_hypograph_lp_v1",
+            "coupling_row_count": len(coupling_rows),
+            "mandatory_coupling_row_count": int(np.count_nonzero(mandatory)),
+            "inactive_violated_coupling_row_count": int(inactive_violated.size),
+            "selected_coupling_row_count": int(selected.size),
+            "selected_new_violated_coupling_row_count": int(
+                np.count_nonzero(selected_mask & ~mandatory)
+            ),
+            "maximum_new_violated_coupling_rows": int(
+                maximum_new_violated_coupling_rows
+            ),
+            "include_all_coupling_rows": bool(include_all_coupling_rows),
+            "commitment_cut_count": len(commitment_cuts),
+            "hard_cardinality_cut_count": len(hard_cardinality_cuts),
+            "hard_cardinality_cut_ids": sorted(hard_ids),
+            "hard_cut_multiplier_columns_fixed_zero": True,
+            "ungrouped_generator_component_count": int(ungrouped_positions.size),
+            "grouped_generator_on_value_count": int(np.count_nonzero(grouped)),
+            "hard_group_configuration_count": total_group_configurations,
+            "maximum_group_configurations": maximum_group_configurations,
+            "generator_state_row_count": state_row_count,
+            "hard_group_configuration_row_count": configuration_row_count,
+            "duplicate_generator_state_count": duplicate_state_count,
+            "columns": search.num_columns,
+            "rows": search.num_rows,
+            "nonzeros": int(matrix.nnz),
+            "initial_canonical_row_residual": initial_residual,
+            "center_exact_raw_lower_bound": center.raw_lower_bound,
+            "coupling_trust_radius": float(coupling_trust_radius),
+            "commitment_cut_trust_radius": float(commitment_cut_trust_radius),
+            "objective_normalizer": objective_normalizer,
+            "row_scale_minimum": float(row_scale_minimum),
+            "row_scale_maximum": float(row_scale_maximum),
+            "matrix_nonzero_minimum_absolute": (
+                None if not matrix_absolute.size else float(np.min(matrix_absolute))
+            ),
+            "matrix_nonzero_maximum_absolute": (
+                None if not matrix_absolute.size else float(np.max(matrix_absolute))
+            ),
+            "objective_nonzero_minimum_absolute": (
+                None
+                if not np.any(objective_absolute > 0.0)
+                else float(np.min(objective_absolute[objective_absolute > 0.0]))
+            ),
+            "objective_maximum_absolute": float(np.max(objective_absolute)),
+            "finite_column_bound_maximum_absolute": float(
+                np.max(finite_column_bounds)
+            ),
+            "search_coefficient_zero_tolerance": float(
+                search_coefficient_zero_tolerance
+            ),
+            "search_objective_zero_tolerance": float(
+                search_objective_zero_tolerance
+            ),
+            "dropped_search_coefficient_count": dropped_search_coefficient_count,
+            "maximum_absolute_dropped_search_coefficient": (
+                maximum_dropped_search_coefficient
+            ),
+            "dropped_search_objective_coefficient_count": (
+                dropped_search_objective_coefficient_count
+            ),
+            "maximum_absolute_dropped_search_objective_coefficient": (
+                maximum_dropped_search_objective_coefficient
+            ),
+            "center_is_exact_nonsmoothed_certificate": True,
+            "hard_cardinality_hypograph_is_exact_inside_search_box": True,
+            "row_scaling_is_exact_positive_scaling": True,
+            "objective_scaling_is_exact_positive_scaling": True,
+            "search_lp_solution_is_never_bound_authority": True,
+            "exact_replay_after_candidate_reconstruction_required": True,
+            "exact_source_pmin_pmax_changed": False,
+        },
+    )
+
+
 def expand_lagrangian_multiplier_delta_candidate(
     master: ReducedMaster,
     search: LagrangianMultiplierDeltaSearchModel,
