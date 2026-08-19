@@ -212,6 +212,10 @@ def main() -> None:
             )
         if polished.conservative_lower_bound + 1e-6 < inherited.conservative_lower_bound:
             raise RuntimeError(f"Smoothed GPU optimizer weakened {region_id}")
+        gpu["best_minimizing_commitment"] = np.asarray(
+            gpu["best_minimizing_commitment"], dtype=np.int8
+        ).tolist()
+        gpu["best_commitment_cut_dual"] = polished_cut_dual.tolist()
         records.append(
             {
                 "region_id": region_id,
