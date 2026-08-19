@@ -288,3 +288,135 @@ def exact_type_group_rounding(
         "groups": records,
         "cpu_solution_data_used": False,
     }
+
+
+def balanced_exact_type_group_rounding_candidates(
+    master: ReducedMaster,
+    commitments: npt.ArrayLike,
+    *,
+    target_offsets: tuple[int, ...] = (-1, 0, 1),
+) -> tuple[tuple[np.ndarray, dict[str, Any]], ...]:
+    """Globally balance exact-type counts around the aggregate LP count.
+
+    Independent nearest-integer rounding can round many type groups upward at
+    once.  This dependent rounding instead fixes a requested *global* count,
+    gives the available ceil decisions to the largest fractional type sums,
+    and retains the LP-preferred bus placements within each exact type.  The
+    result is only a deterministic GPU-LP-derived primal candidate; downstream
+    exact-PMIN Phase I remains the feasibility authority.
+    """
+
+    values = np.asarray(commitments, dtype=np.float64)
+    generator_count = master.index.generator_source_rows.size
+    if values.shape != (generator_count,) or not np.all(np.isfinite(values)):
+        raise ScopfError("Balanced type-group rounding received invalid commitments")
+    if np.any(values < -1e-6) or np.any(values > 1.0 + 1e-6):
+        raise ScopfError("Balanced type-group rounding received out-of-box commitments")
+    if not target_offsets or any(
+        isinstance(offset, bool) or not isinstance(offset, int) for offset in target_offsets
+    ):
+        raise ScopfError("Balanced type-group target offsets must be nonempty integers")
+
+    clipped = np.clip(values, 0.0, 1.0)
+    source_rows = np.asarray(master.index.generator_source_rows, dtype=np.int64) + 1
+    groups = exact_cost_type_groups(master)
+    group_data: list[dict[str, Any]] = []
+    floor_total = 0
+    for group_index, positions in enumerate(groups):
+        lp_sum = float(np.sum(clipped[positions]))
+        lower = min(int(positions.size), max(0, int(floor(lp_sum + 1e-12))))
+        fractional_part = max(0.0, min(1.0, lp_sum - lower))
+        can_round_up = lower < int(positions.size) and fractional_part > 1e-10
+        order = tuple(
+            sorted(
+                (int(position) for position in positions),
+                key=lambda position: (
+                    -float(clipped[position]),
+                    int(source_rows[position]),
+                ),
+            )
+        )
+        group_data.append(
+            {
+                "group_index": group_index,
+                "positions": positions,
+                "source_rows": tuple(int(source_rows[position]) for position in positions),
+                "lp_sum": lp_sum,
+                "floor_count": lower,
+                "fractional_part": fractional_part,
+                "can_round_up": can_round_up,
+                "placement_order": order,
+            }
+        )
+        floor_total += lower
+
+    aggregate_lp_count = float(np.sum(clipped))
+    center_target = int(floor(aggregate_lp_count + 0.5))
+    maximum_target = floor_total + sum(bool(group["can_round_up"]) for group in group_data)
+    ranked_fractional_groups = tuple(
+        sorted(
+            (group for group in group_data if bool(group["can_round_up"])),
+            key=lambda group: (
+                -float(group["fractional_part"]),
+                tuple(group["source_rows"]),
+            ),
+        )
+    )
+
+    candidates: list[tuple[np.ndarray, dict[str, Any]]] = []
+    seen_targets: set[int] = set()
+    for offset in target_offsets:
+        requested_target = center_target + int(offset)
+        target = min(maximum_target, max(floor_total, requested_target))
+        if target in seen_targets:
+            continue
+        seen_targets.add(target)
+        ceil_group_indices = {
+            int(group["group_index"])
+            for group in ranked_fractional_groups[: target - floor_total]
+        }
+        rounded = np.zeros(generator_count, dtype=np.float64)
+        records: list[dict[str, Any]] = []
+        for group in group_data:
+            count = int(group["floor_count"]) + int(
+                int(group["group_index"]) in ceil_group_indices
+            )
+            selected = tuple(group["placement_order"][:count])
+            rounded[np.asarray(selected, dtype=np.int64)] = 1.0
+            records.append(
+                {
+                    "source_rows": list(group["source_rows"]),
+                    "lp_sum": float(group["lp_sum"]),
+                    "floor_count": int(group["floor_count"]),
+                    "rounded_up": bool(int(group["group_index"]) in ceil_group_indices),
+                    "rounded_count": count,
+                    "selected_source_rows": [int(source_rows[position]) for position in selected],
+                }
+            )
+        observed_count = int(np.count_nonzero(rounded))
+        if observed_count != target:
+            raise ScopfError("Balanced type-group rounding missed its global target")
+        candidates.append(
+            (
+                rounded,
+                {
+                    "policy": (
+                        "global_dependent_exact_pmin_pmax_pwl_type_count_"
+                        "then_lp_placement_v1"
+                    ),
+                    "target_offset": int(offset),
+                    "requested_global_commitment_count": requested_target,
+                    "global_commitment_count": target,
+                    "aggregate_lp_commitment_count": aggregate_lp_count,
+                    "global_floor_count": floor_total,
+                    "global_maximum_dependent_rounding_count": maximum_target,
+                    "rounded_up_type_group_count": target - floor_total,
+                    "type_group_count": len(group_data),
+                    "groups": records,
+                    "candidate_only_not_feasibility_proof": True,
+                    "exact_source_pmin_pmax_retained": True,
+                    "cpu_solution_data_used": False,
+                },
+            )
+        )
+    return tuple(candidates)

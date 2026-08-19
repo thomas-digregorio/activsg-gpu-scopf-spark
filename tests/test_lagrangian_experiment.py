@@ -33,6 +33,9 @@ from activsg_scopf.lagrangian_experiment import (
     ACTIVSG2000_V17_EXPERIMENT_ID,
     ACTIVSG2000_V17_PRIMAL_DIVERSIFICATION_FIX,
     ACTIVSG2000_V17_RUNTIME,
+    ACTIVSG2000_V18_EXPERIMENT_ID,
+    ACTIVSG2000_V18_PRIMAL_SEARCH_FIX,
+    ACTIVSG2000_V18_RUNTIME,
     EXPERIMENT_ID,
     EXPERIMENT_TAG,
     PrimalCandidatePolicy,
@@ -584,6 +587,39 @@ def test_registered_activsg2000_v17_primal_diversification_is_fail_closed() -> N
     v17.raw["runtime"]["alternative_primal_candidate_maximum_attempts"] = 19
     with pytest.raises(ScopfError, match="runtime policy changed"):
         validate_lagrangian_experiment_config(v17)
+
+
+def test_registered_activsg2000_v18_primal_search_is_fail_closed() -> None:
+    v17 = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v17.json")
+    v18 = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v18.json")
+    registration = validate_lagrangian_experiment_config(v18)
+
+    assert v18.benchmark_id == ACTIVSG2000_V18_EXPERIMENT_ID
+    assert registration["benchmark"]["required_git_tag"] == (
+        "experiment-2000-gpu-lagrangian-v18"
+    )
+    assert v18.raw["raw_inputs"] == v17.raw["raw_inputs"]
+    assert v18.model == v17.model
+    assert v18.runtime == ACTIVSG2000_V18_RUNTIME
+    assert v18.runtime["deadline_seconds"] == 900.0
+    assert v18.runtime["alternative_primal_candidate_maximum_attempts"] == 44
+    assert v18.runtime["alternative_primal_candidate_wall_seconds"] == 180.0
+    assert v18.runtime[
+        "alternative_primal_candidate_minimum_remaining_solver_seconds"
+    ] == 300.0
+    assert v18.runtime["balanced_type_rounding_target_offsets"] == [-1, 0, 1]
+    assert registration["benchmark"]["primal_diversification_fix"] == (
+        ACTIVSG2000_V17_PRIMAL_DIVERSIFICATION_FIX
+    )
+    assert registration["benchmark"]["primal_search_fix"] == (
+        ACTIVSG2000_V18_PRIMAL_SEARCH_FIX
+    )
+    assert registration["benchmark"]["primal_search_fix"][
+        "candidate_selection_uses_cpu_solution_data"
+    ] is False
+    v18.raw["runtime"]["balanced_type_rounding_target_offsets"] = [-2, 0, 1]
+    with pytest.raises(ScopfError, match="runtime policy changed"):
+        validate_lagrangian_experiment_config(v18)
 
 
 def test_gpu_lagrangian_timing_accepts_centered_and_legacy_audits() -> None:

@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 
 from activsg_scopf.cardinality import (
+    balanced_exact_type_group_rounding_candidates,
     choose_cardinality_split,
     commitment_branch_subsets,
     exact_cost_type_groups,
@@ -40,6 +41,24 @@ def test_exact_type_group_rounding_preserves_lp_preferred_placement() -> None:
     assert audit["fractional_type_sum_count"] == 1
     assert audit["groups"][0]["lp_sum"] == pytest.approx(1.3)
     assert audit["cpu_solution_data_used"] is False
+
+
+def test_balanced_type_group_rounding_controls_global_count() -> None:
+    master = _two_identical_type_master()
+
+    candidates = balanced_exact_type_group_rounding_candidates(
+        master,
+        np.asarray([0.70, 0.60]),
+        target_offsets=(-1, 0, 1),
+    )
+
+    assert [int(np.count_nonzero(candidate)) for candidate, _audit in candidates] == [1, 2]
+    np.testing.assert_array_equal(candidates[0][0], np.asarray([1.0, 0.0]))
+    for candidate, audit in candidates:
+        assert int(np.count_nonzero(candidate)) == audit["global_commitment_count"]
+        assert audit["exact_source_pmin_pmax_retained"] is True
+        assert audit["candidate_only_not_feasibility_proof"] is True
+        assert audit["cpu_solution_data_used"] is False
 
 
 def test_cardinality_cut_roundtrip_rows_and_exhaustive_cover() -> None:
