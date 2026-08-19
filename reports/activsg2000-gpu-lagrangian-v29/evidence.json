@@ -1,0 +1,43 @@
+{
+  "schema_version": "1.0.0",
+  "benchmark_id": "activsg2000-gpu-lagrangian-v29",
+  "status": "incomplete_refinement_budget_reserve_reached",
+  "one_shot": true,
+  "frozen_identity": {
+    "commit": "82d0238300647d0d90079d3c8ae77589342ec446",
+    "tag": "experiment-2000-gpu-lagrangian-v29",
+    "config_sha256": "bae8ce4375b207199e97bfce39cb9f8593abba99fcad36dc71a6bcb4a9006653"
+  },
+  "total_wall_time_seconds": 828.0409738820163,
+  "objective": 1142133.305099282,
+  "bound": 1130484.3060344174,
+  "relative_gap": 0.010199334011936532,
+  "requested_relative_gap": 0.001,
+  "commitment_count": 331,
+  "proof_only_split_count": 134,
+  "frontier_region_count": 135,
+  "failed_split_transaction_count": 0,
+  "pruned_region_count": 0,
+  "proof_only_child_count": 268,
+  "proof_only_child_total_wall_time_seconds": 503.97402626101393,
+  "acceptance": {
+    "secure_primal_independently_verified": true,
+    "disjunctive_lagrangian_bound_independently_replayed": true,
+    "requested_gap_certified": false,
+    "checked_valid_outages": 2740,
+    "checked_security_sides": 17563400,
+    "maximum_model_residual_pu": 2.460183168295771e-12,
+    "maximum_security_violation_pu": 4.674901411760857e-06,
+    "integer_lower_bound_solver_absent": true,
+    "branch_and_bound_absent": true
+  },
+  "passed_bugfix_gates": {
+    "exact_full_mip_start_polish": true,
+    "native_full_mip_start_contract": true,
+    "gpu_host_alternate_argmin_replay": true,
+    "nested_proof_evidence_serialization": true
+  },
+  "cpu_solution_data_used": false,
+  "exact_source_pmin_pmax_changed": false,
+  "final_exhaustive_verification_completed": true
+}
