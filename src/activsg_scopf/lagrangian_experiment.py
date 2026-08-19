@@ -136,6 +136,7 @@ ACTIVSG2000_V12_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v12"
 ACTIVSG2000_V13_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v13"
 ACTIVSG2000_V14_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v14"
 ACTIVSG2000_V15_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v15"
+ACTIVSG2000_V16_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v16"
 ACTIVSG2000_V4_PLUS_EXPERIMENT_IDS = frozenset(
     {
         ACTIVSG2000_V4_EXPERIMENT_ID,
@@ -150,6 +151,7 @@ ACTIVSG2000_V4_PLUS_EXPERIMENT_IDS = frozenset(
         ACTIVSG2000_V13_EXPERIMENT_ID,
         ACTIVSG2000_V14_EXPERIMENT_ID,
         ACTIVSG2000_V15_EXPERIMENT_ID,
+        ACTIVSG2000_V16_EXPERIMENT_ID,
     }
 )
 ACTIVSG2000_V8_PLUS_EXPERIMENT_IDS = frozenset(
@@ -162,6 +164,7 @@ ACTIVSG2000_V8_PLUS_EXPERIMENT_IDS = frozenset(
         ACTIVSG2000_V13_EXPERIMENT_ID,
         ACTIVSG2000_V14_EXPERIMENT_ID,
         ACTIVSG2000_V15_EXPERIMENT_ID,
+        ACTIVSG2000_V16_EXPERIMENT_ID,
     }
 )
 ACTIVSG2000_V10_PLUS_EXPERIMENT_IDS = frozenset(
@@ -172,6 +175,7 @@ ACTIVSG2000_V10_PLUS_EXPERIMENT_IDS = frozenset(
         ACTIVSG2000_V13_EXPERIMENT_ID,
         ACTIVSG2000_V14_EXPERIMENT_ID,
         ACTIVSG2000_V15_EXPERIMENT_ID,
+        ACTIVSG2000_V16_EXPERIMENT_ID,
     }
 )
 ACTIVSG2000_V11_PLUS_EXPERIMENT_IDS = frozenset(
@@ -181,6 +185,7 @@ ACTIVSG2000_V11_PLUS_EXPERIMENT_IDS = frozenset(
         ACTIVSG2000_V13_EXPERIMENT_ID,
         ACTIVSG2000_V14_EXPERIMENT_ID,
         ACTIVSG2000_V15_EXPERIMENT_ID,
+        ACTIVSG2000_V16_EXPERIMENT_ID,
     }
 )
 ACTIVSG2000_V12_PLUS_EXPERIMENT_IDS = frozenset(
@@ -189,6 +194,7 @@ ACTIVSG2000_V12_PLUS_EXPERIMENT_IDS = frozenset(
         ACTIVSG2000_V13_EXPERIMENT_ID,
         ACTIVSG2000_V14_EXPERIMENT_ID,
         ACTIVSG2000_V15_EXPERIMENT_ID,
+        ACTIVSG2000_V16_EXPERIMENT_ID,
     }
 )
 ACTIVSG2000_V13_PLUS_EXPERIMENT_IDS = frozenset(
@@ -196,12 +202,20 @@ ACTIVSG2000_V13_PLUS_EXPERIMENT_IDS = frozenset(
         ACTIVSG2000_V13_EXPERIMENT_ID,
         ACTIVSG2000_V14_EXPERIMENT_ID,
         ACTIVSG2000_V15_EXPERIMENT_ID,
+        ACTIVSG2000_V16_EXPERIMENT_ID,
     }
 )
 ACTIVSG2000_V14_PLUS_EXPERIMENT_IDS = frozenset(
     {
         ACTIVSG2000_V14_EXPERIMENT_ID,
         ACTIVSG2000_V15_EXPERIMENT_ID,
+        ACTIVSG2000_V16_EXPERIMENT_ID,
+    }
+)
+ACTIVSG2000_V15_PLUS_EXPERIMENT_IDS = frozenset(
+    {
+        ACTIVSG2000_V15_EXPERIMENT_ID,
+        ACTIVSG2000_V16_EXPERIMENT_ID,
     }
 )
 REGISTERED_EXPERIMENTS = {
@@ -342,6 +356,14 @@ REGISTERED_EXPERIMENTS = {
         "policy": (
             "gpu_centered_dual_plus_exact_minimizer_phase_one_benders_"
             "separation_activsg2000_v15"
+        ),
+    },
+    ACTIVSG2000_V16_EXPERIMENT_ID: {
+        "case_name": "ACTIVSg2000",
+        "tag": "experiment-2000-gpu-lagrangian-v16",
+        "policy": (
+            "gpu_centered_dual_plus_phase_one_benders_binary_covers_"
+            "activsg2000_v16"
         ),
     },
 }
@@ -679,6 +701,22 @@ ACTIVSG2000_V15_MINIMIZER_CUT_FIX = {
     "mathematical_original_integer_optimum_changed": False,
     "cpu_commitment_dispatch_objective_or_bound_seeded": False,
 }
+ACTIVSG2000_V16_BENDERS_COVER_FIX = {
+    "comparison_baseline": "activsg2000-gpu-lagrangian-v15",
+    "v15_result_preserved": True,
+    "v15_numerical_solver_failures": 0,
+    "v15_requested_gap_certified": False,
+    "source_parent": "replay_certified_gpu_phase_one_binary_benders_cut_v1",
+    "cover_reference": "exact_infeasible_source_commitment_only_v1",
+    "cover_derivation": "strict_weight_signed_unit_binary_knapsack_cover_v1",
+    "cover_validity": "independently_rebuilt_parent_and_strict_weight_replay_v1",
+    "global_inheritance": "parent_and_cover_added_to_root_and_every_descendant_v1",
+    "dual_refresh": "centered_scaled_gpu_pdlp_then_exact_fp64_replay_v1",
+    "cover_selection_uses_cpu_solution_data": False,
+    "exact_source_pmin_changed": False,
+    "mathematical_original_integer_optimum_changed": False,
+    "cpu_commitment_dispatch_objective_or_bound_seeded": False,
+}
 ACTIVSG2000_V1_RUNTIME = {
     "deadline_seconds": 1800.0,
     "verification_reserve_seconds": 120.0,
@@ -802,6 +840,10 @@ ACTIVSG2000_V15_RUNTIME = {
     "minimizer_feasibility_cut_maximum_wall_seconds": 180.0,
     "minimizer_feasibility_cut_minimum_remaining_solver_seconds": 180.0,
     "minimizer_feasibility_cut_centered_maximum_passes": 2,
+}
+ACTIVSG2000_V16_RUNTIME = {
+    **ACTIVSG2000_V15_RUNTIME,
+    "benders_feasibility_cover_enabled": True,
 }
 
 
@@ -975,13 +1017,16 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
     is_activsg2000_v13 = config.benchmark_id == ACTIVSG2000_V13_EXPERIMENT_ID
     is_activsg2000_v14 = config.benchmark_id == ACTIVSG2000_V14_EXPERIMENT_ID
     is_activsg2000_v15 = config.benchmark_id == ACTIVSG2000_V15_EXPERIMENT_ID
-    is_activsg2000_v14_plus = is_activsg2000_v14 or is_activsg2000_v15
+    is_activsg2000_v16 = config.benchmark_id == ACTIVSG2000_V16_EXPERIMENT_ID
+    is_activsg2000_v15_plus = is_activsg2000_v15 or is_activsg2000_v16
+    is_activsg2000_v14_plus = is_activsg2000_v14 or is_activsg2000_v15_plus
     is_activsg2000_v11_plus = (
         is_activsg2000_v11
         or is_activsg2000_v12
         or is_activsg2000_v13
         or is_activsg2000_v14
         or is_activsg2000_v15
+        or is_activsg2000_v16
     )
     is_activsg2000_v8_plus = (
         is_activsg2000_v8
@@ -992,6 +1037,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
         or is_activsg2000_v13
         or is_activsg2000_v14
         or is_activsg2000_v15
+        or is_activsg2000_v16
     )
     is_activsg2000 = (
         is_activsg2000_v1
@@ -1009,6 +1055,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
         or is_activsg2000_v13
         or is_activsg2000_v14
         or is_activsg2000_v15
+        or is_activsg2000_v16
     )
     if benchmark.get("kind") != "gpu_lagrangian_disjunctive_experiment":
         raise ScopfError("GPU Lagrangian experiment kind changed")
@@ -1031,6 +1078,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
                 "-v13",
                 "-v14",
                 "-v15",
+                "-v16",
             )
         )
         or is_activsg2000
@@ -1166,6 +1214,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
         or is_activsg2000_v13
         or is_activsg2000_v14
         or is_activsg2000_v15
+        or is_activsg2000_v16
     ):
         observed_change = benchmark.get("compact_replay_fix")
         if observed_change != ACTIVSG2000_V9_COMPACT_REPLAY_FIX:
@@ -1181,6 +1230,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
         or is_activsg2000_v13
         or is_activsg2000_v14
         or is_activsg2000_v15
+        or is_activsg2000_v16
     ):
         observed_change = benchmark.get("cardinality_refinement")
         if observed_change != ACTIVSG2000_V10_CARDINALITY_REFINEMENT:
@@ -1202,6 +1252,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
         or is_activsg2000_v13
         or is_activsg2000_v14
         or is_activsg2000_v15
+        or is_activsg2000_v16
     ):
         observed_change = benchmark.get("numerical_throughput_fix")
         if observed_change != ACTIVSG2000_V12_NUMERICAL_THROUGHPUT_FIX:
@@ -1226,12 +1277,20 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
                 f"expected={ACTIVSG2000_V14_CENTERED_DUAL_FIX}, "
                 f"observed={observed_change}"
             )
-    if is_activsg2000_v15:
+    if is_activsg2000_v15_plus:
         observed_change = benchmark.get("minimizer_cut_fix")
         if observed_change != ACTIVSG2000_V15_MINIMIZER_CUT_FIX:
             raise ScopfError(
                 "ACTIVSg2000 GPU Lagrangian v15 minimizer-cut identity changed: "
                 f"expected={ACTIVSG2000_V15_MINIMIZER_CUT_FIX}, "
+                f"observed={observed_change}"
+            )
+    if is_activsg2000_v16:
+        observed_change = benchmark.get("benders_cover_fix")
+        if observed_change != ACTIVSG2000_V16_BENDERS_COVER_FIX:
+            raise ScopfError(
+                "ACTIVSg2000 GPU Lagrangian v16 Benders-cover identity changed: "
+                f"expected={ACTIVSG2000_V16_BENDERS_COVER_FIX}, "
                 f"observed={observed_change}"
             )
     profile = config.raw["platforms"].get("dgx_spark", {})
@@ -1254,6 +1313,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
                 or is_activsg2000_v13
                 or is_activsg2000_v14
                 or is_activsg2000_v15
+                or is_activsg2000_v16
             )
             else (
                 "power_system_equilibrated_v2" if is_activsg2000_v4 else "power_system_per_unit_v1"
@@ -1276,6 +1336,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
                 or is_activsg2000_v13
                 or is_activsg2000_v14
                 or is_activsg2000_v15
+                or is_activsg2000_v16
             )
             else "none"
         ),
@@ -1312,42 +1373,46 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
             f"expected={expected_deadline}, observed={runtime.get('deadline_seconds')}"
         )
     expected_activsg2000_runtime = (
-        ACTIVSG2000_V15_RUNTIME
-        if is_activsg2000_v15
+        ACTIVSG2000_V16_RUNTIME
+        if is_activsg2000_v16
         else (
-            ACTIVSG2000_V14_RUNTIME
-            if is_activsg2000_v14
+            ACTIVSG2000_V15_RUNTIME
+            if is_activsg2000_v15
             else (
-                ACTIVSG2000_V13_RUNTIME
-                if is_activsg2000_v13
+                ACTIVSG2000_V14_RUNTIME
+                if is_activsg2000_v14
                 else (
-                    ACTIVSG2000_V12_RUNTIME
-                    if is_activsg2000_v12
+                    ACTIVSG2000_V13_RUNTIME
+                    if is_activsg2000_v13
                     else (
-                        ACTIVSG2000_V11_RUNTIME
-                        if is_activsg2000_v11
+                        ACTIVSG2000_V12_RUNTIME
+                        if is_activsg2000_v12
                         else (
-                            ACTIVSG2000_V10_RUNTIME
-                            if is_activsg2000_v10
+                            ACTIVSG2000_V11_RUNTIME
+                            if is_activsg2000_v11
                             else (
-                                ACTIVSG2000_V9_RUNTIME
-                                if is_activsg2000_v9
+                                ACTIVSG2000_V10_RUNTIME
+                                if is_activsg2000_v10
                                 else (
-                                    ACTIVSG2000_V8_RUNTIME
-                                    if is_activsg2000_v8
+                                    ACTIVSG2000_V9_RUNTIME
+                                    if is_activsg2000_v9
                                     else (
-                                        ACTIVSG2000_V7_RUNTIME
-                                        if is_activsg2000_v7
+                                        ACTIVSG2000_V8_RUNTIME
+                                        if is_activsg2000_v8
                                         else (
-                                            ACTIVSG2000_V6_RUNTIME
-                                            if is_activsg2000_v6
+                                            ACTIVSG2000_V7_RUNTIME
+                                            if is_activsg2000_v7
                                             else (
-                                                ACTIVSG2000_V5_RUNTIME
-                                                if is_activsg2000_v5
+                                                ACTIVSG2000_V6_RUNTIME
+                                                if is_activsg2000_v6
                                                 else (
-                                                    ACTIVSG2000_V4_RUNTIME
-                                                    if is_activsg2000_v4
-                                                    else ACTIVSG2000_V1_RUNTIME
+                                                    ACTIVSG2000_V5_RUNTIME
+                                                    if is_activsg2000_v5
+                                                    else (
+                                                        ACTIVSG2000_V4_RUNTIME
+                                                        if is_activsg2000_v4
+                                                        else ACTIVSG2000_V1_RUNTIME
+                                                    )
                                                 )
                                             )
                                         )
@@ -1399,16 +1464,17 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
                 "-v13",
                 "-v14",
                 "-v15",
+                "-v16",
             )
         )
         or is_activsg2000
     ):
         required_runtime = {
             "maximum_primal_candidate_seconds": (
-                30.0 if is_activsg2000_v15 else (90.0 if is_activsg2000 else 15.0)
+                30.0 if is_activsg2000_v15_plus else (90.0 if is_activsg2000 else 15.0)
             ),
             "maximum_primal_candidate_round_seconds": (
-                15.0 if is_activsg2000_v15 else (30.0 if is_activsg2000 else 5.0)
+                15.0 if is_activsg2000_v15_plus else (30.0 if is_activsg2000 else 5.0)
             ),
             "minimum_primal_candidate_round_seconds": (1.0 if is_activsg2000 else 0.25),
             "primal_candidate_stagnation_window_rounds": 2,
@@ -1435,6 +1501,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
                     or is_activsg2000_v13
                     or is_activsg2000_v14
                     or is_activsg2000_v15
+                    or is_activsg2000_v16
                 )
                 else (16 if is_activsg2000 else 8)
             ),
@@ -1462,6 +1529,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
                     "-v13",
                     "-v14",
                     "-v15",
+                    "-v16",
                 )
             )
             or is_activsg2000
@@ -1488,6 +1556,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
         or is_activsg2000_v13
         or is_activsg2000_v14
         or is_activsg2000_v15
+        or is_activsg2000_v16
     ):
         required_v6_profile = {
             "pdlp_solver_mode_native": 1,
@@ -2738,9 +2807,10 @@ def _solve_fixed_commitment_cost_projection(
         ACTIVSG2000_V13_EXPERIMENT_ID,
         ACTIVSG2000_V14_EXPERIMENT_ID,
         ACTIVSG2000_V15_EXPERIMENT_ID,
+        ACTIVSG2000_V16_EXPERIMENT_ID,
     }:
         raise ScopfError(
-            "The fixed-commitment cost projection is registered only for v7-v15"
+            "The fixed-commitment cost projection is registered only for v7-v16"
         )
     started = time.perf_counter()
     master = prepared_master
@@ -5116,6 +5186,7 @@ def _solve_phase_one_lagrangian_region(
         ACTIVSG2000_V13_EXPERIMENT_ID,
         ACTIVSG2000_V14_EXPERIMENT_ID,
         ACTIVSG2000_V15_EXPERIMENT_ID,
+        ACTIVSG2000_V16_EXPERIMENT_ID,
     }:
         raise ScopfError("Phase-I Lagrangian child engine is not registered for this experiment")
     pairs_by_id = {pair.pair_id: pair for pair in initial_pairs}
@@ -6266,6 +6337,7 @@ def run_gpu_lagrangian_experiment(
 
         best_primal: dict[str, Any] | None = None
         global_feasibility_cuts: dict[str, CommitmentFeasibilityCut] = {}
+        global_benders_cover_cuts: dict[str, CommitmentCoverCut] = {}
         tried_commitments: set[str] = set()
         last_tried_commitment: np.ndarray | None = None
         pending_primal_candidates: deque[
@@ -6289,6 +6361,7 @@ def run_gpu_lagrangian_experiment(
                         "-v13",
                         "-v14",
                         "-v15",
+                        "-v16",
                     )
                 )
                 or config.benchmark_id
@@ -6308,6 +6381,7 @@ def run_gpu_lagrangian_experiment(
                     ACTIVSG2000_V13_EXPERIMENT_ID,
                     ACTIVSG2000_V14_EXPERIMENT_ID,
                     ACTIVSG2000_V15_EXPERIMENT_ID,
+                    ACTIVSG2000_V16_EXPERIMENT_ID,
                 }
             )
             else None
@@ -6329,6 +6403,7 @@ def run_gpu_lagrangian_experiment(
                         "-v13",
                         "-v14",
                         "-v15",
+                        "-v16",
                     )
                 )
                 or config.benchmark_id
@@ -6348,12 +6423,23 @@ def run_gpu_lagrangian_experiment(
                     ACTIVSG2000_V13_EXPERIMENT_ID,
                     ACTIVSG2000_V14_EXPERIMENT_ID,
                     ACTIVSG2000_V15_EXPERIMENT_ID,
+                    ACTIVSG2000_V16_EXPERIMENT_ID,
                 }
             )
             else None
         )
         phase_one_first = config.benchmark_id.endswith(
-            ("-v6", "-v7", "-v8", "-v9", "-v12", "-v13", "-v14", "-v15")
+            (
+                "-v6",
+                "-v7",
+                "-v8",
+                "-v9",
+                "-v12",
+                "-v13",
+                "-v14",
+                "-v15",
+                "-v16",
+            )
         ) or config.benchmark_id in {
             ACTIVSG2000_EXPERIMENT_ID,
             ACTIVSG2000_V2_EXPERIMENT_ID,
@@ -6368,6 +6454,7 @@ def run_gpu_lagrangian_experiment(
             ACTIVSG2000_V13_EXPERIMENT_ID,
             ACTIVSG2000_V14_EXPERIMENT_ID,
             ACTIVSG2000_V15_EXPERIMENT_ID,
+            ACTIVSG2000_V16_EXPERIMENT_ID,
         }
         payload["primal_candidate_policy"] = (
             candidate_policy.as_dict() if candidate_policy is not None else None
@@ -6430,6 +6517,7 @@ def run_gpu_lagrangian_experiment(
                         ACTIVSG2000_V13_EXPERIMENT_ID,
                         ACTIVSG2000_V14_EXPERIMENT_ID,
                         ACTIVSG2000_V15_EXPERIMENT_ID,
+                        ACTIVSG2000_V16_EXPERIMENT_ID,
                         ACTIVSG2000_V10_EXPERIMENT_ID,
                         ACTIVSG2000_V11_EXPERIMENT_ID,
                     }
@@ -6445,6 +6533,7 @@ def run_gpu_lagrangian_experiment(
                         ACTIVSG2000_V11_EXPERIMENT_ID,
                         ACTIVSG2000_V14_EXPERIMENT_ID,
                         ACTIVSG2000_V15_EXPERIMENT_ID,
+                        ACTIVSG2000_V16_EXPERIMENT_ID,
                     }
                 ),
                 "v12_secure_phase_one_policy": (
@@ -6532,6 +6621,7 @@ def run_gpu_lagrangian_experiment(
                         ACTIVSG2000_V13_EXPERIMENT_ID,
                         ACTIVSG2000_V14_EXPERIMENT_ID,
                         ACTIVSG2000_V15_EXPERIMENT_ID,
+                        ACTIVSG2000_V16_EXPERIMENT_ID,
                     }
                 ),
                 "cost_polish_uses_exact_convex_pwl_epigraph_projection": (
@@ -6546,6 +6636,7 @@ def run_gpu_lagrangian_experiment(
                         ACTIVSG2000_V13_EXPERIMENT_ID,
                         ACTIVSG2000_V14_EXPERIMENT_ID,
                         ACTIVSG2000_V15_EXPERIMENT_ID,
+                        ACTIVSG2000_V16_EXPERIMENT_ID,
                     }
                 ),
                 "cost_polish_uses_mapped_native_row_dual_start": (
@@ -6561,6 +6652,7 @@ def run_gpu_lagrangian_experiment(
                         ACTIVSG2000_V13_EXPERIMENT_ID,
                         ACTIVSG2000_V14_EXPERIMENT_ID,
                         ACTIVSG2000_V15_EXPERIMENT_ID,
+                        ACTIVSG2000_V16_EXPERIMENT_ID,
                     }
                 ),
                 "cpu_commitment_or_dispatch_seeded": False,
@@ -6581,6 +6673,7 @@ def run_gpu_lagrangian_experiment(
                 ACTIVSG2000_V13_EXPERIMENT_ID,
                 ACTIVSG2000_V14_EXPERIMENT_ID,
                 ACTIVSG2000_V15_EXPERIMENT_ID,
+                ACTIVSG2000_V16_EXPERIMENT_ID,
             }
             else {"enabled": False}
         )
@@ -6803,6 +6896,7 @@ def run_gpu_lagrangian_experiment(
                     ACTIVSG2000_V13_EXPERIMENT_ID,
                     ACTIVSG2000_V14_EXPERIMENT_ID,
                     ACTIVSG2000_V15_EXPERIMENT_ID,
+                    ACTIVSG2000_V16_EXPERIMENT_ID,
                 }:
                     if candidate_policy is None:
                         raise ScopfError("ACTIVSg2000 v2 requires a bounded candidate policy")
@@ -6863,6 +6957,7 @@ def run_gpu_lagrangian_experiment(
                         ACTIVSG2000_V13_EXPERIMENT_ID,
                         ACTIVSG2000_V14_EXPERIMENT_ID,
                         ACTIVSG2000_V15_EXPERIMENT_ID,
+                        ACTIVSG2000_V16_EXPERIMENT_ID,
                     }:
                         attempt["cost_polish"] = {
                             "status": "running",
@@ -7019,6 +7114,50 @@ def run_gpu_lagrangian_experiment(
                             exc.commitment_feasibility_cut_record
                         )
                     global_feasibility_cuts[cut.cut_id] = cut
+                    if config.benchmark_id == ACTIVSG2000_V16_EXPERIMENT_ID:
+                        if not bool(
+                            config.runtime["benders_feasibility_cover_enabled"]
+                        ):
+                            raise ScopfError(
+                                "v16 Benders-cover strengthening was disabled"
+                            ) from exc
+                        cover, cover_audit = derive_binary_knapsack_cover_cut(
+                            source_cut=cut,
+                            generator_source_rows=source_rows + 1,
+                            source_commitment=candidate,
+                        )
+                        source_parent_violation = cut.violation(candidate)
+                        source_cover_violation = cover.violation(candidate)
+                        if (
+                            source_parent_violation <= 0.0
+                            or source_cover_violation <= 0.0
+                            or cover.source_cut_id != cut.cut_id
+                        ):
+                            raise ScopfError(
+                                "v16 Benders-cover derivation did not exclude its "
+                                "replay-certified infeasible source commitment"
+                            ) from exc
+                        global_benders_cover_cuts[cover.cut_id] = cover
+                        if not any(
+                            record.get("cut", {}).get("cut_id") == cover.cut_id
+                            for record in payload["commitment_cover_cuts"]
+                        ):
+                            payload["commitment_cover_cuts"].append(
+                                {
+                                    "cut": cover.as_dict(source_rows + 1),
+                                    "derivation": cover_audit,
+                                    "reference_violation": (
+                                        cover.separation_reference_violation
+                                    ),
+                                    "cover_support_size": len(
+                                        cover.cover_source_rows
+                                    ),
+                                    "source": (
+                                        "phase_one_binary_benders_"
+                                        "infeasible_commitment_v1"
+                                    ),
+                                }
+                            )
                     cut_repairs = generate_commitment_cut_repairs(
                         cut=cut,
                         commitment=candidate,
@@ -7206,6 +7345,7 @@ def run_gpu_lagrangian_experiment(
             ACTIVSG2000_V13_EXPERIMENT_ID,
             ACTIVSG2000_V14_EXPERIMENT_ID,
             ACTIVSG2000_V15_EXPERIMENT_ID,
+            ACTIVSG2000_V16_EXPERIMENT_ID,
         }:
             heuristic_pipeline_started = time.perf_counter()
             payload["gpu_primal_heuristics"] = {
@@ -7618,10 +7758,24 @@ def run_gpu_lagrangian_experiment(
             global_cuts = tuple(
                 global_feasibility_cuts[cut_id] for cut_id in sorted(global_feasibility_cuts)
             )
-            if config.benchmark_id == ACTIVSG2000_V15_EXPERIMENT_ID:
+            global_benders_covers = tuple(
+                global_benders_cover_cuts[cut_id]
+                for cut_id in sorted(global_benders_cover_cuts)
+            )
+            global_strengthening_cuts: tuple[CommitmentUpperCut, ...] = (
+                global_cuts
+                + (
+                    global_benders_covers
+                    if config.benchmark_id == ACTIVSG2000_V16_EXPERIMENT_ID
+                    else ()
+                )
+            )
+            if config.benchmark_id in ACTIVSG2000_V15_PLUS_EXPERIMENT_IDS:
                 existing_cut_ids = {cut.cut_id for cut in root.commitment_cuts}
                 appended_global_cuts = tuple(
-                    cut for cut in global_cuts if cut.cut_id not in existing_cut_ids
+                    cut
+                    for cut in global_strengthening_cuts
+                    if cut.cut_id not in existing_cut_ids
                 )
                 combined_global_cuts: tuple[CommitmentUpperCut, ...] = (
                     root.commitment_cuts + appended_global_cuts
@@ -7659,6 +7813,8 @@ def run_gpu_lagrangian_experiment(
             payload["global_feasibility_cut_lagrangian_policy"] = {
                 "enabled": True,
                 "cut_count": len(global_cuts),
+                "benders_cover_cut_count": len(global_benders_covers),
+                "total_strengthening_cut_count": len(global_strengthening_cuts),
                 "all_frontier_descendants_inherit_cuts": True,
                 "diagonal_preconditioning": True,
                 "refresh_method": refresh_method,
@@ -7672,7 +7828,7 @@ def run_gpu_lagrangian_experiment(
             and best_primal is not None
         ):
             if int(config.runtime["analytic_capacity_cover_rounds"]) != 1:
-                raise ScopfError("v13-v15 permit exactly one analytic cover-separation pass")
+                raise ScopfError("v13-v16 permit exactly one analytic cover-separation pass")
             payload["active_stage"] = "analytic_capacity_cover_separation"
             covers, cover_records, cover_audit = _select_analytic_capacity_cover_cuts(
                 master=root.master,
@@ -7702,26 +7858,51 @@ def run_gpu_lagrangian_experiment(
                 }
                 for record in cover_records
             ]
-            payload["commitment_cover_cuts"] = [
+            analytic_cover_payload_records = [
                 {
                     "cut": record["cover_cut"],
                     "derivation": record["cover_derivation"],
                     "reference_violation": record["reference_violation"],
                     "cover_support_size": record["cover_support_size"],
+                    "source": "analytic_capacity_projection_v1",
                 }
                 for record in cover_records
             ]
+            if config.benchmark_id == ACTIVSG2000_V16_EXPERIMENT_ID:
+                existing_cover_ids = {
+                    record.get("cut", {}).get("cut_id")
+                    for record in payload["commitment_cover_cuts"]
+                }
+                payload["commitment_cover_cuts"].extend(
+                    record
+                    for record in analytic_cover_payload_records
+                    if record["cut"]["cut_id"] not in existing_cover_ids
+                )
+            else:
+                payload["commitment_cover_cuts"] = analytic_cover_payload_records
             save()
             if covers:
-                inherited_global_cuts = tuple(
-                    cut
-                    for cut in root.commitment_cuts
-                    if isinstance(cut, CommitmentFeasibilityCut)
-                )
-                combined_cuts: tuple[CommitmentUpperCut, ...] = (
-                    inherited_global_cuts
-                    + tuple(sorted(covers, key=lambda cut: cut.cut_id))
-                )
+                if config.benchmark_id == ACTIVSG2000_V16_EXPERIMENT_ID:
+                    existing_root_cut_ids = {
+                        cut.cut_id for cut in root.commitment_cuts
+                    }
+                    new_analytic_covers = tuple(
+                        cut
+                        for cut in sorted(covers, key=lambda cut: cut.cut_id)
+                        if cut.cut_id not in existing_root_cut_ids
+                    )
+                    combined_cuts: tuple[CommitmentUpperCut, ...] = (
+                        root.commitment_cuts + new_analytic_covers
+                    )
+                else:
+                    inherited_global_cuts = tuple(
+                        cut
+                        for cut in root.commitment_cuts
+                        if isinstance(cut, CommitmentFeasibilityCut)
+                    )
+                    combined_cuts = inherited_global_cuts + tuple(
+                        sorted(covers, key=lambda cut: cut.cut_id)
+                    )
                 previous_root_bound = float(root.lagrangian.conservative_lower_bound)
                 cover_solve_started = time.perf_counter()
                 if config.benchmark_id in ACTIVSG2000_V14_PLUS_EXPERIMENT_IDS:
@@ -7807,7 +7988,7 @@ def run_gpu_lagrangian_experiment(
                 save()
 
         if (
-            config.benchmark_id == ACTIVSG2000_V15_EXPERIMENT_ID
+            config.benchmark_id in ACTIVSG2000_V15_PLUS_EXPERIMENT_IDS
             and best_primal is not None
         ):
             if not bool(config.runtime["minimizer_feasibility_cut_enabled"]):
@@ -7836,6 +8017,9 @@ def run_gpu_lagrangian_experiment(
                 root.lagrangian.conservative_lower_bound
             )
             initial_minimizer_cut_count = len(global_feasibility_cuts)
+            initial_minimizer_benders_cover_count = len(
+                global_benders_cover_cuts
+            )
             payload["minimizer_feasibility_cut_policy"] = {
                 "enabled": True,
                 "candidate": "exact_current_lagrangian_minimizing_binary_commitment_v1",
@@ -7902,6 +8086,7 @@ def run_gpu_lagrangian_experiment(
                                 root.lagrangian.conservative_lower_bound
                             ),
                             "new_feasibility_cut_ids": [],
+                            "new_benders_cover_cut_ids": [],
                         }
                     )
                     save()
@@ -7909,6 +8094,7 @@ def run_gpu_lagrangian_experiment(
                 separated_minimizer_hashes.add(minimizer_digest)
                 iteration_started = time.perf_counter()
                 cut_ids_before = set(global_feasibility_cuts)
+                benders_cover_ids_before = set(global_benders_cover_cuts)
                 bound_before = float(root.lagrangian.conservative_lower_bound)
                 objective_before = float(best_primal["objective"])
                 attempt_count_before = len(payload["primal_repairs"])
@@ -7931,6 +8117,9 @@ def run_gpu_lagrangian_experiment(
                 # certificate minimizer and then refreshes the dual.
                 pending_primal_candidates.clear()
                 new_cut_ids = sorted(set(global_feasibility_cuts) - cut_ids_before)
+                new_benders_cover_ids = sorted(
+                    set(global_benders_cover_cuts) - benders_cover_ids_before
+                )
                 attempt_record = (
                     payload["primal_repairs"][-1]
                     if len(payload["primal_repairs"]) > attempt_count_before
@@ -7954,10 +8143,12 @@ def run_gpu_lagrangian_experiment(
                     ),
                     "new_feasibility_cut_ids": new_cut_ids,
                     "new_feasibility_cut_count": len(new_cut_ids),
+                    "new_benders_cover_cut_ids": new_benders_cover_ids,
+                    "new_benders_cover_cut_count": len(new_benders_cover_ids),
                     "capacity_repair_applied": False,
                 }
                 minimizer_records.append(minimizer_record)
-                if not new_cut_ids:
+                if not new_cut_ids and not new_benders_cover_ids:
                     minimizer_status = (
                         "feasible_minimizer_secured"
                         if candidate_secure
@@ -7977,14 +8168,27 @@ def run_gpu_lagrangian_experiment(
                     break
 
                 existing_cut_ids = {cut.cut_id for cut in root.commitment_cuts}
-                new_global_cuts = tuple(
+                new_feasibility_cuts = tuple(
                     global_feasibility_cuts[cut_id]
                     for cut_id in sorted(global_feasibility_cuts)
                     if cut_id not in existing_cut_ids
                 )
+                new_benders_covers = (
+                    tuple(
+                        global_benders_cover_cuts[cut_id]
+                        for cut_id in sorted(global_benders_cover_cuts)
+                        if cut_id not in existing_cut_ids
+                    )
+                    if config.benchmark_id == ACTIVSG2000_V16_EXPERIMENT_ID
+                    else ()
+                )
+                new_global_cuts: tuple[CommitmentUpperCut, ...] = (
+                    new_feasibility_cuts + new_benders_covers
+                )
                 if not new_global_cuts:
                     raise ScopfError(
-                        "v15 generated a feasibility cut but did not append it to the root"
+                        "v15-v16 generated a global strengthening cut but did not "
+                        "append it to the root"
                     )
                 combined_minimizer_cuts: tuple[CommitmentUpperCut, ...] = (
                     root.commitment_cuts + new_global_cuts
@@ -8051,6 +8255,16 @@ def run_gpu_lagrangian_experiment(
                         len(global_feasibility_cuts)
                         - initial_minimizer_cut_count
                     ),
+                    "initial_global_benders_cover_cut_count": (
+                        initial_minimizer_benders_cover_count
+                    ),
+                    "final_global_benders_cover_cut_count": len(
+                        global_benders_cover_cuts
+                    ),
+                    "new_global_benders_cover_cut_count": (
+                        len(global_benders_cover_cuts)
+                        - initial_minimizer_benders_cover_count
+                    ),
                     "wall_time_seconds": (
                         time.perf_counter() - minimizer_loop_started
                     ),
@@ -8064,6 +8278,11 @@ def run_gpu_lagrangian_experiment(
                     ),
                     "cut_count_after_exact_minimizer_separation": len(
                         global_feasibility_cuts
+                    ),
+                    "benders_cover_cut_count": len(global_benders_cover_cuts),
+                    "total_strengthening_cut_count": (
+                        len(global_feasibility_cuts)
+                        + len(global_benders_cover_cuts)
                     ),
                 }
             )
@@ -8374,6 +8593,7 @@ def run_gpu_lagrangian_experiment(
                         ACTIVSG2000_V13_EXPERIMENT_ID,
                         ACTIVSG2000_V14_EXPERIMENT_ID,
                         ACTIVSG2000_V15_EXPERIMENT_ID,
+                        ACTIVSG2000_V16_EXPERIMENT_ID,
                     }:
                         try:
                             phase_child, phase_prune = _solve_phase_one_lagrangian_region(

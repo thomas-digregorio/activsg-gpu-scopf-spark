@@ -27,6 +27,9 @@ from activsg_scopf.lagrangian_experiment import (
     ACTIVSG2000_V15_EXPERIMENT_ID,
     ACTIVSG2000_V15_MINIMIZER_CUT_FIX,
     ACTIVSG2000_V15_RUNTIME,
+    ACTIVSG2000_V16_BENDERS_COVER_FIX,
+    ACTIVSG2000_V16_EXPERIMENT_ID,
+    ACTIVSG2000_V16_RUNTIME,
     EXPERIMENT_ID,
     EXPERIMENT_TAG,
     PrimalCandidatePolicy,
@@ -524,6 +527,31 @@ def test_registered_activsg2000_v15_minimizer_cut_fix_is_fail_closed() -> None:
     v15.raw["runtime"]["minimizer_feasibility_cut_maximum_iterations"] = 25
     with pytest.raises(ScopfError, match="runtime policy changed"):
         validate_lagrangian_experiment_config(v15)
+
+
+def test_registered_activsg2000_v16_benders_cover_fix_is_fail_closed() -> None:
+    v15 = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v15.json")
+    v16 = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v16.json")
+    registration = validate_lagrangian_experiment_config(v16)
+
+    assert v16.benchmark_id == ACTIVSG2000_V16_EXPERIMENT_ID
+    assert registration["benchmark"]["required_git_tag"] == (
+        "experiment-2000-gpu-lagrangian-v16"
+    )
+    assert v16.raw["raw_inputs"] == v15.raw["raw_inputs"]
+    assert v16.model == v15.model
+    assert v16.runtime == ACTIVSG2000_V16_RUNTIME
+    assert v16.runtime["deadline_seconds"] == 900.0
+    assert v16.runtime["benders_feasibility_cover_enabled"] is True
+    assert registration["benchmark"]["benders_cover_fix"] == (
+        ACTIVSG2000_V16_BENDERS_COVER_FIX
+    )
+    assert registration["benchmark"]["benders_cover_fix"][
+        "cover_selection_uses_cpu_solution_data"
+    ] is False
+    v16.raw["runtime"]["benders_feasibility_cover_enabled"] = False
+    with pytest.raises(ScopfError, match="runtime policy changed"):
+        validate_lagrangian_experiment_config(v16)
 
 
 def test_gpu_lagrangian_timing_accepts_centered_and_legacy_audits() -> None:
