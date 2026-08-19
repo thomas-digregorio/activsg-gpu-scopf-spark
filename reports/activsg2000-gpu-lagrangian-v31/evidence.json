@@ -1,0 +1,62 @@
+{
+  "schema_version": "1.0.0",
+  "benchmark_id": "activsg2000-gpu-lagrangian-v31",
+  "status": "incomplete_refinement_budget_reserve_reached",
+  "one_shot": true,
+  "frozen_identity": {
+    "commit": "fc9aaf09a06b29d847dcfb3b67474e6a86b6fc20",
+    "tag": "experiment-2000-gpu-lagrangian-v31",
+    "config_sha256": "d7a0c5df2141506627d4208f3186d3f3b0a025be013649c6ab8a1c0e66fa1e6b",
+    "container_image": "sha256:ada1690b158e3e18176b70c39b3f95c44579d97fd88e8766a0d22f862e5e2601"
+  },
+  "artifact_sha256": {
+    "result": "c2524bad9ae65bdd8551096b1664c50ec2314c83c5144edbae3cf4f848a6170c",
+    "checkpoint": "b6ee07ee2138f6bf571c8c5d5ce1205be646c860d9d2c14135181d3b08679739",
+    "worker_console": "ea2ea9d9b1f372f83163b309d05c7997c0a7d14925187bc2a91392e30a74b04c",
+    "launcher": "f958e0bd11ef18d01022021a17254a28e284985a12531121853c1bccfdc54598",
+    "run_registry": "4cfe745e13e74587030ba7352ebe1c2407755df2b3864aecdb3fed5ea1e26536"
+  },
+  "total_wall_time_seconds": 876.4273981389997,
+  "objective": 1142133.305099282,
+  "bound": 1130506.5379270415,
+  "relative_gap": 0.010179868777427641,
+  "requested_relative_gap": 0.001,
+  "commitment_count": 331,
+  "proof_only_split_count": 206,
+  "frontier_region_count": 207,
+  "failed_split_transaction_count": 0,
+  "pruned_region_count": 0,
+  "primal_beam": {
+    "wall_time_seconds": 180.4580240569776,
+    "additional_unique_attempts": 34,
+    "queue_pops": 40,
+    "incumbent_improvements": 0,
+    "objective_improvement": 0.0
+  },
+  "proof_children": {
+    "count": 412,
+    "total_wall_time_seconds": 322.1663592689729,
+    "median_wall_time_seconds": 0.7706451944977744,
+    "median_local_bound_lift_dollars": 69.15746648365166,
+    "exact_candidate_acceptance_count": 385,
+    "exact_candidate_monotone_rejection_count": 27,
+    "native_optimal_count": 4,
+    "native_time_limit_count": 408,
+    "native_large_coefficient_range_advisory_count": 305,
+    "failed_child_count": 0
+  },
+  "acceptance": {
+    "secure_primal_independently_verified": true,
+    "disjunctive_lagrangian_bound_independently_replayed": true,
+    "requested_gap_certified": false,
+    "checked_valid_outages": 2740,
+    "checked_security_sides": 17563400,
+    "maximum_model_residual_pu": 2.460183168295771e-12,
+    "maximum_security_violation_pu": 4.674901411760857e-06,
+    "integer_lower_bound_solver_absent": true,
+    "branch_and_bound_absent": true
+  },
+  "cpu_solution_data_used": false,
+  "exact_source_pmin_pmax_changed": false,
+  "final_exhaustive_verification_completed": true
+}
