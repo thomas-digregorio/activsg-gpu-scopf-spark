@@ -159,6 +159,7 @@ ACTIVSG2000_V27_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v27"
 ACTIVSG2000_V28_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v28"
 ACTIVSG2000_V29_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v29"
 ACTIVSG2000_V30_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v30"
+ACTIVSG2000_V31_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v31"
 ACTIVSG2000_EXPERIMENT_ID_SEQUENCE = (
     ACTIVSG2000_EXPERIMENT_ID,
     ACTIVSG2000_V2_EXPERIMENT_ID,
@@ -190,6 +191,7 @@ ACTIVSG2000_EXPERIMENT_ID_SEQUENCE = (
     ACTIVSG2000_V28_EXPERIMENT_ID,
     ACTIVSG2000_V29_EXPERIMENT_ID,
     ACTIVSG2000_V30_EXPERIMENT_ID,
+    ACTIVSG2000_V31_EXPERIMENT_ID,
 )
 
 
@@ -522,6 +524,14 @@ REGISTERED_EXPERIMENTS = {
         "policy": (
             "gpu_full_coupling_root_lagrangian_dual_proposal_plus_recursive_"
             "proof_evidence_and_exact_replay_activsg2000_v30"
+        ),
+    },
+    ACTIVSG2000_V31_EXPERIMENT_ID: {
+        "case_name": "ACTIVSg2000",
+        "tag": "experiment-2000-gpu-lagrangian-v31",
+        "policy": (
+            "gpu_best_first_secure_commitment_beam_plus_short_exact_replayed_"
+            "proof_child_proposals_activsg2000_v31"
         ),
     },
 }
@@ -1203,6 +1213,30 @@ ACTIVSG2000_V30_FULL_COUPLING_DUAL_FIX = {
     "exact_source_pmin_changed": False,
     "mathematical_original_integer_feasible_set_changed": False,
 }
+ACTIVSG2000_V31_PRIMAL_AND_PROOF_THROUGHPUT_FIX = {
+    "comparison_baseline": "activsg2000-gpu-lagrangian-v30",
+    "completed_v30_result_preserved": True,
+    "v30_secure_primal_and_final_raw_input_replay_passed": True,
+    "v30_failed_proof_child_count": 0,
+    "v30_full_coupling_proposal_wall_seconds": 102.02497748300084,
+    "v30_full_coupling_certified_bound_lift_dollars": 0.0,
+    "removed_root_proposal": "known_zero_lift_all_coupling_gpu_pdlp_v1",
+    "primal_search": (
+        "gpu_lp_derived_balanced_type_seeds_plus_best_first_phase_one_"
+        "repair_beam_v2"
+    ),
+    "redundant_pre_beam_mip_heuristic": (
+        "disabled_after_v30_returned_only_the_submitted_secure_commitment_v1"
+    ),
+    "proof_child_proposal": (
+        "half_second_conditioned_gpu_pdlp_then_exact_nonsmoothed_fp64_"
+        "monotone_replay_v1"
+    ),
+    "proof_checkpoint_cadence": "sixteen_completed_splits_v1",
+    "cpu_solution_data_used": False,
+    "exact_source_pmin_changed": False,
+    "mathematical_original_integer_feasible_set_changed": False,
+}
 ACTIVSG2000_V1_RUNTIME = {
     "deadline_seconds": 1800.0,
     "verification_reserve_seconds": 120.0,
@@ -1427,6 +1461,16 @@ ACTIVSG2000_V30_RUNTIME = {
     "full_coupling_root_dual_coupling_trust_radius": 100.0,
     "full_coupling_root_dual_commitment_cut_trust_radius": 10_000.0,
 }
+ACTIVSG2000_V31_RUNTIME = {
+    **ACTIVSG2000_V29_RUNTIME,
+    "maximum_frontier_regions": 512,
+    "proof_only_hard_cardinality_pdlp_seconds_per_child": 0.5,
+    "proof_only_checkpoint_interval_splits": 16,
+    "alternative_primal_candidate_maximum_attempts": 44,
+    "alternative_primal_candidate_wall_seconds": 180.0,
+    "alternative_primal_candidate_minimum_remaining_solver_seconds": 300.0,
+    "always_run_gpu_primal_heuristics": False,
+}
 ACTIVSG2000_RUNTIME_BY_EXPERIMENT_ID = dict(
     zip(
         ACTIVSG2000_EXPERIMENT_ID_SEQUENCE,
@@ -1461,6 +1505,7 @@ ACTIVSG2000_RUNTIME_BY_EXPERIMENT_ID = dict(
             ACTIVSG2000_V28_RUNTIME,
             ACTIVSG2000_V29_RUNTIME,
             ACTIVSG2000_V30_RUNTIME,
+            ACTIVSG2000_V31_RUNTIME,
         ),
         strict=True,
     )
@@ -1763,6 +1808,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
         config.benchmark_id in ACTIVSG2000_V29_PLUS_EXPERIMENT_IDS
     )
     is_activsg2000_v30 = config.benchmark_id == ACTIVSG2000_V30_EXPERIMENT_ID
+    is_activsg2000_v31 = config.benchmark_id == ACTIVSG2000_V31_EXPERIMENT_ID
     is_activsg2000_v26_plus = (
         config.benchmark_id in ACTIVSG2000_V26_PLUS_EXPERIMENT_IDS
     )
@@ -2168,23 +2214,45 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
                 f"expected={ACTIVSG2000_V27_MIP_START_NUMERICAL_FIX}, "
                 f"observed={observed_change}"
             )
-        required_v27_runtime = {
-            "minimum_refinement_launch_seconds": 19.0,
-            "proof_only_hard_cardinality_pdlp_seconds_per_child": 2.0,
-            "proof_only_hard_cardinality_pdlp_maximum_passes": 1,
-            "proof_only_hard_cardinality_coupling_trust_radius": 10.0,
-            "proof_only_hard_cardinality_cut_trust_radius": 1_000.0,
-            "proof_only_hard_cardinality_maximum_support_size": 8,
-            "proof_only_checkpoint_interval_splits": 8,
-            "alternative_primal_candidate_maximum_attempts": 0,
-            "alternative_primal_candidate_wall_seconds": 0.0,
-            "always_run_gpu_primal_heuristics": True,
-            "gpu_primal_heuristics_seconds": 60.0,
-            "full_mip_start_polish_seconds": 20.0,
-            "full_mip_start_polish_coefficient_zero_tolerance": 1e-8,
-            "full_mip_start_polish_optimality_tolerance": 1e-10,
-            "full_mip_start_polish_primal_feasibility_tolerance": 1e-8,
-        }
+        required_v27_runtime = (
+            {
+                "minimum_refinement_launch_seconds": 19.0,
+                "maximum_frontier_regions": 512,
+                "proof_only_hard_cardinality_pdlp_seconds_per_child": 0.5,
+                "proof_only_hard_cardinality_pdlp_maximum_passes": 1,
+                "proof_only_hard_cardinality_coupling_trust_radius": 10.0,
+                "proof_only_hard_cardinality_cut_trust_radius": 1_000.0,
+                "proof_only_hard_cardinality_maximum_support_size": 8,
+                "proof_only_checkpoint_interval_splits": 16,
+                "alternative_primal_candidate_maximum_attempts": 44,
+                "alternative_primal_candidate_wall_seconds": 180.0,
+                "alternative_primal_candidate_minimum_remaining_solver_seconds": 300.0,
+                "always_run_gpu_primal_heuristics": False,
+                "gpu_primal_heuristics_seconds": 60.0,
+                "full_mip_start_polish_seconds": 20.0,
+                "full_mip_start_polish_coefficient_zero_tolerance": 1e-8,
+                "full_mip_start_polish_optimality_tolerance": 1e-10,
+                "full_mip_start_polish_primal_feasibility_tolerance": 1e-8,
+            }
+            if is_activsg2000_v31
+            else {
+                "minimum_refinement_launch_seconds": 19.0,
+                "proof_only_hard_cardinality_pdlp_seconds_per_child": 2.0,
+                "proof_only_hard_cardinality_pdlp_maximum_passes": 1,
+                "proof_only_hard_cardinality_coupling_trust_radius": 10.0,
+                "proof_only_hard_cardinality_cut_trust_radius": 1_000.0,
+                "proof_only_hard_cardinality_maximum_support_size": 8,
+                "proof_only_checkpoint_interval_splits": 8,
+                "alternative_primal_candidate_maximum_attempts": 0,
+                "alternative_primal_candidate_wall_seconds": 0.0,
+                "always_run_gpu_primal_heuristics": True,
+                "gpu_primal_heuristics_seconds": 60.0,
+                "full_mip_start_polish_seconds": 20.0,
+                "full_mip_start_polish_coefficient_zero_tolerance": 1e-8,
+                "full_mip_start_polish_optimality_tolerance": 1e-10,
+                "full_mip_start_polish_primal_feasibility_tolerance": 1e-8,
+            }
+        )
         observed_v27_runtime = {
             key: config.runtime.get(key) for key in required_v27_runtime
         }
@@ -2233,6 +2301,15 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
             raise ScopfError(
                 "ACTIVSg2000 v30 full-coupling runtime policy changed: "
                 f"expected={required_v30_runtime}, observed={observed_v30_runtime}"
+            )
+    if is_activsg2000_v31:
+        observed_change = benchmark.get("primal_and_proof_throughput_fix")
+        if observed_change != ACTIVSG2000_V31_PRIMAL_AND_PROOF_THROUGHPUT_FIX:
+            raise ScopfError(
+                "ACTIVSg2000 GPU Lagrangian v31 primal/proof throughput identity "
+                "changed: "
+                f"expected={ACTIVSG2000_V31_PRIMAL_AND_PROOF_THROUGHPUT_FIX}, "
+                f"observed={observed_change}"
             )
     profile = config.raw["platforms"].get("dgx_spark", {})
     required_profile = {
