@@ -19,7 +19,10 @@ from typing import Any
 
 import numpy as np
 
-from activsg_scopf.commitment_cuts import commitment_upper_cut_from_record
+from activsg_scopf.commitment_cuts import (
+    CommitmentFeasibilityCut,
+    commitment_upper_cut_from_record,
+)
 from activsg_scopf.config import load_config
 from activsg_scopf.deadline import Deadline
 from activsg_scopf.lagrangian import (
@@ -32,7 +35,6 @@ from activsg_scopf.lagrangian_experiment import (
     PrimalCandidatePolicy,
     RegionAttemptRejected,
     _certificate_dual_arrays,
-    _commitment_upper_cut_record,
     _prepare_region_master,
     _solve_fixed_commitment_feasibility,
     _validate_prepared_region_master,
@@ -49,6 +51,89 @@ def _read_json(path: Path) -> dict[str, Any]:
 
 def _commitment_sha256(commitment: np.ndarray) -> str:
     return hashlib.sha256(np.asarray(commitment, dtype=np.int8).tobytes()).hexdigest()
+
+
+def _diagnostic_row_capacity_cut(
+    *, master: Any, row_name: str, commitment: np.ndarray, base_mva: float
+) -> tuple[CommitmentFeasibilityCut, dict[str, Any]]:
+    """Create a conservative necessary commitment condition for one row.
+
+    For an upper row ``a @ p <= b``, every feasible dispatch must satisfy
+    ``sum(min(a_g PMIN_g, a_g PMAX_g) u_g) <= b``.  The analogous lower-row
+    condition is negated into the common upper-inequality form.  This probe
+    keeps the implementation local until its measured bound lift justifies a
+    production certificate type and independent replay path.
+    """
+
+    coupling = next(row for row in master.coupling_rows if row.row_name == row_name)
+    row_lower, row_upper = master.canonical.row_bound_arrays()
+    lower = float(row_lower[coupling.row_index])
+    upper = float(row_upper[coupling.row_index])
+    coefficients = np.asarray(coupling.generator_coefficients, dtype=np.float64)
+    curves = [master.costs[int(row)] for row in master.index.generator_source_rows]
+    pmin = np.asarray([curve.pmin_mw for curve in curves], dtype=np.float64)
+    pmax = np.asarray([curve.pmax_mw for curve in curves], dtype=np.float64)
+    minimum_activity = np.minimum(coefficients * pmin, coefficients * pmax)
+    maximum_activity = np.maximum(coefficients * pmin, coefficients * pmax)
+    candidates: list[tuple[str, np.ndarray, float, float]] = []
+    if np.isfinite(upper):
+        raw_coefficients = minimum_activity / base_mva
+        raw_rhs = upper / base_mva
+        candidates.append(
+            (
+                "upper",
+                raw_coefficients,
+                raw_rhs,
+                float(raw_coefficients @ commitment - raw_rhs),
+            )
+        )
+    if np.isfinite(lower):
+        raw_coefficients = -maximum_activity / base_mva
+        raw_rhs = -lower / base_mva
+        candidates.append(
+            (
+                "lower",
+                raw_coefficients,
+                raw_rhs,
+                float(raw_coefficients @ commitment - raw_rhs),
+            )
+        )
+    side, cut_coefficients, raw_rhs, raw_violation = max(
+        candidates, key=lambda item: (item[3], item[0])
+    )
+    scale = max(1.0, abs(raw_rhs), float(np.sum(np.abs(cut_coefficients))))
+    outward_relaxation = 32.0 * np.finfo(np.float64).eps * scale
+    rhs = float(raw_rhs + outward_relaxation)
+    cut_coefficients = np.where(cut_coefficients == 0.0, 0.0, cut_coefficients)
+    source_violation = float(cut_coefficients @ commitment - rhs)
+    if source_violation <= 0.0:
+        raise RuntimeError("Constant-row contradiction did not yield a violated capacity cut")
+    source_sha = _commitment_sha256(commitment)
+    identity = (
+        row_name.encode("utf-8")
+        + side.encode("ascii")
+        + source_sha.encode("ascii")
+        + np.asarray([rhs], dtype=np.float64).tobytes()
+        + np.asarray(cut_coefficients, dtype=np.float64).tobytes()
+    )
+    cut = CommitmentFeasibilityCut(
+        cut_id="diagnostic_rc_" + hashlib.sha256(identity).hexdigest()[:24],
+        coefficients=np.asarray(cut_coefficients, dtype=np.float64),
+        rhs=rhs,
+        source_commitment_sha256=source_sha,
+        conservative_source_violation_pu=source_violation,
+    )
+    cut.validate(commitment.size)
+    return cut, {
+        "derivation": "direct_exact_pmin_pmax_row_capacity_necessary_condition_probe_v1",
+        "source_row_name": row_name,
+        "source_row_side": side,
+        "raw_source_violation_pu": raw_violation,
+        "conservative_source_violation_pu": source_violation,
+        "outward_rhs_relaxation_pu": outward_relaxation,
+        "nonzero_coefficient_count": int(np.count_nonzero(cut_coefficients)),
+        "cut_id": cut.cut_id,
+    }
 
 
 def main() -> None:
@@ -180,12 +265,29 @@ def main() -> None:
             ),
         }
         new_cut = exc.commitment_feasibility_cut
+        direct_capacity_audit: dict[str, Any] | None = None
+        if (
+            new_cut is None
+            and exc.reason == "projected_constant_coupling_row_violation"
+            and exc.rounds
+        ):
+            row_name = str(exc.rounds[-1]["projection_precheck"]["row_name"])
+            new_cut, direct_capacity_audit = _diagnostic_row_capacity_cut(
+                master=exc.master,
+                row_name=row_name,
+                commitment=minimizer,
+                base_mva=float(case.base_mva),
+            )
+            output["root_minimizer_phase_one"]["direct_row_capacity_cut"] = (
+                direct_capacity_audit
+            )
         if new_cut is None:
             output["passed"] = True
             output["component_gate"] = "no_replay_certified_global_cut_available"
         else:
-            cut_record = _commitment_upper_cut_record(new_cut, source_rows)
-            output["root_minimizer_phase_one"]["global_cut"] = cut_record
+            output["root_minimizer_phase_one"]["global_cut"] = new_cut.as_dict(
+                source_rows
+            )
             combined_cuts = tuple(sorted(existing_cuts + (new_cut,), key=lambda cut: cut.cut_id))
             strengthened_master = _prepare_region_master(
                 case=case,
