@@ -73,6 +73,9 @@ from activsg_scopf.lagrangian_experiment import (
     ACTIVSG2000_V27_EXPERIMENT_ID,
     ACTIVSG2000_V27_MIP_START_NUMERICAL_FIX,
     ACTIVSG2000_V27_RUNTIME,
+    ACTIVSG2000_V28_ARGMIN_REPLAY_NUMERICAL_FIX,
+    ACTIVSG2000_V28_EXPERIMENT_ID,
+    ACTIVSG2000_V28_RUNTIME,
     EXPERIMENT_ID,
     EXPERIMENT_TAG,
     PrimalCandidatePolicy,
@@ -931,7 +934,7 @@ def test_registered_activsg2000_v27_mip_start_fix_is_fail_closed() -> None:
     assert registration["benchmark"]["mip_start_numerical_fix"] == (
         ACTIVSG2000_V27_MIP_START_NUMERICAL_FIX
     )
-    assert ACTIVSG2000_EXPERIMENT_ID_SEQUENCE[-1] == ACTIVSG2000_V27_EXPERIMENT_ID
+    assert ACTIVSG2000_V27_EXPERIMENT_ID in ACTIVSG2000_EXPERIMENT_ID_SEQUENCE
     assert all(
         _activsg2000_solver_path_registration(ACTIVSG2000_V27_EXPERIMENT_ID).values()
     )
@@ -940,6 +943,79 @@ def test_registered_activsg2000_v27_mip_start_fix_is_fail_closed() -> None:
     ] = "changed"
     with pytest.raises(ScopfError, match="v27 MIP-start numerical-fix"):
         validate_lagrangian_experiment_config(v27)
+
+
+def test_registered_activsg2000_v28_argmin_replay_fix_is_fail_closed() -> None:
+    v27 = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v27.json")
+    v28 = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v28.json")
+    registration = validate_lagrangian_experiment_config(v28)
+
+    assert v28.benchmark_id == ACTIVSG2000_V28_EXPERIMENT_ID
+    assert registration["benchmark"]["required_git_tag"] == (
+        "experiment-2000-gpu-lagrangian-v28"
+    )
+    assert v28.raw["raw_inputs"] == v27.raw["raw_inputs"]
+    assert v28.model == v27.model
+    assert v28.runtime == ACTIVSG2000_V28_RUNTIME == ACTIVSG2000_V27_RUNTIME
+    assert registration["benchmark"]["mip_start_numerical_fix"] == (
+        ACTIVSG2000_V27_MIP_START_NUMERICAL_FIX
+    )
+    assert registration["benchmark"]["argmin_replay_numerical_fix"] == (
+        ACTIVSG2000_V28_ARGMIN_REPLAY_NUMERICAL_FIX
+    )
+    assert ACTIVSG2000_EXPERIMENT_ID_SEQUENCE[-1] == ACTIVSG2000_V28_EXPERIMENT_ID
+    assert all(
+        _activsg2000_solver_path_registration(ACTIVSG2000_V28_EXPERIMENT_ID).values()
+    )
+    v28.raw["benchmark"]["argmin_replay_numerical_fix"][
+        "alternate_argmin_gate"
+    ] = "changed"
+    with pytest.raises(ScopfError, match="v28 argmin-replay numerical-fix"):
+        validate_lagrangian_experiment_config(v28)
+
+
+def test_gpu_alternate_argmin_requires_exact_host_objective_replay() -> None:
+    host = experiment_module.LagrangianEvaluation(
+        raw_lower_bound=10.0,
+        conservative_lower_bound=9.99,
+        safety_margin_dollars=0.01,
+        projected_dual_sign_violation=0.0,
+        coupling_duals=(),
+        effective_dispatch_coefficients=np.zeros(2),
+        on_subproblem_values=np.asarray([0.0, 0.0]),
+        minimizing_commitment=np.asarray([0, 0], dtype=np.int8),
+    )
+    audit = experiment_module._audit_gpu_minimizing_commitment_replay(
+        candidate=np.asarray([1, 0], dtype=np.int8),
+        host_evaluation=host,
+        masks=RegionMasks.root(2),
+        hard_cardinality_cuts=(),
+        tolerance_dollars=1e-6,
+    )
+
+    assert audit["alternate_minimizer_accepted"] is True
+    assert audit["hamming_distance_from_host_minimizer"] == 1
+    assert audit["candidate_objective_gap_dollars"] == 0.0
+    assert audit["host_minimizer_authoritative"] is True
+
+    separated = experiment_module.LagrangianEvaluation(
+        raw_lower_bound=10.0,
+        conservative_lower_bound=9.99,
+        safety_margin_dollars=0.01,
+        projected_dual_sign_violation=0.0,
+        coupling_duals=(),
+        effective_dispatch_coefficients=np.zeros(2),
+        on_subproblem_values=np.asarray([1e-4, 0.0]),
+        minimizing_commitment=np.asarray([0, 0], dtype=np.int8),
+    )
+    with pytest.raises(ScopfError, match="exact host objective replay"):
+        experiment_module._audit_gpu_minimizing_commitment_replay(
+            candidate=np.asarray([1, 0], dtype=np.int8),
+            host_evaluation=separated,
+            masks=RegionMasks.root(2),
+            hard_cardinality_cuts=(),
+            tolerance_dollars=1e-6,
+        )
 
 
 def test_gpu_lagrangian_timing_accepts_centered_and_legacy_audits() -> None:

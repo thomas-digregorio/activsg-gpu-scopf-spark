@@ -1,0 +1,46 @@
+{
+  "schema_version": "1.0.0",
+  "benchmark_id": "activsg2000-gpu-lagrangian-v27",
+  "status": "failed_exception",
+  "one_shot": true,
+  "frozen_identity": {
+    "commit": "48cf40ebfd6c8ab76a7c3ff2ebf7b9dfaab5d4d1",
+    "tag": "experiment-2000-gpu-lagrangian-v27",
+    "config_sha256": "5de52585eae2e0acf3e50297de2f2c21ac4f621ac630ee7c40a859e35b06c4df"
+  },
+  "total_wall_time_seconds": 288.82323547499254,
+  "objective": 1142133.305099282,
+  "bound": 1130027.3066126746,
+  "relative_gap": 0.010599461930194742,
+  "commitment_count": 331,
+  "failure": {
+    "error_type": "ScopfError",
+    "error": "Proof-only child GPU minimizer failed exact host replay",
+    "stage": "proof_only_hard_cardinality_initial_gpu_argmin_replay"
+  },
+  "independent_secure_incumbent_verification": {
+    "passed": true,
+    "valid_outages": 2740,
+    "checked_security_sides": 17563400,
+    "maximum_model_residual_pu": 2.460183168295771e-12,
+    "maximum_security_violation_pu": 4.674901411760857e-06,
+    "security_tolerance_pu": 1e-05
+  },
+  "full_mip_start_fix": {
+    "polish_status": "accepted",
+    "polish_wall_time_seconds": 21.94326707799337,
+    "maximum_native_row_violation": 1.1406697808524768e-10,
+    "native_contract_passed": true,
+    "native_mip_start_rejection_count": 0,
+    "native_large_coefficient_range_advisory_count": 0,
+    "native_free_variable_warning_count": 0,
+    "native_barrier_warning_count": 0,
+    "sparse_full_status": "FeasibleFound",
+    "sparse_full_adapter_wall_time_seconds": 26.453973254014272,
+    "unique_commitment_count": 1,
+    "commitment_stabilization_window_seconds": 25.61346308400971
+  },
+  "cpu_solution_data_used": false,
+  "requested_gap_certified": false,
+  "final_exhaustive_verification_completed": false
+}

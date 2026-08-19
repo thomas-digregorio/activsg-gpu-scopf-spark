@@ -15,6 +15,7 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
+from math import fsum
 from pathlib import Path
 from typing import Any
 
@@ -155,6 +156,7 @@ ACTIVSG2000_V24_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v24"
 ACTIVSG2000_V25_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v25"
 ACTIVSG2000_V26_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v26"
 ACTIVSG2000_V27_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v27"
+ACTIVSG2000_V28_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v28"
 ACTIVSG2000_EXPERIMENT_ID_SEQUENCE = (
     ACTIVSG2000_EXPERIMENT_ID,
     ACTIVSG2000_V2_EXPERIMENT_ID,
@@ -183,6 +185,7 @@ ACTIVSG2000_EXPERIMENT_ID_SEQUENCE = (
     ACTIVSG2000_V25_EXPERIMENT_ID,
     ACTIVSG2000_V26_EXPERIMENT_ID,
     ACTIVSG2000_V27_EXPERIMENT_ID,
+    ACTIVSG2000_V28_EXPERIMENT_ID,
 )
 
 
@@ -213,6 +216,7 @@ ACTIVSG2000_V21_PLUS_EXPERIMENT_IDS = _activsg2000_version_ids_from(21)
 ACTIVSG2000_V23_PLUS_EXPERIMENT_IDS = _activsg2000_version_ids_from(23)
 ACTIVSG2000_V24_PLUS_EXPERIMENT_IDS = _activsg2000_version_ids_from(24)
 ACTIVSG2000_V26_PLUS_EXPERIMENT_IDS = _activsg2000_version_ids_from(26)
+ACTIVSG2000_V27_PLUS_EXPERIMENT_IDS = _activsg2000_version_ids_from(27)
 ACTIVSG2000_COST_DUAL_CHILD_EXPERIMENT_IDS = frozenset(
     {
         ACTIVSG2000_V12_EXPERIMENT_ID,
@@ -488,6 +492,14 @@ REGISTERED_EXPERIMENTS = {
         "policy": (
             "gpu_exact_inner_conditioned_full_mip_start_polish_plus_"
             "proof_only_hard_cardinality_refinement_activsg2000_v27"
+        ),
+    },
+    ACTIVSG2000_V28_EXPERIMENT_ID: {
+        "case_name": "ACTIVSg2000",
+        "tag": "experiment-2000-gpu-lagrangian-v28",
+        "policy": (
+            "gpu_exact_argmin_objective_replay_plus_inner_conditioned_full_"
+            "mip_start_and_proof_only_refinement_activsg2000_v28"
         ),
     },
 }
@@ -1122,6 +1134,23 @@ ACTIVSG2000_V27_MIP_START_NUMERICAL_FIX = {
     "exact_source_pmin_changed": False,
     "mathematical_original_integer_feasible_set_changed": False,
 }
+ACTIVSG2000_V28_ARGMIN_REPLAY_NUMERICAL_FIX = {
+    "comparison_baseline": "activsg2000-gpu-lagrangian-v27",
+    "failed_v27_result_preserved": True,
+    "v27_mip_start_numerical_fix_passed": True,
+    "v27_failure_stage": "proof_only_hard_cardinality_initial_gpu_argmin_replay",
+    "v27_failure": "equal_value_gpu_and_host_argmins_required_identical_v1",
+    "certificate_value_replay_tolerance_dollars": 1e-6,
+    "alternate_argmin_gate": (
+        "exact_binary_region_and_hard_cardinality_feasibility_plus_host_"
+        "local_objective_replay_v1"
+    ),
+    "certificate_authority": "exact_host_fp64_lagrangian_value_and_argmin_v1",
+    "gpu_argmin_role": "diagnostic_only_when_alternate_tie_is_accepted_v1",
+    "cpu_solution_data_used": False,
+    "exact_source_pmin_changed": False,
+    "mathematical_original_integer_feasible_set_changed": False,
+}
 ACTIVSG2000_V1_RUNTIME = {
     "deadline_seconds": 1800.0,
     "verification_reserve_seconds": 120.0,
@@ -1336,6 +1365,7 @@ ACTIVSG2000_V27_RUNTIME = {
     "full_mip_start_polish_optimality_tolerance": 1e-10,
     "full_mip_start_polish_primal_feasibility_tolerance": 1e-8,
 }
+ACTIVSG2000_V28_RUNTIME = dict(ACTIVSG2000_V27_RUNTIME)
 ACTIVSG2000_RUNTIME_BY_EXPERIMENT_ID = dict(
     zip(
         ACTIVSG2000_EXPERIMENT_ID_SEQUENCE,
@@ -1367,6 +1397,7 @@ ACTIVSG2000_RUNTIME_BY_EXPERIMENT_ID = dict(
             ACTIVSG2000_V25_RUNTIME,
             ACTIVSG2000_V26_RUNTIME,
             ACTIVSG2000_V27_RUNTIME,
+            ACTIVSG2000_V28_RUNTIME,
         ),
         strict=True,
     )
@@ -1538,6 +1569,80 @@ class FullMipStartPolishResult:
     audit: dict[str, Any]
 
 
+def _audit_gpu_minimizing_commitment_replay(
+    *,
+    candidate: np.ndarray,
+    host_evaluation: LagrangianEvaluation,
+    masks: RegionMasks,
+    hard_cardinality_cuts: tuple[CommitmentCardinalityCut, ...],
+    tolerance_dollars: float,
+) -> dict[str, Any]:
+    """Accept an alternate GPU argmin only after exact host objective replay.
+
+    A concave Lagrangian certificate is the minimum value, not the identity of
+    one minimizer.  GPU reductions and host ``fsum`` can break exact ties in
+    different directions.  The host-replayed value and host-selected argmin
+    remain authoritative; this audit merely proves that a different GPU
+    diagnostic argmin is equally optimal within the registered replay tolerance.
+    """
+
+    observed = np.asarray(candidate)
+    host = np.asarray(host_evaluation.minimizing_commitment, dtype=np.int8)
+    if observed.shape != host.shape or not np.all(np.isfinite(observed)):
+        raise ScopfError("GPU minimizing commitment replay has invalid values")
+    rounded = np.rint(observed).astype(np.int8)
+    integrality_error = float(np.max(np.abs(observed - rounded)))
+    if integrality_error != 0.0 or np.any((rounded != 0) & (rounded != 1)):
+        raise ScopfError("GPU minimizing commitment replay is not exactly binary")
+    masks.validate(host.size)
+    if np.any(rounded[masks.fixed_off] != 0) or np.any(
+        rounded[masks.fixed_on] != 1
+    ):
+        raise ScopfError("GPU minimizing commitment replay violates region masks")
+    maximum_hard_cut_violation = 0.0
+    for cut in hard_cardinality_cuts:
+        cut.validate(host.size)
+        maximum_hard_cut_violation = max(
+            maximum_hard_cut_violation,
+            float(cut.coefficients @ rounded - cut.rhs),
+        )
+    if maximum_hard_cut_violation > 0.0:
+        raise ScopfError("GPU minimizing commitment replay violates a hard branch")
+    on_values = np.asarray(host_evaluation.on_subproblem_values, dtype=np.float64)
+    candidate_local_value = fsum(
+        float(on_values[position])
+        for position in np.flatnonzero(rounded == 1)
+    )
+    host_local_value = fsum(
+        float(on_values[position])
+        for position in np.flatnonzero(host == 1)
+    )
+    local_objective_gap = float(candidate_local_value - host_local_value)
+    tolerance = float(tolerance_dollars)
+    if not np.isfinite(tolerance) or tolerance < 0.0:
+        raise ScopfError("GPU minimizing commitment replay tolerance is invalid")
+    if abs(local_objective_gap) > tolerance:
+        raise ScopfError(
+            "GPU minimizing commitment failed exact host objective replay"
+        )
+    differing = np.flatnonzero(rounded != host)
+    return {
+        "policy": "alternate_argmin_exact_host_objective_replay_v1",
+        "host_minimizer_authoritative": True,
+        "candidate_exactly_binary": True,
+        "region_masks_satisfied": True,
+        "hard_cardinality_cuts_satisfied": True,
+        "maximum_hard_cardinality_cut_violation": maximum_hard_cut_violation,
+        "hamming_distance_from_host_minimizer": int(differing.size),
+        "differing_generator_positions": differing.tolist(),
+        "candidate_local_objective": candidate_local_value,
+        "host_local_objective": host_local_value,
+        "candidate_objective_gap_dollars": local_objective_gap,
+        "tolerance_dollars": tolerance,
+        "alternate_minimizer_accepted": bool(differing.size),
+    }
+
+
 @dataclass(frozen=True)
 class NetworkCommitmentRepair:
     """A deterministic binary repair for one violated coupling row."""
@@ -1591,9 +1696,12 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
     is_activsg2000_v22 = config.benchmark_id == ACTIVSG2000_V22_EXPERIMENT_ID
     is_activsg2000_v25 = config.benchmark_id == ACTIVSG2000_V25_EXPERIMENT_ID
     is_activsg2000_v26 = config.benchmark_id == ACTIVSG2000_V26_EXPERIMENT_ID
-    is_activsg2000_v27 = config.benchmark_id == ACTIVSG2000_V27_EXPERIMENT_ID
+    is_activsg2000_v28 = config.benchmark_id == ACTIVSG2000_V28_EXPERIMENT_ID
     is_activsg2000_v26_plus = (
         config.benchmark_id in ACTIVSG2000_V26_PLUS_EXPERIMENT_IDS
+    )
+    is_activsg2000_v27_plus = (
+        config.benchmark_id in ACTIVSG2000_V27_PLUS_EXPERIMENT_IDS
     )
     is_activsg2000_v16_plus = (
         config.benchmark_id in ACTIVSG2000_V16_PLUS_EXPERIMENT_IDS
@@ -1982,7 +2090,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
                 "ACTIVSg2000 v26 proof-only runtime policy changed: "
                 f"expected={required_v26_runtime}, observed={observed_v26_runtime}"
             )
-    if is_activsg2000_v27:
+    if is_activsg2000_v27_plus:
         observed_change = benchmark.get("mip_start_numerical_fix")
         if observed_change != ACTIVSG2000_V27_MIP_START_NUMERICAL_FIX:
             raise ScopfError(
@@ -2015,6 +2123,15 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
             raise ScopfError(
                 "ACTIVSg2000 v27 MIP-start runtime policy changed: "
                 f"expected={required_v27_runtime}, observed={observed_v27_runtime}"
+            )
+    if is_activsg2000_v28:
+        observed_change = benchmark.get("argmin_replay_numerical_fix")
+        if observed_change != ACTIVSG2000_V28_ARGMIN_REPLAY_NUMERICAL_FIX:
+            raise ScopfError(
+                "ACTIVSg2000 GPU Lagrangian v28 argmin-replay numerical-fix "
+                "identity changed: "
+                f"expected={ACTIVSG2000_V28_ARGMIN_REPLAY_NUMERICAL_FIX}, "
+                f"observed={observed_change}"
             )
     profile = config.raw["platforms"].get("dgx_spark", {})
     required_profile = {
@@ -3884,8 +4001,8 @@ def _polish_secure_gpu_full_mip_start(
 ) -> FullMipStartPolishResult:
     """Produce a strict complete cuOpt start without using CPU solution data."""
 
-    if config.benchmark_id != ACTIVSG2000_V27_EXPERIMENT_ID:
-        raise ScopfError("Strict full MIP-start polishing is registered only for v27")
+    if config.benchmark_id not in ACTIVSG2000_V27_PLUS_EXPERIMENT_IDS:
+        raise ScopfError("Strict full MIP-start polishing is registered only for v27+")
     if str(screener.backend) != "cupy":
         raise ScopfError("Strict full MIP-start polishing requires the CuPy screener")
     started = time.perf_counter()
@@ -6266,13 +6383,13 @@ def _solve_v23_hard_cardinality_region(
     )
     if inherited_replay_difference > replay_tolerance:
         raise ScopfError("Hard-cardinality GPU certificate failed exact host replay")
-    if not np.array_equal(
-        np.asarray(
-            inherited_gpu_evaluation["minimizing_commitment"], dtype=np.int8
-        ),
-        inherited_evaluation.minimizing_commitment,
-    ):
-        raise ScopfError("Hard-cardinality GPU minimizing commitment failed replay")
+    inherited_minimizer_replay = _audit_gpu_minimizing_commitment_replay(
+        candidate=np.asarray(inherited_gpu_evaluation["minimizing_commitment"]),
+        host_evaluation=inherited_evaluation,
+        masks=masks,
+        hard_cardinality_cuts=hard_cuts,
+        tolerance_dollars=replay_tolerance,
+    )
 
     selected_row_dual = inherited_row_dual
     selected_cut_dual = inherited_cut_dual
@@ -6321,13 +6438,13 @@ def _solve_v23_hard_cardinality_region(
             raise ScopfError(
                 "Hard-cardinality Adam certificate failed exact host replay"
             )
-        if not np.array_equal(
-            np.asarray(adam_audit["best_minimizing_commitment"], dtype=np.int8),
-            polished_evaluation.minimizing_commitment,
-        ):
-            raise ScopfError(
-                "Hard-cardinality Adam minimizing commitment failed replay"
-            )
+        polished_minimizer_replay = _audit_gpu_minimizing_commitment_replay(
+            candidate=np.asarray(adam_audit["best_minimizing_commitment"]),
+            host_evaluation=polished_evaluation,
+            masks=masks,
+            hard_cardinality_cuts=hard_cuts,
+            tolerance_dollars=replay_tolerance,
+        )
         if polished_evaluation.conservative_lower_bound + replay_tolerance < (
             inherited_evaluation.conservative_lower_bound
         ):
@@ -6347,6 +6464,8 @@ def _solve_v23_hard_cardinality_region(
             "polished_gpu_host_replay_difference_dollars": (
                 polished_replay_difference
             ),
+            "initial_gpu_minimizer_replay": inherited_minimizer_replay,
+            "polished_gpu_minimizer_replay": polished_minimizer_replay,
         }
         policy = (
             "exact_disjoint_hard_cardinality_plus_multirate_gpu_"
@@ -6367,6 +6486,11 @@ def _solve_v23_hard_cardinality_region(
             "wall_time_seconds": gpu_wall,
             "total_wall_time_seconds": gpu_wall,
             "cpu_replay_difference_dollars": replay_difference,
+            "gpu_minimizer_replay": (
+                polished_minimizer_replay
+                if config.benchmark_id == ACTIVSG2000_V25_EXPERIMENT_ID
+                else inherited_minimizer_replay
+            ),
             "best_raw_lower_bound": evaluation.raw_lower_bound,
             "best_minimizing_commitment": evaluation.minimizing_commitment,
             "best_commitment_cut_dual": selected_cut_dual,
@@ -6515,11 +6639,13 @@ def _solve_v26_proof_only_hard_cardinality_region(
     )
     if initial_gpu_replay_difference > replay_tolerance:
         raise ScopfError("Proof-only child GPU center failed exact host replay")
-    if not np.array_equal(
-        np.asarray(initial_gpu["minimizing_commitment"], dtype=np.int8),
-        current.minimizing_commitment,
-    ):
-        raise ScopfError("Proof-only child GPU minimizer failed exact host replay")
+    initial_gpu_minimizer_replay = _audit_gpu_minimizing_commitment_replay(
+        candidate=np.asarray(initial_gpu["minimizing_commitment"]),
+        host_evaluation=current,
+        masks=masks,
+        hard_cardinality_cuts=hard_cuts,
+        tolerance_dollars=replay_tolerance,
+    )
 
     profile = config.raw["platforms"]["dgx_spark"]
     maximum_passes = int(
@@ -6660,11 +6786,13 @@ def _solve_v26_proof_only_hard_cardinality_region(
     )
     if final_gpu_replay_difference > replay_tolerance:
         raise ScopfError("Proof-only child final GPU certificate failed host replay")
-    if not np.array_equal(
-        np.asarray(final_gpu["minimizing_commitment"], dtype=np.int8),
-        current.minimizing_commitment,
-    ):
-        raise ScopfError("Proof-only child final GPU minimizer failed host replay")
+    final_gpu_minimizer_replay = _audit_gpu_minimizing_commitment_replay(
+        candidate=np.asarray(final_gpu["minimizing_commitment"]),
+        host_evaluation=current,
+        masks=masks,
+        hard_cardinality_cuts=hard_cuts,
+        tolerance_dollars=replay_tolerance,
+    )
     wall = time.perf_counter() - started
     audit = {
         **final_gpu,
@@ -6680,6 +6808,8 @@ def _solve_v26_proof_only_hard_cardinality_region(
             initial_gpu_replay_difference
         ),
         "final_gpu_host_replay_difference_dollars": final_gpu_replay_difference,
+        "initial_gpu_minimizer_replay": initial_gpu_minimizer_replay,
+        "final_gpu_minimizer_replay": final_gpu_minimizer_replay,
         "parent_conservative_lower_bound": (
             parent.lagrangian.conservative_lower_bound
         ),
@@ -9497,7 +9627,7 @@ def run_gpu_lagrangian_experiment(
             secure_gpu_start_polished = False
             if secure_gpu_start_used:
                 assert best_primal is not None
-                if config.benchmark_id == ACTIVSG2000_V27_EXPERIMENT_ID:
+                if config.benchmark_id in ACTIVSG2000_V27_PLUS_EXPERIMENT_IDS:
                     payload["active_stage"] = "gpu_heuristics_full_start_polish"
                     polish_remaining = total_heuristic_budget - (
                         time.perf_counter() - heuristic_pipeline_started
@@ -9658,7 +9788,8 @@ def run_gpu_lagrangian_experiment(
                     }
                     if (
                         secure_gpu_start_used
-                        and config.benchmark_id != ACTIVSG2000_V27_EXPERIMENT_ID
+                        and config.benchmark_id
+                        not in ACTIVSG2000_V27_PLUS_EXPERIMENT_IDS
                     ):
                         raise ScopfError(
                             "Independently verified GPU incumbent failed the exact full "
@@ -9703,7 +9834,8 @@ def run_gpu_lagrangian_experiment(
                 )
             except MipStartSolveError as exc:
                 if (
-                    config.benchmark_id != ACTIVSG2000_V27_EXPERIMENT_ID
+                    config.benchmark_id
+                    not in ACTIVSG2000_V27_PLUS_EXPERIMENT_IDS
                     or not complete_start_submitted
                 ):
                     raise
