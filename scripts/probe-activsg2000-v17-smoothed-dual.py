@@ -268,7 +268,7 @@ def main() -> None:
         / "diagnostics"
         / "activsg2000-v17-smoothed-dual-probe.json"
     )
-    write_json_atomic(output_path, output)
+    write_json_atomic(output, output_path)
     print(json.dumps({"output": str(output_path), **output}, default=str))
 
 
