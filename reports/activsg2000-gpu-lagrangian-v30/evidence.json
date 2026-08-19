@@ -1,0 +1,59 @@
+{
+  "schema_version": "1.0.0",
+  "benchmark_id": "activsg2000-gpu-lagrangian-v30",
+  "status": "incomplete_refinement_budget_reserve_reached",
+  "one_shot": true,
+  "frozen_identity": {
+    "commit": "c33786a2609e7bfa75dbc64938c067e315059be2",
+    "tag": "experiment-2000-gpu-lagrangian-v30",
+    "config_sha256": "541ea60ceada573319c8791764414da52d2bac5a03af95a7a55a72579f9ecd46",
+    "container_image": "sha256:2d07ef4e315fd07aa547af0d0abf7b8a19bb5beb644d9d3bf744b04940611601"
+  },
+  "total_wall_time_seconds": 829.2535873809829,
+  "objective": 1142133.305099282,
+  "bound": 1130468.1369321526,
+  "relative_gap": 0.010213490942824206,
+  "requested_relative_gap": 0.001,
+  "commitment_count": 331,
+  "proof_only_split_count": 110,
+  "frontier_region_count": 111,
+  "failed_split_transaction_count": 0,
+  "pruned_region_count": 0,
+  "proof_only_child_count": 220,
+  "proof_only_child_total_wall_time_seconds": 404.9012530562177,
+  "proof_only_child_median_bound_lift_dollars": 74.72601181245409,
+  "proof_only_child_exact_candidate_acceptance_count": 220,
+  "full_coupling_proposal": {
+    "columns": 6935,
+    "rows": 4014,
+    "nonzeros": 18917181,
+    "native_status": "TimeLimit",
+    "native_solve_time_seconds": 90.041137288,
+    "stage_wall_time_seconds": 102.02497748300084,
+    "exact_candidate_improvement_dollars": -0.156521676806733,
+    "certified_bound_lift_dollars": 0.0,
+    "inherited_certificate_retained": true
+  },
+  "acceptance": {
+    "secure_primal_independently_verified": true,
+    "disjunctive_lagrangian_bound_independently_replayed": true,
+    "requested_gap_certified": false,
+    "checked_valid_outages": 2740,
+    "checked_security_sides": 17563400,
+    "maximum_model_residual_pu": 2.460183168295771e-12,
+    "maximum_security_violation_pu": 4.674901411760857e-06,
+    "integer_lower_bound_solver_absent": true,
+    "branch_and_bound_absent": true
+  },
+  "passed_numerical_gates": {
+    "native_full_mip_start_contract": true,
+    "native_mip_start_rejection_count": 0,
+    "barrier_numerical_warning_count": 0,
+    "failed_proof_child_count": 0,
+    "exact_monotone_proof_child_replay": true,
+    "final_raw_input_replay": true
+  },
+  "cpu_solution_data_used": false,
+  "exact_source_pmin_pmax_changed": false,
+  "final_exhaustive_verification_completed": true
+}
