@@ -14,6 +14,7 @@ from __future__ import annotations
 import hashlib
 import json
 import time
+from collections import deque
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +23,7 @@ import numpy as np
 from activsg_scopf.commitment_cuts import (
     commitment_upper_cut_from_record,
     derive_commitment_capacity_cut,
+    generate_commitment_cut_repairs,
 )
 from activsg_scopf.config import load_config
 from activsg_scopf.deadline import Deadline
@@ -40,7 +42,13 @@ from activsg_scopf.lagrangian_experiment import (
     _solve_fixed_commitment_feasibility,
     _validate_prepared_region_master,
 )
-from activsg_scopf.matpower import GEN_STATUS, read_contingency_table, read_matpower_case
+from activsg_scopf.matpower import (
+    GEN_STATUS,
+    PMAX,
+    PMIN,
+    read_contingency_table,
+    read_matpower_case,
+)
 from activsg_scopf.network import build_contingency_catalog, build_network
 from activsg_scopf.reduced import security_pair_from_record
 from activsg_scopf.screening import ContingencyScreener
@@ -163,17 +171,24 @@ def main() -> None:
     current_cut_dual = root_cut_dual
     iteration_records: list[dict[str, Any]] = []
     seen_commitments: set[str] = set()
+    pending_commitments: deque[tuple[np.ndarray, str, float]] = deque(
+        [(minimizer.copy(), "current_lagrangian_minimizer", 0.0)]
+    )
+    secure_candidate_count = 0
     maximum_iterations = 32
     coordinate_cycles = 16
     probe_deadline = Deadline(240.0, 15.0, 5.0)
     component_gate = "maximum_cut_iterations_reached"
     for iteration in range(1, maximum_iterations + 1):
-        current_minimizer = np.asarray(
-            current_evaluation.minimizing_commitment, dtype=np.int8
-        )
-        commitment_digest = _commitment_sha256(current_minimizer)
-        if commitment_digest in seen_commitments:
-            component_gate = "lagrangian_minimizer_cycle_detected"
+        while pending_commitments:
+            current_minimizer, candidate_origin, candidate_regret = (
+                pending_commitments.popleft()
+            )
+            commitment_digest = _commitment_sha256(current_minimizer)
+            if commitment_digest not in seen_commitments:
+                break
+        else:
+            component_gate = "candidate_queue_exhausted"
             break
         seen_commitments.add(commitment_digest)
         phase_started = time.perf_counter()
@@ -181,6 +196,8 @@ def main() -> None:
             "iteration": iteration,
             "commitment_count": int(np.count_nonzero(current_minimizer)),
             "commitment_sha256": commitment_digest,
+            "candidate_origin": candidate_origin,
+            "lagrangian_regret_at_generation_dollars": candidate_regret,
             "bound_before": current_evaluation.conservative_lower_bound,
             "cut_count_before": len(current_cuts),
         }
@@ -234,14 +251,62 @@ def main() -> None:
                 break
             iteration_record["cut_derivation"] = cut_derivation
             iteration_record["cut"] = _commitment_upper_cut_record(new_cut, source_rows)
+            generated_repairs: list[tuple[np.ndarray, str, float]] = []
+            repair_records: list[dict[str, Any]] = []
+            for repair_index, (repair, repair_audit_raw) in enumerate(
+                generate_commitment_cut_repairs(
+                    cut=new_cut,
+                    commitment=current_minimizer,
+                    fixed_off=masks.fixed_off,
+                    fixed_on=masks.fixed_on,
+                    pmin_mw=case.gen[source_rows, PMIN],
+                    pmax_mw=case.gen[source_rows, PMAX],
+                    demand_mw=float(master.operator.total_demand_mw),
+                    economic_on_values=current_evaluation.on_subproblem_values,
+                    maximum_repairs=3,
+                ),
+                start=1,
+            ):
+                repair_audit = dict(repair_audit_raw)
+                flipped = np.asarray(
+                    repair_audit.pop("flipped_generator_positions"), dtype=np.int64
+                )
+                repair_audit["flipped_generator_source_rows"] = (
+                    source_rows[flipped] + 1
+                ).tolist()
+                on_values = np.asarray(
+                    current_evaluation.on_subproblem_values, dtype=np.float64
+                )
+                regret = max(
+                    0.0,
+                    float(
+                        np.sum(
+                            np.where(repair == 1, on_values, 0.0)
+                            - np.minimum(0.0, on_values)
+                        )
+                    ),
+                )
+                repair_origin = f"cut_repair_{iteration:03d}_{repair_index}"
+                generated_repairs.append((repair.copy(), repair_origin, regret))
+                repair_records.append(
+                    {
+                        "position": repair_index,
+                        "commitment_sha256": _commitment_sha256(repair),
+                        "commitment_count": int(np.count_nonzero(repair)),
+                        "lagrangian_regret_dollars": regret,
+                        "audit": repair_audit,
+                    }
+                )
+            iteration_record["generated_cut_repairs"] = repair_records
             if new_cut.cut_id in {cut.cut_id for cut in current_cuts}:
                 iteration_record["status"] = "duplicate_global_cut"
                 iteration_record["existing_cut_violation_pu"] = new_cut.violation(
                     current_minimizer
                 )
                 iteration_records.append(iteration_record)
-                component_gate = "duplicate_cut_at_new_minimizer"
-                break
+                pending_commitments.extend(generated_repairs)
+                component_gate = "duplicate_cut_candidate_repaired"
+                continue
             current_pairs = tuple(sorted(exc.security_pairs))
             combined_cuts = tuple(
                 sorted(current_cuts + (new_cut,), key=lambda cut: cut.cut_id)
@@ -341,6 +406,16 @@ def main() -> None:
             current_evaluation = strengthened
             current_row_dual = inherited_row_dual
             current_cut_dual = optimized_cut_dual
+            pending_commitments.appendleft(
+                (
+                    np.asarray(
+                        strengthened.minimizing_commitment, dtype=np.int8
+                    ).copy(),
+                    f"coordinate_minimizer_after_{iteration:03d}",
+                    0.0,
+                )
+            )
+            pending_commitments.extend(generated_repairs)
         else:
             current_pairs = feasible.security_pairs
             iteration_record.update(
@@ -359,8 +434,8 @@ def main() -> None:
                 }
             )
             iteration_records.append(iteration_record)
-            component_gate = "root_lagrangian_minimizer_is_secure"
-            break
+            secure_candidate_count += 1
+            component_gate = "secure_candidate_found_queue_continues"
     required_bound = float(prior["objective"]) * (
         1.0 - float(config.model["mip_relative_gap_tolerance"])
     )
@@ -381,6 +456,9 @@ def main() -> None:
             "maximum_cut_iterations": maximum_iterations,
             "coordinate_cycles_per_iteration": coordinate_cycles,
             "cutting_plane_iterations": iteration_records,
+            "unique_candidate_count": len(seen_commitments),
+            "secure_candidate_count": secure_candidate_count,
+            "pending_candidate_count": len(pending_commitments),
             "final_cut_count": len(current_cuts),
             "final_security_pair_count": len(current_pairs),
             "final_bound": current_evaluation.conservative_lower_bound,
