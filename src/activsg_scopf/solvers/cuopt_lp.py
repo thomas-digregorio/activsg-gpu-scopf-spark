@@ -929,14 +929,10 @@ def solve_cuopt_continuous_pdlp(
             )
             returned_pdlp_state_audit["termination_status"] = status
             returned_pdlp_state_audit["resubmission_eligible"] = bool(
-                returned_pdlp_state_audit["passed"] and status == "Optimal"
+                returned_pdlp_state_audit["passed"]
             )
             if returned_pdlp_state_audit["resubmission_eligible"]:
                 pdlp_warm_start_data = candidate_pdlp_warm_start_data
-            elif returned_pdlp_state_audit["passed"]:
-                returned_pdlp_state_audit["reason"] = (
-                    "complete_but_nonoptimal_state_not_resubmitted_cuopt_26_6"
-                )
     return ContinuousSolveResult(
         status=status,
         optimal=optimal,
