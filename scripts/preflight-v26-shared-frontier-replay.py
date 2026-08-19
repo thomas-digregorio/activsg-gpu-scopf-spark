@@ -35,6 +35,9 @@ def main() -> None:
         "commitment_feasibility_cuts": source["commitment_feasibility_cuts"],
         "commitment_capacity_cuts": source["commitment_capacity_cuts"],
         "commitment_cover_cuts": source["commitment_cover_cuts"],
+        "analytic_capacity_cover_security_pairs": source[
+            "analytic_capacity_cover_security_pairs"
+        ],
         "frontier_regions": [root],
         "pruned_regions": [],
         "disjunctive_splits": [],
