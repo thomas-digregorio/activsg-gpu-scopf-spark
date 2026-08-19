@@ -204,6 +204,26 @@ bash scripts/spark-build-2000-gpu-lagrangian-v21.sh
 bash scripts/spark-run-2000-gpu-lagrangian-v21.sh
 ```
 
+The immutable v21 run removed the candidate-controller bypass and all observed
+numerical solver failures. It produced a secure, independently verified primal
+and replayable lower bound, but stopped at a `0.007230802237839392` relative
+gap. Three intermediate raw-input certificate rebuilds consumed about 166
+seconds even though the same frontier was checked again at final acceptance.
+
+The v22 lower-bound throughput revision keeps the v21 mathematical model,
+source PMIN/PMAX values, tolerances, security-row envelope, and 900-second
+deadline. It performs raw-input certificate replay only at the mandatory root
+and final gates, runs one bounded cost-PDLP dual search after all root cuts are
+installed, and uses Phase I followed by a 30-second dual-only cost solve for
+each disjunctive child. The secure Phase-I primal remains authoritative; every
+proposed multiplier is rescored by the exact FP64 Lagrangian evaluator. The
+one-shot commands are:
+
+```bash
+bash scripts/spark-build-2000-gpu-lagrangian-v22.sh
+bash scripts/spark-run-2000-gpu-lagrangian-v22.sh
+```
+
 ## MIP-gap sensitivity experiments
 
 The separately registered `activsg10k-gap-sensitivity-v2` experiment runs the

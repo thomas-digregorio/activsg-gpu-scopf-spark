@@ -143,6 +143,7 @@ ACTIVSG2000_V18_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v18"
 ACTIVSG2000_V19_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v19"
 ACTIVSG2000_V20_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v20"
 ACTIVSG2000_V21_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v21"
+ACTIVSG2000_V22_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v22"
 ACTIVSG2000_EXPERIMENT_ID_SEQUENCE = (
     ACTIVSG2000_EXPERIMENT_ID,
     ACTIVSG2000_V2_EXPERIMENT_ID,
@@ -165,6 +166,7 @@ ACTIVSG2000_EXPERIMENT_ID_SEQUENCE = (
     ACTIVSG2000_V19_EXPERIMENT_ID,
     ACTIVSG2000_V20_EXPERIMENT_ID,
     ACTIVSG2000_V21_EXPERIMENT_ID,
+    ACTIVSG2000_V22_EXPERIMENT_ID,
 )
 
 
@@ -191,6 +193,14 @@ ACTIVSG2000_V17_PLUS_EXPERIMENT_IDS = _activsg2000_version_ids_from(17)
 ACTIVSG2000_V18_PLUS_EXPERIMENT_IDS = _activsg2000_version_ids_from(18)
 ACTIVSG2000_V19_PLUS_EXPERIMENT_IDS = _activsg2000_version_ids_from(19)
 ACTIVSG2000_V20_PLUS_EXPERIMENT_IDS = _activsg2000_version_ids_from(20)
+ACTIVSG2000_V21_PLUS_EXPERIMENT_IDS = _activsg2000_version_ids_from(21)
+ACTIVSG2000_COST_DUAL_CHILD_EXPERIMENT_IDS = frozenset(
+    {
+        ACTIVSG2000_V12_EXPERIMENT_ID,
+        ACTIVSG2000_V13_EXPERIMENT_ID,
+        ACTIVSG2000_V22_EXPERIMENT_ID,
+    }
+)
 ACTIVSG2000_PHASE_ONE_CHILD_EXPERIMENT_IDS = frozenset(
     {
         ACTIVSG2000_V6_EXPERIMENT_ID,
@@ -405,6 +415,14 @@ REGISTERED_EXPERIMENTS = {
         "policy": (
             "gpu_bounded_phase_one_first_candidate_pipeline_plus_security_row_"
             "raw_violation_envelope_activsg2000_v21"
+        ),
+    },
+    ACTIVSG2000_V22_EXPERIMENT_ID: {
+        "case_name": "ACTIVSg2000",
+        "tag": "experiment-2000-gpu-lagrangian-v22",
+        "policy": (
+            "gpu_root_final_only_raw_replay_plus_strengthened_root_and_child_"
+            "cost_dual_search_activsg2000_v22"
         ),
     },
 }
@@ -880,6 +898,36 @@ ACTIVSG2000_V21_CANDIDATE_PIPELINE_REGISTRATION_FIX = {
     "exact_source_pmin_changed": False,
     "mathematical_original_integer_feasible_set_changed": False,
 }
+ACTIVSG2000_V22_LOWER_BOUND_THROUGHPUT_FIX = {
+    "comparison_baseline": "activsg2000-gpu-lagrangian-v21",
+    "v21_result_preserved": True,
+    "v21_result_sha256": (
+        "a84a036f184e429c4e544e41801cd6e3dcce54007fe91455b890e4afcfa3a523"
+    ),
+    "v21_numerical_solver_failures": 0,
+    "v21_secure_primal_verified": True,
+    "v21_requested_gap_certified": False,
+    "v21_relative_gap": 0.007230802237839392,
+    "v21_intermediate_raw_input_replay_seconds": 166.0,
+    "independent_raw_input_replay_policy": "mandatory_root_and_final_only_v1",
+    "intermediate_certificate_status": (
+        "exact_in_memory_fp64_replay_pending_mandatory_final_raw_input_replay_v1"
+    ),
+    "strengthened_root_dual_refresh": (
+        "one_bounded_gpu_cost_pdlp_dual_seed_then_cupy_polish_and_exact_replay_v1"
+    ),
+    "child_phase_one": "at_most_two_bounded_security_generation_rounds_v1",
+    "child_cost_dual_refresh": (
+        "thirty_second_gpu_cost_pdlp_dual_only_preserve_secure_phase_one_primal_v1"
+    ),
+    "split_preflight": (
+        "two_children_each_two_five_second_phase_one_rounds_plus_thirty_second_"
+        "cost_dual_seed_and_margin_v1"
+    ),
+    "cpu_solution_data_used": False,
+    "exact_source_pmin_changed": False,
+    "mathematical_original_integer_feasible_set_changed": False,
+}
 ACTIVSG2000_V1_RUNTIME = {
     "deadline_seconds": 1800.0,
     "verification_reserve_seconds": 120.0,
@@ -1033,6 +1081,16 @@ ACTIVSG2000_V19_RUNTIME = {
 }
 ACTIVSG2000_V20_RUNTIME = dict(ACTIVSG2000_V19_RUNTIME)
 ACTIVSG2000_V21_RUNTIME = dict(ACTIVSG2000_V20_RUNTIME)
+ACTIVSG2000_V22_RUNTIME = {
+    **ACTIVSG2000_V21_RUNTIME,
+    "precheck_phase_one_time_limit_seconds": 5.0,
+    "maximum_child_phase_one_rounds": 2,
+    "child_cost_dual_seed_seconds": 30.0,
+    "minimum_refinement_launch_seconds": 95.0,
+    "intermediate_raw_input_replays": False,
+    "post_cut_root_cost_dual_seconds": 90.0,
+    "post_cut_root_cost_dual_minimum_remaining_solver_seconds": 180.0,
+}
 ACTIVSG2000_RUNTIME_BY_EXPERIMENT_ID = dict(
     zip(
         ACTIVSG2000_EXPERIMENT_ID_SEQUENCE,
@@ -1058,6 +1116,7 @@ ACTIVSG2000_RUNTIME_BY_EXPERIMENT_ID = dict(
             ACTIVSG2000_V19_RUNTIME,
             ACTIVSG2000_V20_RUNTIME,
             ACTIVSG2000_V21_RUNTIME,
+            ACTIVSG2000_V22_RUNTIME,
         ),
         strict=True,
     )
@@ -1154,14 +1213,14 @@ def _activsg2000_solver_path_registration(benchmark_id: str) -> dict[str, bool]:
     }
 
 
-def _require_complete_activsg2000_v21_solver_path(config: RunConfig) -> None:
-    if config.benchmark_id != ACTIVSG2000_V21_EXPERIMENT_ID:
+def _require_complete_activsg2000_v21_plus_solver_path(config: RunConfig) -> None:
+    if config.benchmark_id not in ACTIVSG2000_V21_PLUS_EXPERIMENT_IDS:
         return
     registration = _activsg2000_solver_path_registration(config.benchmark_id)
     missing = [name for name, enabled in registration.items() if not enabled]
     if missing:
         raise ScopfError(
-            "ACTIVSg2000 v21 solver-path registration is incomplete: "
+            "ACTIVSg2000 v21+ solver-path registration is incomplete: "
             + ", ".join(missing)
         )
     PrimalCandidatePolicy.from_config(config)
@@ -1269,7 +1328,10 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
     is_activsg2000_v11 = config.benchmark_id == ACTIVSG2000_V11_EXPERIMENT_ID
     is_activsg2000_v12 = config.benchmark_id == ACTIVSG2000_V12_EXPERIMENT_ID
     is_activsg2000_v13 = config.benchmark_id == ACTIVSG2000_V13_EXPERIMENT_ID
-    is_activsg2000_v21 = config.benchmark_id == ACTIVSG2000_V21_EXPERIMENT_ID
+    is_activsg2000_v21_plus = (
+        config.benchmark_id in ACTIVSG2000_V21_PLUS_EXPERIMENT_IDS
+    )
+    is_activsg2000_v22 = config.benchmark_id == ACTIVSG2000_V22_EXPERIMENT_ID
     is_activsg2000_v16_plus = (
         config.benchmark_id in ACTIVSG2000_V16_PLUS_EXPERIMENT_IDS
     )
@@ -1313,6 +1375,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
                 "-v19",
                 "-v20",
                 "-v21",
+                "-v22",
             )
         )
         or is_activsg2000
@@ -1555,7 +1618,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
             raise ScopfError(
                 "ACTIVSg2000 v20 security-row envelope lacks screening headroom"
             )
-    if is_activsg2000_v21:
+    if is_activsg2000_v21_plus:
         observed_change = benchmark.get("candidate_pipeline_registration_fix")
         if observed_change != ACTIVSG2000_V21_CANDIDATE_PIPELINE_REGISTRATION_FIX:
             raise ScopfError(
@@ -1563,7 +1626,15 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
                 f"expected={ACTIVSG2000_V21_CANDIDATE_PIPELINE_REGISTRATION_FIX}, "
                 f"observed={observed_change}"
             )
-        _require_complete_activsg2000_v21_solver_path(config)
+        _require_complete_activsg2000_v21_plus_solver_path(config)
+    if is_activsg2000_v22:
+        observed_change = benchmark.get("lower_bound_throughput_fix")
+        if observed_change != ACTIVSG2000_V22_LOWER_BOUND_THROUGHPUT_FIX:
+            raise ScopfError(
+                "ACTIVSg2000 GPU Lagrangian v22 lower-bound throughput identity changed: "
+                f"expected={ACTIVSG2000_V22_LOWER_BOUND_THROUGHPUT_FIX}, "
+                f"observed={observed_change}"
+            )
     profile = config.raw["platforms"].get("dgx_spark", {})
     required_profile = {
         "solver": "cuopt",
@@ -1729,7 +1800,9 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
             )
             or is_activsg2000
         ):
-            expected_precheck = 10.0 if is_activsg2000 else 2.0
+            expected_precheck = (
+                5.0 if is_activsg2000_v22 else (10.0 if is_activsg2000 else 2.0)
+            )
             if float(runtime.get("precheck_phase_one_time_limit_seconds", -1.0)) != (
                 expected_precheck
             ):
@@ -4354,6 +4427,228 @@ def _refresh_region_with_centered_dual_search(
     )
 
 
+def _refresh_region_with_bounded_cost_dual_search(
+    *,
+    region: SolvedRegion,
+    case: Any,
+    config: RunConfig,
+    deadline: Deadline,
+    dual_target_objective: float,
+) -> SolvedRegion:
+    """Use one bounded cost PDLP solve only to propose a stronger root dual.
+
+    The pre-existing replayable certificate remains a candidate throughout.
+    Neither the cost solve's primal vector nor its native objective is proof;
+    the selected multiplier is always rescored by the exact nonsmoothed FP64
+    Lagrangian evaluator before it can replace the inherited certificate.
+    """
+
+    if config.benchmark_id != ACTIVSG2000_V22_EXPERIMENT_ID:
+        raise ScopfError("The bounded strengthened-root dual search is registered only for v22")
+    if not np.isfinite(dual_target_objective):
+        raise ScopfError("The strengthened-root dual search target is nonfinite")
+    profile = config.raw["platforms"]["dgx_spark"]
+    master = region.master
+    inherited_row_dual, inherited_cut_dual = _certificate_dual_arrays(
+        master, region.lagrangian, region.commitment_cuts
+    )
+    inherited = evaluate_lagrangian_bound(
+        master,
+        inherited_row_dual,
+        region.masks,
+        safety_margin_dollars=float(region.lagrangian.safety_margin_dollars),
+        commitment_cuts=region.commitment_cuts,
+        commitment_cut_dual=inherited_cut_dual,
+    )
+    replay_tolerance = float(
+        config.raw["benchmark"]["gpu_cpu_replay_tolerance_dollars"]
+    )
+    inherited_drift = abs(
+        inherited.conservative_lower_bound
+        - region.lagrangian.conservative_lower_bound
+    )
+    if inherited_drift > replay_tolerance:
+        raise ScopfError("The strengthened-root inherited certificate failed exact replay")
+
+    _column_scale, row_scale = native_scaling_vectors(
+        master.canonical,
+        mode=str(profile["native_scaling_mode"]),
+        base_mva=float(case.base_mva),
+    )
+    initial_native_dual = inherited_row_dual / row_scale
+    deadline.require("v22 strengthened-root cost-dual search")
+    solver_budget = min(
+        deadline.solver_budget(),
+        float(config.runtime["post_cut_root_cost_dual_seconds"]),
+    )
+    started = time.perf_counter()
+    cost_solve = solve_cuopt_continuous_pdlp(
+        master.canonical,
+        time_limit_seconds=solver_budget,
+        optimality_tolerance=float(profile["pdlp_optimality_tolerance"]),
+        primal_feasibility_tolerance=float(config.model["model_residual_tolerance_pu"]),
+        certificate_residual_tolerance=float(profile["dual_certificate_residual_tolerance"]),
+        native_scaling_mode=str(profile["native_scaling_mode"]),
+        native_base_mva=float(case.base_mva),
+        log_to_console=True,
+        per_constraint_residual=bool(profile["per_constraint_residual"]),
+        presolve=int(profile["presolve"]),
+        initial_native_row_dual=initial_native_dual,
+        pdlp_solver_mode=int(profile.get("pdlp_solver_mode_native", 4)),
+    )
+    cost_wall = time.perf_counter() - started
+    warm_start = cost_solve.statistics.get("warm_start", {})
+    if not bool(warm_start.get("initial_dual_submitted")):
+        raise ScopfError("v22 strengthened-root solve did not consume its dual start")
+
+    row_by_cut = {
+        cut.cut_id: master.canonical.row_names.index(cut.cut_id)
+        for cut in region.commitment_cuts
+    }
+
+    def evaluate_seed(
+        name: str, row_dual: np.ndarray
+    ) -> tuple[str, np.ndarray, np.ndarray, LagrangianEvaluation]:
+        cut_dual = np.asarray(
+            [row_dual[row_by_cut[cut.cut_id]] for cut in region.commitment_cuts],
+            dtype=np.float64,
+        )
+        evaluation = evaluate_lagrangian_bound(
+            master,
+            row_dual,
+            region.masks,
+            safety_margin_dollars=float(region.lagrangian.safety_margin_dollars),
+            commitment_cuts=region.commitment_cuts,
+            commitment_cut_dual=cut_dual,
+        )
+        if not (
+            np.isfinite(evaluation.raw_lower_bound)
+            and np.isfinite(evaluation.conservative_lower_bound)
+        ):
+            raise ScopfError(f"v22 {name} produced a nonfinite Lagrangian seed")
+        return name, row_dual, cut_dual, evaluation
+
+    candidates = [
+        evaluate_seed(
+            "inherited_replayable_strengthened_root_certificate",
+            inherited_row_dual,
+        )
+    ]
+    cost_dual_eligible = bool(
+        str(cost_solve.statistics.get("error_status")) == "Success"
+        and cost_solve.native_row_dual is not None
+        and np.asarray(cost_solve.native_row_dual).shape
+        == (master.canonical.num_rows,)
+        and np.all(np.isfinite(cost_solve.native_row_dual))
+    )
+    cost_dual_rejection_reason: str | None = None
+    if cost_dual_eligible:
+        try:
+            candidates.append(
+                evaluate_seed(
+                    "bounded_strengthened_root_cost_pdlp_row_dual",
+                    canonical_row_duals(
+                        master,
+                        np.asarray(cost_solve.native_row_dual, dtype=np.float64),
+                        native_scaling_mode=str(profile["native_scaling_mode"]),
+                        base_mva=float(case.base_mva),
+                    ),
+                )
+            )
+        except (ArithmeticError, ScopfError, ValueError) as error:
+            cost_dual_eligible = False
+            cost_dual_rejection_reason = f"{type(error).__name__}: {error}"
+    elif cost_solve.native_row_dual is None:
+        cost_dual_rejection_reason = "solver_returned_no_row_dual"
+    elif str(cost_solve.statistics.get("error_status")) != "Success":
+        cost_dual_rejection_reason = (
+            f"solver_error_status={cost_solve.statistics.get('error_status')}"
+        )
+    else:
+        cost_dual_rejection_reason = "row_dual_shape_or_finiteness_check_failed"
+
+    seed_name, seed_row_dual, seed_cut_dual, seed_evaluation = max(
+        candidates,
+        key=lambda item: (item[3].conservative_lower_bound, item[0]),
+    )
+    coupling_scales = np.asarray(
+        [
+            row_scale[row.row_index]
+            for row in sorted(master.coupling_rows, key=lambda row: row.row_name)
+        ],
+        dtype=np.float64,
+    )
+    cut_scales = np.asarray(
+        [row_scale[row_by_cut[cut.cut_id]] for cut in region.commitment_cuts],
+        dtype=np.float64,
+    )
+    gpu_started = time.perf_counter()
+    polished_row_dual, gpu_evaluation = optimize_lagrangian_bound_cupy(
+        master,
+        seed_row_dual,
+        region.masks,
+        relaxation_primal_objective=float(dual_target_objective),
+        iterations=int(config.runtime["phase_lagrangian_gpu_iterations"]),
+        polyak_fraction=float(profile["lagrangian_polyak_fraction"]),
+        commitment_cuts=region.commitment_cuts,
+        initial_commitment_cut_dual=seed_cut_dual,
+        coupling_row_scales=coupling_scales,
+        commitment_cut_scales=cut_scales,
+    )
+    gpu_wall = time.perf_counter() - gpu_started
+    polished_cut_dual = np.asarray(
+        gpu_evaluation.get(
+            "best_commitment_cut_dual",
+            np.zeros(len(region.commitment_cuts), dtype=np.float64),
+        ),
+        dtype=np.float64,
+    )
+    polished = evaluate_lagrangian_bound(
+        master,
+        polished_row_dual,
+        region.masks,
+        safety_margin_dollars=float(region.lagrangian.safety_margin_dollars),
+        commitment_cuts=region.commitment_cuts,
+        commitment_cut_dual=polished_cut_dual,
+    )
+    replay_difference = abs(
+        float(gpu_evaluation["best_raw_lower_bound"]) - polished.raw_lower_bound
+    )
+    if replay_difference > replay_tolerance:
+        raise ScopfError("v22 strengthened-root GPU certificate failed exact replay")
+    if polished.conservative_lower_bound + replay_tolerance < (
+        seed_evaluation.conservative_lower_bound
+    ):
+        raise ScopfError("v22 strengthened-root GPU polish weakened its selected seed")
+
+    audit = {
+        **gpu_evaluation,
+        "wall_time_seconds": gpu_wall,
+        "bounded_strengthened_root_cost_dual_search": True,
+        "solver_budget_seconds": solver_budget,
+        "cost_pdlp_adapter_wall_time_seconds": cost_wall,
+        "cost_pdlp_solve": _solve_summary(cost_solve),
+        "cost_pdlp_returned_primal_used": False,
+        "cost_pdlp_native_objective_used_as_bound": False,
+        "cost_pdlp_dual_seed_eligible": cost_dual_eligible,
+        "cost_pdlp_dual_seed_rejection_reason": cost_dual_rejection_reason,
+        "candidate_seed_bounds": {
+            name: evaluation.conservative_lower_bound
+            for name, _row_dual, _cut_dual, evaluation in candidates
+        },
+        "selected_seed": seed_name,
+        "inherited_exact_replay_drift_dollars": inherited_drift,
+        "cpu_replay_difference_dollars": replay_difference,
+        "exact_source_pmin_changed": False,
+    }
+    return replace(
+        region,
+        canonical_row_dual=np.asarray(polished_row_dual, dtype=np.float64),
+        lagrangian=polished,
+        gpu_lagrangian=audit,
+    )
+
+
 def _enforce_monotone_child_certificate(
     *,
     parent: SolvedRegion,
@@ -5014,28 +5309,25 @@ def _solve_v12_cost_dual_seeded_region(
 ) -> SolvedRegion:
     """Preserve a secure Phase-I primal while PDLP supplies only a dual seed."""
 
-    if config.benchmark_id not in {
-        ACTIVSG2000_V12_EXPERIMENT_ID,
-        ACTIVSG2000_V13_EXPERIMENT_ID,
-    }:
+    if config.benchmark_id not in ACTIVSG2000_COST_DUAL_CHILD_EXPERIMENT_IDS:
         raise ScopfError(
-            "The preserved-primal cost-dual engine is registered only for v12/v13"
+            "The preserved-primal cost-dual engine is not registered for this experiment"
         )
     if secure_phase.source_values is None or secure_phase.source_native_primal is None:
-        raise ScopfError("v12 cost-dual engine lacks a secure Phase-I primal")
+        raise ScopfError("Cost-dual child engine lacks a secure Phase-I primal")
     source_values = np.asarray(secure_phase.source_values, dtype=np.float64)
     source_native_primal = np.asarray(secure_phase.source_native_primal, dtype=np.float64)
     if source_values.shape != (master.canonical.num_columns,) or source_native_primal.shape != (
         master.canonical.num_columns,
     ):
-        raise ScopfError("v12 preserved Phase-I primal has an invalid dimension")
+        raise ScopfError("Preserved Phase-I child primal has an invalid dimension")
     source_residual_pu = master.canonical.max_row_violation(source_values) / float(case.base_mva)
     if source_residual_pu > float(config.model["model_residual_tolerance_pu"]):
-        raise ScopfError("v12 preserved Phase-I primal exceeds the model tolerance")
+        raise ScopfError("Preserved Phase-I child primal exceeds the model tolerance")
     if final_screen["new_violated_pairs"] != 0 or final_screen[
         "maximum_violation_pu"
     ] > float(config.model["security_violation_tolerance_pu"]):
-        raise ScopfError("v12 preserved Phase-I primal lacks a zero-violation screen")
+        raise ScopfError("Preserved Phase-I child primal lacks a zero-violation screen")
 
     profile = config.raw["platforms"]["dgx_spark"]
     parent_native_dual, parent_mapping = _map_parent_certificate_dual_to_child(
@@ -5044,7 +5336,7 @@ def _solve_v12_cost_dual_seeded_region(
         scaling_mode=str(profile["native_scaling_mode"]),
         base_mva=float(case.base_mva),
     )
-    deadline.require(f"v12 cost-dual seed for {region_id}")
+    deadline.require(f"cost-dual seed for {region_id}")
     cost_budget = min(
         deadline.solver_budget(),
         float(config.runtime["child_cost_dual_seed_seconds"]),
@@ -5070,7 +5362,7 @@ def _solve_v12_cost_dual_seeded_region(
     if not bool(warm_start.get("initial_primal_submitted")) or not bool(
         warm_start.get("initial_dual_submitted")
     ):
-        raise ScopfError("v12 cost-dual seed did not consume both registered starts")
+        raise ScopfError("Cost-dual child solve did not consume both registered starts")
 
     parent_canonical_dual = canonical_row_duals(
         master,
@@ -5106,7 +5398,7 @@ def _solve_v12_cost_dual_seeded_region(
             and np.all(np.isfinite(evaluation.effective_dispatch_coefficients))
             and np.all(np.isfinite(evaluation.on_subproblem_values))
         ):
-            raise ScopfError(f"v12 {name} produced a nonfinite Lagrangian seed")
+            raise ScopfError(f"Cost-dual child seed {name} is nonfinite")
         return name, row_dual, cut_dual, evaluation
 
     candidates.append(
@@ -5204,9 +5496,9 @@ def _solve_v12_cost_dual_seeded_region(
     if replay_difference > float(
         config.raw["benchmark"]["gpu_cpu_replay_tolerance_dollars"]
     ):
-        raise ScopfError("v12 GPU Lagrangian cost-dual certificate failed replay")
+        raise ScopfError("GPU Lagrangian child cost-dual certificate failed replay")
     if evaluation.conservative_lower_bound + 1e-6 < seed_evaluation.conservative_lower_bound:
-        raise ScopfError("v12 GPU Lagrangian polishing weakened its selected seed")
+        raise ScopfError("GPU Lagrangian child polishing weakened its selected seed")
     gpu_evaluation.update(
         {
             "cpu_replay_difference_dollars": replay_difference,
@@ -5410,8 +5702,9 @@ def _solve_phase_one_lagrangian_region(
     Phase I supplies only a feasible continuous point and can certify a
     positive infeasibility lower bound.  The child lower bound starts from the
     parent's already replayable coupling dual, extended with zeros for newly
-    generated security rows.  In v12-v13 a short PDLP cost solve may contribute
-    a second dual seed; v14 instead searches centered, scaled multiplier deltas.
+    generated security rows.  Registered cost-dual versions use a bounded PDLP
+    solve as a second dual seed; other v14+ versions search centered, scaled
+    multiplier deltas.
     Neither search LP's returned primal is used.  The exhaustively screened
     Phase-I point remains the feasible primal and is never called an optimal LP
     solution.
@@ -5475,9 +5768,9 @@ def _solve_phase_one_lagrangian_region(
                 config.model["security_violation_tolerance_pu"]
             ):
                 raise ScopfError(f"Region {region_id} Phase-I final screen exceeds tolerance")
-            if config.benchmark_id in ACTIVSG2000_V14_PLUS_EXPERIMENT_IDS:
+            if config.benchmark_id in ACTIVSG2000_COST_DUAL_CHILD_EXPERIMENT_IDS:
                 return (
-                    _solve_v14_centered_dual_region(
+                    _solve_v12_cost_dual_seeded_region(
                         region_id=region_id,
                         masks=masks,
                         parent=parent,
@@ -5493,12 +5786,9 @@ def _solve_phase_one_lagrangian_region(
                     ),
                     None,
                 )
-            if config.benchmark_id in {
-                ACTIVSG2000_V12_EXPERIMENT_ID,
-                ACTIVSG2000_V13_EXPERIMENT_ID,
-            }:
+            if config.benchmark_id in ACTIVSG2000_V14_PLUS_EXPERIMENT_IDS:
                 return (
-                    _solve_v12_cost_dual_seeded_region(
+                    _solve_v14_centered_dual_region(
                         region_id=region_id,
                         masks=masks,
                         parent=parent,
@@ -6487,8 +6777,12 @@ def run_gpu_lagrangian_experiment(
         replay_after_every_split = bool(
             config.runtime.get("frontier_replay_after_every_split", True)
         )
+        intermediate_raw_input_replays = bool(
+            config.runtime.get("intermediate_raw_input_replays", True)
+        )
         payload["frontier_replay_policy"] = {
             "replay_after_every_split": replay_after_every_split,
+            "intermediate_raw_input_replays": intermediate_raw_input_replays,
             "root_replay_required": True,
             "final_full_replay_required_before_acceptance": True,
             "intermediate_gpu_bounds_are_pending_independent_replay": (
@@ -6534,6 +6828,26 @@ def run_gpu_lagrangian_experiment(
             )
             save()
 
+        def replay_or_defer_intermediate_frontier(stage: str) -> None:
+            if intermediate_raw_input_replays:
+                replay_and_checkpoint_frontier(stage)
+                return
+            payload.setdefault("deferred_lagrangian_replay_stages", []).append(
+                {
+                    "stage": stage,
+                    "frontier_region_count": len(frontier),
+                    "exact_in_memory_global_lower_bound": min(
+                        region.lagrangian.conservative_lower_bound
+                        for region in frontier.values()
+                    ),
+                    "status": "pending_mandatory_final_raw_input_replay",
+                }
+            )
+            payload["bound_status"] = (
+                "gpu_generated_exact_in_memory_pending_independent_final_replay"
+            )
+            save()
+
         payload["active_stage"] = "root_lagrangian_relaxation"
         root = _solve_region(
             region_id="r",
@@ -6576,12 +6890,10 @@ def run_gpu_lagrangian_experiment(
                     config.benchmark_id in ACTIVSG2000_V12_PLUS_EXPERIMENT_IDS
                 ),
                 "phase_one_feasible_primal_warm_starts_child_cost_lp": (
-                    config.benchmark_id
-                    in {ACTIVSG2000_V12_EXPERIMENT_ID, ACTIVSG2000_V13_EXPERIMENT_ID}
+                    config.benchmark_id in ACTIVSG2000_COST_DUAL_CHILD_EXPERIMENT_IDS
                 ),
                 "parent_replayable_cost_dual_warm_starts_child_cost_lp": (
-                    config.benchmark_id
-                    in {ACTIVSG2000_V12_EXPERIMENT_ID, ACTIVSG2000_V13_EXPERIMENT_ID}
+                    config.benchmark_id in ACTIVSG2000_COST_DUAL_CHILD_EXPERIMENT_IDS
                 ),
                 "cpu_solution_data_used": False,
             }
@@ -6665,11 +6977,11 @@ def run_gpu_lagrangian_experiment(
                 "-v21",
             )
         ) or config.benchmark_id in ACTIVSG2000_PHASE_ONE_FIRST_EXPERIMENT_IDS
-        if config.benchmark_id == ACTIVSG2000_V21_EXPERIMENT_ID:
-            _require_complete_activsg2000_v21_solver_path(config)
+        if config.benchmark_id in ACTIVSG2000_V21_PLUS_EXPERIMENT_IDS:
+            _require_complete_activsg2000_v21_plus_solver_path(config)
             if candidate_policy is None or region_attempt_policy is None or not phase_one_first:
                 raise ScopfError(
-                    "ACTIVSg2000 v21 runtime policy construction bypassed a required route"
+                    "ACTIVSg2000 v21+ runtime policy construction bypassed a required route"
                 )
         payload["primal_candidate_policy"] = (
             candidate_policy.as_dict() if candidate_policy is not None else None
@@ -6734,9 +7046,10 @@ def run_gpu_lagrangian_experiment(
                         ACTIVSG2000_V5_EXPERIMENT_ID,
                         ACTIVSG2000_V12_EXPERIMENT_ID,
                         ACTIVSG2000_V13_EXPERIMENT_ID,
+                        ACTIVSG2000_V22_EXPERIMENT_ID,
                     }
                 ),
-                "v12_secure_phase_one_policy": (
+                "cost_dual_secure_phase_one_policy": (
                     {
                         "maximum_security_generation_rounds": int(
                             config.runtime["maximum_child_phase_one_rounds"]
@@ -6749,8 +7062,7 @@ def run_gpu_lagrangian_experiment(
                             config.runtime["child_cost_dual_seed_seconds"]
                         ),
                     }
-                    if config.benchmark_id
-                    in {ACTIVSG2000_V12_EXPERIMENT_ID, ACTIVSG2000_V13_EXPERIMENT_ID}
+                    if config.benchmark_id in ACTIVSG2000_COST_DUAL_CHILD_EXPERIMENT_IDS
                     else None
                 ),
                 "v14_centered_dual_policy": (
@@ -6790,8 +7102,7 @@ def run_gpu_lagrangian_experiment(
                     not in ACTIVSG2000_V12_PLUS_EXPERIMENT_IDS
                 ),
                 "parent_replayable_cost_dual_transferred": (
-                    config.benchmark_id
-                    in {ACTIVSG2000_V12_EXPERIMENT_ID, ACTIVSG2000_V13_EXPERIMENT_ID}
+                    config.benchmark_id in ACTIVSG2000_COST_DUAL_CHILD_EXPERIMENT_IDS
                 ),
                 "v14_parent_certificate_centered_search": (
                     config.benchmark_id in ACTIVSG2000_V14_PLUS_EXPERIMENT_IDS
@@ -8216,7 +8527,9 @@ def run_gpu_lagrangian_experiment(
                 "cpu_solution_data_used": False,
             }
             persist_region_evidence()
-            replay_and_checkpoint_frontier("independent_root_replay_after_global_feasibility_cuts")
+            replay_or_defer_intermediate_frontier(
+                "independent_root_replay_after_global_feasibility_cuts"
+            )
 
         if (
             config.benchmark_id in ACTIVSG2000_V13_PLUS_EXPERIMENT_IDS
@@ -8376,7 +8689,7 @@ def run_gpu_lagrangian_experiment(
                     }
                 )
                 persist_region_evidence()
-                replay_and_checkpoint_frontier(
+                replay_or_defer_intermediate_frontier(
                     "independent_root_replay_after_analytic_capacity_covers"
                 )
             else:
@@ -8699,14 +9012,97 @@ def run_gpu_lagrangian_experiment(
                 }
             )
             persist_region_evidence()
-            replay_and_checkpoint_frontier(
+            replay_or_defer_intermediate_frontier(
                 "independent_root_replay_after_exact_minimizer_separation"
             )
+
+        if (
+            config.benchmark_id == ACTIVSG2000_V22_EXPERIMENT_ID
+            and best_primal is not None
+        ):
+            try:
+                post_cut_remaining_solver_seconds = deadline.solver_budget()
+            except DeadlineExceeded:
+                post_cut_remaining_solver_seconds = 0.0
+            post_cut_minimum_remaining = float(
+                config.runtime[
+                    "post_cut_root_cost_dual_minimum_remaining_solver_seconds"
+                ]
+            )
+            payload["strengthened_root_cost_dual_policy"] = {
+                "enabled": True,
+                "solver_cap_seconds": float(
+                    config.runtime["post_cut_root_cost_dual_seconds"]
+                ),
+                "minimum_remaining_solver_seconds": post_cut_minimum_remaining,
+                "remaining_solver_seconds_before_attempt": (
+                    post_cut_remaining_solver_seconds
+                ),
+                "returned_primal_used": False,
+                "native_objective_used_as_bound": False,
+                "exact_fp64_lagrangian_replay_is_bound_authority": True,
+                "cpu_solution_data_used": False,
+            }
+            if post_cut_remaining_solver_seconds >= post_cut_minimum_remaining:
+                payload["active_stage"] = "strengthened_root_bounded_cost_dual_search"
+                bound_before_cost_dual = float(
+                    root.lagrangian.conservative_lower_bound
+                )
+                root = _refresh_region_with_bounded_cost_dual_search(
+                    region=root,
+                    case=case,
+                    config=config,
+                    deadline=deadline,
+                    dual_target_objective=float(best_primal["objective"]),
+                )
+                frontier[root.region_id] = root
+                all_region_records[0] = serialize_region(root)
+                payload["strengthened_root_cost_dual_policy"].update(
+                    {
+                        "status": "completed_pending_final_raw_input_replay",
+                        "bound_before": bound_before_cost_dual,
+                        "bound_after": float(
+                            root.lagrangian.conservative_lower_bound
+                        ),
+                        "bound_lift_dollars": float(
+                            root.lagrangian.conservative_lower_bound
+                            - bound_before_cost_dual
+                        ),
+                        "audit": {
+                            key: value.tolist() if isinstance(value, np.ndarray) else value
+                            for key, value in root.gpu_lagrangian.items()
+                        },
+                    }
+                )
+                persist_region_evidence()
+            else:
+                payload["strengthened_root_cost_dual_policy"]["status"] = (
+                    "skipped_insufficient_remaining_solver_budget"
+                )
+                save()
 
         maximum_regions = int(config.runtime["maximum_frontier_regions"])
         if config.benchmark_id in ACTIVSG2000_V11_PLUS_EXPERIMENT_IDS:
             centered_dual_search_budget = 0.0
-            if config.benchmark_id in ACTIVSG2000_V14_PLUS_EXPERIMENT_IDS:
+            if config.benchmark_id in ACTIVSG2000_COST_DUAL_CHILD_EXPERIMENT_IDS:
+                phase_one_rounds_per_child = int(
+                    config.runtime["maximum_child_phase_one_rounds"]
+                )
+                phase_one_budget = (
+                    2.0
+                    * phase_one_rounds_per_child
+                    * float(config.runtime["precheck_phase_one_time_limit_seconds"])
+                )
+                cost_dual_seed_budget = 2.0 * float(
+                    config.runtime["child_cost_dual_seed_seconds"]
+                )
+                ordinary_cost_lp_budget = 0.0
+                maximum_seconds_per_child = (
+                    phase_one_rounds_per_child
+                    * float(config.runtime["precheck_phase_one_time_limit_seconds"])
+                    + float(config.runtime["child_cost_dual_seed_seconds"])
+                )
+            elif config.benchmark_id in ACTIVSG2000_V14_PLUS_EXPERIMENT_IDS:
                 phase_one_rounds_per_child = int(
                     config.runtime["maximum_child_phase_one_rounds"]
                 )
@@ -8731,27 +9127,6 @@ def run_gpu_lagrangian_experiment(
                     phase_one_rounds_per_child
                     * float(config.runtime["precheck_phase_one_time_limit_seconds"])
                     + per_child_search_budget
-                )
-            elif config.benchmark_id in {
-                ACTIVSG2000_V12_EXPERIMENT_ID,
-                ACTIVSG2000_V13_EXPERIMENT_ID,
-            }:
-                phase_one_rounds_per_child = int(
-                    config.runtime["maximum_child_phase_one_rounds"]
-                )
-                phase_one_budget = (
-                    2.0
-                    * phase_one_rounds_per_child
-                    * float(config.runtime["precheck_phase_one_time_limit_seconds"])
-                )
-                cost_dual_seed_budget = 2.0 * float(
-                    config.runtime["child_cost_dual_seed_seconds"]
-                )
-                ordinary_cost_lp_budget = 0.0
-                maximum_seconds_per_child = (
-                    phase_one_rounds_per_child
-                    * float(config.runtime["precheck_phase_one_time_limit_seconds"])
-                    + float(config.runtime["child_cost_dual_seed_seconds"])
                 )
             else:
                 phase_one_rounds_per_child = 0
@@ -9540,6 +9915,12 @@ def run_gpu_lagrangian_experiment(
             for round_record in secure_seed_margin_rounds
             for solve_attempt in round_record.get("solve_attempts", [])
         ]
+        child_cost_dual_attempts = [
+            round_record["cost_dual_seed"]
+            for region_record in all_region_records
+            for round_record in region_record["constraint_generation_rounds"]
+            if "cost_dual_seed" in round_record
+        ]
         payload["timings_seconds"].update(
             {
                 "relaxation_pdlp_adapter_wall": sum(
@@ -9590,6 +9971,19 @@ def run_gpu_lagrangian_experiment(
                         payload.get("phase_one_fallback_attempts", []),
                     )
                     for record in records
+                ),
+                "child_cost_dual_pdlp_adapter_wall": sum(
+                    float(record.get("adapter_wall_time_seconds", 0.0))
+                    for record in child_cost_dual_attempts
+                ),
+                "strengthened_root_cost_dual_pdlp_adapter_wall": float(
+                    payload.get("strengthened_root_cost_dual_policy", {})
+                    .get("audit", {})
+                    .get("cost_pdlp_adapter_wall_time_seconds", 0.0)
+                ),
+                "independent_lagrangian_raw_input_replay_wall": sum(
+                    float(record.get("elapsed_seconds", 0.0))
+                    for record in payload.get("lagrangian_replay_history", [])
                 ),
                 "exact_minimizer_feasibility_cut_wall": float(
                     payload.get("minimizer_feasibility_cut_policy", {}).get(

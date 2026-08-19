@@ -54,6 +54,9 @@ from activsg_scopf.lagrangian_experiment import (
     ACTIVSG2000_V21_CANDIDATE_PIPELINE_REGISTRATION_FIX,
     ACTIVSG2000_V21_EXPERIMENT_ID,
     ACTIVSG2000_V21_RUNTIME,
+    ACTIVSG2000_V22_EXPERIMENT_ID,
+    ACTIVSG2000_V22_LOWER_BOUND_THROUGHPUT_FIX,
+    ACTIVSG2000_V22_RUNTIME,
     EXPERIMENT_ID,
     EXPERIMENT_TAG,
     PrimalCandidatePolicy,
@@ -63,6 +66,7 @@ from activsg_scopf.lagrangian_experiment import (
     _load_cpu_comparison,
     _map_phase_one_dual_to_source_native,
     _prepare_region_master,
+    _refresh_region_with_bounded_cost_dual_search,
     _region_pmin_pmax_capacity_gate,
     _relative_gap,
     _replay_cleanup_audit_comparison,
@@ -714,7 +718,7 @@ def test_registered_activsg2000_v21_candidate_pipeline_is_fail_closed() -> None:
     assert registration["benchmark"]["candidate_pipeline_registration_fix"] == (
         ACTIVSG2000_V21_CANDIDATE_PIPELINE_REGISTRATION_FIX
     )
-    assert ACTIVSG2000_EXPERIMENT_ID_SEQUENCE[-1] == ACTIVSG2000_V21_EXPERIMENT_ID
+    assert ACTIVSG2000_V21_EXPERIMENT_ID in ACTIVSG2000_EXPERIMENT_ID_SEQUENCE
     assert set(ACTIVSG2000_EXPERIMENT_ID_SEQUENCE) == set(
         ACTIVSG2000_ALL_EXPERIMENT_IDS
     )
@@ -736,6 +740,38 @@ def test_registered_activsg2000_v21_candidate_pipeline_is_fail_closed() -> None:
     ] = False
     with pytest.raises(ScopfError, match="candidate-pipeline identity changed"):
         validate_lagrangian_experiment_config(v21)
+
+
+def test_registered_activsg2000_v22_lower_bound_throughput_is_fail_closed() -> None:
+    v21 = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v21.json")
+    v22 = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v22.json")
+    registration = validate_lagrangian_experiment_config(v22)
+
+    assert v22.benchmark_id == ACTIVSG2000_V22_EXPERIMENT_ID
+    assert registration["benchmark"]["required_git_tag"] == (
+        "experiment-2000-gpu-lagrangian-v22"
+    )
+    assert v22.raw["raw_inputs"] == v21.raw["raw_inputs"]
+    assert v22.model == v21.model
+    assert v22.runtime == ACTIVSG2000_V22_RUNTIME
+    assert v22.runtime["intermediate_raw_input_replays"] is False
+    assert v22.runtime["precheck_phase_one_time_limit_seconds"] == 5.0
+    assert v22.runtime["maximum_child_phase_one_rounds"] == 2
+    assert v22.runtime["child_cost_dual_seed_seconds"] == 30.0
+    assert v22.runtime["minimum_refinement_launch_seconds"] == 95.0
+    assert v22.runtime["post_cut_root_cost_dual_seconds"] == 90.0
+    assert registration["benchmark"]["lower_bound_throughput_fix"] == (
+        ACTIVSG2000_V22_LOWER_BOUND_THROUGHPUT_FIX
+    )
+    assert ACTIVSG2000_EXPERIMENT_ID_SEQUENCE[-1] == ACTIVSG2000_V22_EXPERIMENT_ID
+    assert all(
+        _activsg2000_solver_path_registration(ACTIVSG2000_V22_EXPERIMENT_ID).values()
+    )
+    v22.raw["benchmark"]["lower_bound_throughput_fix"][
+        "independent_raw_input_replay_policy"
+    ] = "changed"
+    with pytest.raises(ScopfError, match="lower-bound throughput identity changed"):
+        validate_lagrangian_experiment_config(v22)
 
 
 def test_gpu_lagrangian_timing_accepts_centered_and_legacy_audits() -> None:
@@ -932,6 +968,117 @@ def test_v12_cost_dual_seed_never_replaces_secure_phase_one_primal(
     assert not np.array_equal(child.solve.values, np.zeros_like(values))
     assert child.solve.statistics["cost_pdlp_returned_primal_used"] is False
     assert rounds[0]["cost_dual_seed"]["secure_phase_one_primal_preserved"] is True
+
+
+def test_v22_strengthened_root_uses_only_exact_replayed_cost_dual(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v22.json")
+    case, _table = triangle_case()
+    network = build_network(case)
+    masks = RegionMasks.root(1)
+    master = _prepare_region_master(
+        case=case,
+        network=network,
+        config=config,
+        masks=masks,
+        initial_pairs=(),
+        commitment_cuts=(),
+    )
+    zero_dual = np.zeros(master.canonical.num_rows, dtype=np.float64)
+    certificate = experiment_module.evaluate_lagrangian_bound(
+        master,
+        zero_dual,
+        masks,
+        safety_margin_dollars=float(
+            config.raw["benchmark"]["certificate_safety_margin_dollars"]
+        ),
+    )
+    dummy_solve = ContinuousSolveResult(
+        status="Fixture",
+        optimal=False,
+        primal_objective=1000.0,
+        dual_objective=None,
+        values=None,
+        native_primal=None,
+        native_row_dual=None,
+        solve_time_seconds=0.0,
+        statistics={"error_status": "Success"},
+    )
+    root = experiment_module.SolvedRegion(
+        region_id="r",
+        masks=masks,
+        master=master,
+        solve=dummy_solve,
+        canonical_row_dual=zero_dual.copy(),
+        lagrangian=certificate,
+        commitment=np.asarray([0.5]),
+        security_pairs=(),
+        rounds=[],
+        final_screen={"new_violated_pairs": 0, "maximum_violation_pu": 0.0},
+        gpu_lagrangian={},
+    )
+    calls: list[dict[str, object]] = []
+
+    def fake_cost_solve(model, **kwargs):
+        calls.append(kwargs)
+        wandered = np.full(model.num_columns, -999.0, dtype=np.float64)
+        return ContinuousSolveResult(
+            status="TimeLimit",
+            optimal=False,
+            primal_objective=-1e12,
+            dual_objective=0.0,
+            values=wandered,
+            native_primal=wandered.copy(),
+            native_row_dual=np.zeros(model.num_rows, dtype=np.float64),
+            solve_time_seconds=0.01,
+            statistics={
+                "error_status": "Success",
+                "warm_start": {
+                    "initial_primal_submitted": False,
+                    "initial_dual_submitted": True,
+                },
+            },
+        )
+
+    def fake_gpu_polish(inner_master, row_dual, region, **kwargs):
+        evaluation = experiment_module.evaluate_lagrangian_bound(
+            inner_master,
+            row_dual,
+            region,
+            safety_margin_dollars=0.0,
+            commitment_cuts=kwargs["commitment_cuts"],
+            commitment_cut_dual=kwargs["initial_commitment_cut_dual"],
+        )
+        return np.asarray(row_dual), {
+            "backend": "fixture",
+            "best_raw_lower_bound": evaluation.raw_lower_bound,
+            "best_minimizing_commitment": evaluation.minimizing_commitment,
+            "best_commitment_cut_dual": np.asarray(
+                kwargs["initial_commitment_cut_dual"], dtype=np.float64
+            ),
+        }
+
+    monkeypatch.setattr(experiment_module, "solve_cuopt_continuous_pdlp", fake_cost_solve)
+    monkeypatch.setattr(experiment_module, "optimize_lagrangian_bound_cupy", fake_gpu_polish)
+    refreshed = _refresh_region_with_bounded_cost_dual_search(
+        region=root,
+        case=case,
+        config=config,
+        deadline=Deadline(200.0, 0.0, 0.0),
+        dual_target_objective=1000.0,
+    )
+
+    assert len(calls) == 1
+    assert calls[0].get("initial_native_primal") is None
+    assert calls[0]["initial_native_row_dual"] is not None
+    assert np.array_equal(refreshed.commitment, root.commitment)
+    assert refreshed.solve is root.solve
+    assert refreshed.gpu_lagrangian["cost_pdlp_returned_primal_used"] is False
+    assert refreshed.gpu_lagrangian["cost_pdlp_native_objective_used_as_bound"] is False
+    assert refreshed.lagrangian.conservative_lower_bound == pytest.approx(
+        certificate.conservative_lower_bound
+    )
 
 
 def test_phase_one_round_limit_never_launches_an_unscreened_terminal_solve(
