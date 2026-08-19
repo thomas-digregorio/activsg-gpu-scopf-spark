@@ -64,6 +64,9 @@ from activsg_scopf.lagrangian_experiment import (
     ACTIVSG2000_V24_CUPY_LEXSORT_FIX,
     ACTIVSG2000_V24_EXPERIMENT_ID,
     ACTIVSG2000_V24_RUNTIME,
+    ACTIVSG2000_V25_EXPERIMENT_ID,
+    ACTIVSG2000_V25_GPU_DUAL_SEARCH_FIX,
+    ACTIVSG2000_V25_RUNTIME,
     EXPERIMENT_ID,
     EXPERIMENT_TAG,
     PrimalCandidatePolicy,
@@ -831,7 +834,7 @@ def test_registered_activsg2000_v24_cupy_lexsort_fix_is_fail_closed() -> None:
     assert registration["benchmark"]["cupy_lexsort_fix"] == (
         ACTIVSG2000_V24_CUPY_LEXSORT_FIX
     )
-    assert ACTIVSG2000_EXPERIMENT_ID_SEQUENCE[-1] == ACTIVSG2000_V24_EXPERIMENT_ID
+    assert ACTIVSG2000_V24_EXPERIMENT_ID in ACTIVSG2000_EXPERIMENT_ID_SEQUENCE
     assert all(
         _activsg2000_solver_path_registration(ACTIVSG2000_V24_EXPERIMENT_ID).values()
     )
@@ -840,6 +843,35 @@ def test_registered_activsg2000_v24_cupy_lexsort_fix_is_fail_closed() -> None:
     )
     with pytest.raises(ScopfError, match="CuPy-lexsort identity changed"):
         validate_lagrangian_experiment_config(v24)
+
+
+def test_registered_activsg2000_v25_gpu_dual_search_is_fail_closed() -> None:
+    v24 = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v24.json")
+    v25 = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v25.json")
+    registration = validate_lagrangian_experiment_config(v25)
+
+    assert v25.benchmark_id == ACTIVSG2000_V25_EXPERIMENT_ID
+    assert registration["benchmark"]["required_git_tag"] == (
+        "experiment-2000-gpu-lagrangian-v25"
+    )
+    assert v25.raw["raw_inputs"] == v24.raw["raw_inputs"]
+    assert v25.model == v24.model
+    assert v25.runtime == ACTIVSG2000_V25_RUNTIME
+    assert registration["benchmark"]["cupy_lexsort_fix"] == (
+        ACTIVSG2000_V24_CUPY_LEXSORT_FIX
+    )
+    assert registration["benchmark"]["gpu_dual_search_fix"] == (
+        ACTIVSG2000_V25_GPU_DUAL_SEARCH_FIX
+    )
+    assert ACTIVSG2000_EXPERIMENT_ID_SEQUENCE[-1] == ACTIVSG2000_V25_EXPERIMENT_ID
+    assert all(
+        _activsg2000_solver_path_registration(ACTIVSG2000_V25_EXPERIMENT_ID).values()
+    )
+    v25.raw["benchmark"]["gpu_dual_search_fix"][
+        "nonfinite_update_policy"
+    ] = "changed"
+    with pytest.raises(ScopfError, match="v25 dual-search identity changed"):
+        validate_lagrangian_experiment_config(v25)
 
 
 def test_gpu_lagrangian_timing_accepts_centered_and_legacy_audits() -> None:
@@ -1038,10 +1070,17 @@ def test_v12_cost_dual_seed_never_replaces_secure_phase_one_primal(
     assert rounds[0]["cost_dual_seed"]["secure_phase_one_primal_preserved"] is True
 
 
-def test_v24_hard_cardinality_child_preserves_secure_primal_without_cost_lp(
+@pytest.mark.parametrize(
+    ("version", "uses_adam"), (("v24", False), ("v25", True))
+)
+def test_v24_v25_hard_cardinality_child_preserves_secure_primal_without_cost_lp(
     monkeypatch: pytest.MonkeyPatch,
+    version: str,
+    uses_adam: bool,
 ) -> None:
-    config = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v24.json")
+    config = load_config(
+        ROOT / "configs" / f"activsg2000-gpu-lagrangian-{version}.json"
+    )
     case, _table = triangle_case()
     case.gen[1, GEN_STATUS] = 1.0
     network = build_network(case)
@@ -1123,6 +1162,7 @@ def test_v24_hard_cardinality_child_preserves_secure_primal_without_cost_lp(
         source_values=values.copy(),
     )
     gpu_calls: list[dict[str, object]] = []
+    adam_calls: list[dict[str, object]] = []
 
     def fake_gpu_evaluation(inner_master, row_dual, region, **kwargs):
         gpu_calls.append(kwargs)
@@ -1146,6 +1186,32 @@ def test_v24_hard_cardinality_child_preserves_secure_primal_without_cost_lp(
         "evaluate_lagrangian_bound_cupy",
         fake_gpu_evaluation,
     )
+
+    def fake_adam(inner_master, row_dual, region, **kwargs):
+        adam_calls.append(kwargs)
+        replay = experiment_module.evaluate_lagrangian_bound(
+            inner_master,
+            row_dual,
+            region,
+            safety_margin_dollars=0.0,
+            commitment_cuts=kwargs["commitment_cuts"],
+            commitment_cut_dual=kwargs["initial_commitment_cut_dual"],
+            hard_cardinality_cuts=kwargs["hard_cardinality_cuts"],
+        )
+        return np.asarray(row_dual, dtype=np.float64).copy(), {
+            "backend": "fixture_adam",
+            "best_raw_lower_bound": replay.raw_lower_bound,
+            "best_minimizing_commitment": replay.minimizing_commitment,
+            "best_commitment_cut_dual": np.asarray(
+                kwargs["initial_commitment_cut_dual"], dtype=np.float64
+            ),
+        }
+
+    monkeypatch.setattr(
+        experiment_module,
+        "optimize_lagrangian_bound_cupy_adam",
+        fake_adam,
+    )
     rounds = [{"phase_one": {"adapter_wall_time_seconds": 0.01}}]
     child = experiment_module._solve_v23_hard_cardinality_region(
         region_id="child",
@@ -1162,7 +1228,11 @@ def test_v24_hard_cardinality_child_preserves_secure_primal_without_cost_lp(
     )
 
     assert len(gpu_calls) == 1
+    assert len(adam_calls) == int(uses_adam)
     assert gpu_calls[0]["hard_cardinality_cuts"] == (cut,)
+    if uses_adam:
+        assert adam_calls[0]["iterations"] == 128
+        assert adam_calls[0]["hard_cardinality_cuts"] == (cut,)
     assert np.array_equal(child.solve.values, values)
     assert child.solve.statistics["ordinary_cost_lp_solved"] is False
     assert child.lagrangian.hard_cardinality_cut_ids == (cut.cut_id,)

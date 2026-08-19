@@ -68,6 +68,7 @@ from .lagrangian import (
     evaluate_lagrangian_bound_cupy,
     expand_lagrangian_multiplier_delta_candidate,
     optimize_lagrangian_bound_cupy,
+    optimize_lagrangian_bound_cupy_adam,
     replay_lagrangian_certificate,
     verify_cardinality_disjunctive_cover,
 )
@@ -148,6 +149,7 @@ ACTIVSG2000_V21_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v21"
 ACTIVSG2000_V22_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v22"
 ACTIVSG2000_V23_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v23"
 ACTIVSG2000_V24_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v24"
+ACTIVSG2000_V25_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v25"
 ACTIVSG2000_EXPERIMENT_ID_SEQUENCE = (
     ACTIVSG2000_EXPERIMENT_ID,
     ACTIVSG2000_V2_EXPERIMENT_ID,
@@ -173,6 +175,7 @@ ACTIVSG2000_EXPERIMENT_ID_SEQUENCE = (
     ACTIVSG2000_V22_EXPERIMENT_ID,
     ACTIVSG2000_V23_EXPERIMENT_ID,
     ACTIVSG2000_V24_EXPERIMENT_ID,
+    ACTIVSG2000_V25_EXPERIMENT_ID,
 )
 
 
@@ -201,6 +204,7 @@ ACTIVSG2000_V19_PLUS_EXPERIMENT_IDS = _activsg2000_version_ids_from(19)
 ACTIVSG2000_V20_PLUS_EXPERIMENT_IDS = _activsg2000_version_ids_from(20)
 ACTIVSG2000_V21_PLUS_EXPERIMENT_IDS = _activsg2000_version_ids_from(21)
 ACTIVSG2000_V23_PLUS_EXPERIMENT_IDS = _activsg2000_version_ids_from(23)
+ACTIVSG2000_V24_PLUS_EXPERIMENT_IDS = _activsg2000_version_ids_from(24)
 ACTIVSG2000_COST_DUAL_CHILD_EXPERIMENT_IDS = frozenset(
     {
         ACTIVSG2000_V12_EXPERIMENT_ID,
@@ -449,6 +453,14 @@ REGISTERED_EXPERIMENTS = {
         "policy": (
             "gpu_cupy_stacked_lexsort_exact_disjoint_hard_cardinality_"
             "activsg2000_v24"
+        ),
+    },
+    ACTIVSG2000_V25_EXPERIMENT_ID: {
+        "case_name": "ACTIVSg2000",
+        "tag": "experiment-2000-gpu-lagrangian-v25",
+        "policy": (
+            "gpu_exact_multirate_nonsmooth_adam_hard_cardinality_"
+            "activsg2000_v25"
         ),
     },
 }
@@ -1003,6 +1015,28 @@ ACTIVSG2000_V24_CUPY_LEXSORT_FIX = {
     "exact_source_pmin_changed": False,
     "mathematical_original_integer_feasible_set_changed": False,
 }
+ACTIVSG2000_V25_GPU_DUAL_SEARCH_FIX = {
+    "comparison_baseline": "activsg2000-gpu-lagrangian-v24",
+    "v24_result_preserved": True,
+    "v24_numerical_solver_failures": 0,
+    "v24_requested_gap_certified": False,
+    "v24_relative_gap": 0.010587694052456742,
+    "pdlp_time_limit_state_policy": (
+        "reject_incomplete_native_restart_state_and_retain_raw_dual_fallback_v1"
+    ),
+    "hard_cardinality_dual_search": (
+        "eight_gpu_resident_canonical_dual_adam_lanes_exact_binary_pwl_"
+        "scoring_v1"
+    ),
+    "cardinality_ordering": (
+        "stable_rowwise_cupy_argsort_generator_position_tie_break_v1"
+    ),
+    "nonfinite_update_policy": "retain_best_replayable_lane_multiplier_v1",
+    "certificate_authority": "independent_exact_host_fp64_lagrangian_replay_v1",
+    "cpu_solution_data_used": False,
+    "exact_source_pmin_changed": False,
+    "mathematical_original_integer_feasible_set_changed": False,
+}
 ACTIVSG2000_V1_RUNTIME = {
     "deadline_seconds": 1800.0,
     "verification_reserve_seconds": 120.0,
@@ -1174,6 +1208,20 @@ ACTIVSG2000_V23_RUNTIME = {
     "post_cut_root_cost_dual_minimum_remaining_solver_seconds": 0.0,
 }
 ACTIVSG2000_V24_RUNTIME = dict(ACTIVSG2000_V23_RUNTIME)
+ACTIVSG2000_V25_RUNTIME = {
+    **ACTIVSG2000_V24_RUNTIME,
+    "hard_cardinality_adam_iterations": 128,
+    "hard_cardinality_adam_learning_rates": [
+        0.003,
+        0.01,
+        0.03,
+        0.1,
+        0.2,
+        0.3,
+        0.5,
+        1.0,
+    ],
+}
 ACTIVSG2000_RUNTIME_BY_EXPERIMENT_ID = dict(
     zip(
         ACTIVSG2000_EXPERIMENT_ID_SEQUENCE,
@@ -1202,6 +1250,7 @@ ACTIVSG2000_RUNTIME_BY_EXPERIMENT_ID = dict(
             ACTIVSG2000_V22_RUNTIME,
             ACTIVSG2000_V23_RUNTIME,
             ACTIVSG2000_V24_RUNTIME,
+            ACTIVSG2000_V25_RUNTIME,
         ),
         strict=True,
     )
@@ -1417,7 +1466,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
         config.benchmark_id in ACTIVSG2000_V21_PLUS_EXPERIMENT_IDS
     )
     is_activsg2000_v22 = config.benchmark_id == ACTIVSG2000_V22_EXPERIMENT_ID
-    is_activsg2000_v24 = config.benchmark_id == ACTIVSG2000_V24_EXPERIMENT_ID
+    is_activsg2000_v25 = config.benchmark_id == ACTIVSG2000_V25_EXPERIMENT_ID
     is_activsg2000_v16_plus = (
         config.benchmark_id in ACTIVSG2000_V16_PLUS_EXPERIMENT_IDS
     )
@@ -1464,6 +1513,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
                 "-v22",
                 "-v23",
                 "-v24",
+                "-v25",
             )
         )
         or is_activsg2000
@@ -1732,7 +1782,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
                 f"expected={ACTIVSG2000_V23_NUMERICAL_HARD_CARDINALITY_FIX}, "
                 f"observed={observed_change}"
             )
-    if is_activsg2000_v24:
+    if config.benchmark_id in ACTIVSG2000_V24_PLUS_EXPERIMENT_IDS:
         observed_change = benchmark.get("cupy_lexsort_fix")
         if observed_change != ACTIVSG2000_V24_CUPY_LEXSORT_FIX:
             raise ScopfError(
@@ -1740,6 +1790,27 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
                 f"expected={ACTIVSG2000_V24_CUPY_LEXSORT_FIX}, "
                 f"observed={observed_change}"
             )
+    if is_activsg2000_v25:
+        observed_change = benchmark.get("gpu_dual_search_fix")
+        if observed_change != ACTIVSG2000_V25_GPU_DUAL_SEARCH_FIX:
+            raise ScopfError(
+                "ACTIVSg2000 GPU Lagrangian v25 dual-search identity changed: "
+                f"expected={ACTIVSG2000_V25_GPU_DUAL_SEARCH_FIX}, "
+                f"observed={observed_change}"
+            )
+        if int(config.runtime.get("hard_cardinality_adam_iterations", -1)) != 128:
+            raise ScopfError("ACTIVSg2000 v25 Adam iteration budget changed")
+        if config.runtime.get("hard_cardinality_adam_learning_rates") != [
+            0.003,
+            0.01,
+            0.03,
+            0.1,
+            0.2,
+            0.3,
+            0.5,
+            1.0,
+        ]:
+            raise ScopfError("ACTIVSg2000 v25 Adam learning-rate lanes changed")
     profile = config.raw["platforms"].get("dgx_spark", {})
     required_profile = {
         "solver": "cuopt",
@@ -5747,7 +5818,7 @@ def _solve_v23_hard_cardinality_region(
         commitment_cuts,
     )
     gpu_started = time.perf_counter()
-    gpu_evaluation = evaluate_lagrangian_bound_cupy(
+    inherited_gpu_evaluation = evaluate_lagrangian_bound_cupy(
         master,
         inherited_row_dual,
         masks,
@@ -5755,8 +5826,7 @@ def _solve_v23_hard_cardinality_region(
         commitment_cut_dual=inherited_cut_dual,
         hard_cardinality_cuts=hard_cuts,
     )
-    gpu_wall = time.perf_counter() - gpu_started
-    evaluation = evaluate_lagrangian_bound(
+    inherited_evaluation = evaluate_lagrangian_bound(
         master,
         inherited_row_dual,
         masks,
@@ -5767,19 +5837,103 @@ def _solve_v23_hard_cardinality_region(
         commitment_cut_dual=inherited_cut_dual,
         hard_cardinality_cuts=hard_cuts,
     )
-    replay_difference = abs(
-        float(gpu_evaluation["raw_lower_bound"]) - evaluation.raw_lower_bound
+    inherited_replay_difference = abs(
+        float(inherited_gpu_evaluation["raw_lower_bound"])
+        - inherited_evaluation.raw_lower_bound
     )
     replay_tolerance = float(
         config.raw["benchmark"]["gpu_cpu_replay_tolerance_dollars"]
     )
-    if replay_difference > replay_tolerance:
+    if inherited_replay_difference > replay_tolerance:
         raise ScopfError("Hard-cardinality GPU certificate failed exact host replay")
     if not np.array_equal(
-        np.asarray(gpu_evaluation["minimizing_commitment"], dtype=np.int8),
-        evaluation.minimizing_commitment,
+        np.asarray(
+            inherited_gpu_evaluation["minimizing_commitment"], dtype=np.int8
+        ),
+        inherited_evaluation.minimizing_commitment,
     ):
         raise ScopfError("Hard-cardinality GPU minimizing commitment failed replay")
+
+    selected_row_dual = inherited_row_dual
+    selected_cut_dual = inherited_cut_dual
+    evaluation = inherited_evaluation
+    gpu_evaluation = inherited_gpu_evaluation
+    replay_difference = inherited_replay_difference
+    policy = (
+        "inherited_network_multipliers_plus_exact_disjoint_gpu_"
+        "cardinality_subproblems_v1"
+    )
+    if config.benchmark_id == ACTIVSG2000_V25_EXPERIMENT_ID:
+        polished_row_dual, adam_audit = optimize_lagrangian_bound_cupy_adam(
+            master,
+            inherited_row_dual,
+            masks,
+            iterations=int(config.runtime["hard_cardinality_adam_iterations"]),
+            learning_rates=tuple(
+                float(value)
+                for value in config.runtime[
+                    "hard_cardinality_adam_learning_rates"
+                ]
+            ),
+            commitment_cuts=commitment_cuts,
+            initial_commitment_cut_dual=inherited_cut_dual,
+            hard_cardinality_cuts=hard_cuts,
+        )
+        polished_cut_dual = np.asarray(
+            adam_audit["best_commitment_cut_dual"], dtype=np.float64
+        )
+        polished_evaluation = evaluate_lagrangian_bound(
+            master,
+            polished_row_dual,
+            masks,
+            safety_margin_dollars=float(
+                config.raw["benchmark"]["certificate_safety_margin_dollars"]
+            ),
+            commitment_cuts=commitment_cuts,
+            commitment_cut_dual=polished_cut_dual,
+            hard_cardinality_cuts=hard_cuts,
+        )
+        polished_replay_difference = abs(
+            float(adam_audit["best_raw_lower_bound"])
+            - polished_evaluation.raw_lower_bound
+        )
+        if polished_replay_difference > replay_tolerance:
+            raise ScopfError(
+                "Hard-cardinality Adam certificate failed exact host replay"
+            )
+        if not np.array_equal(
+            np.asarray(adam_audit["best_minimizing_commitment"], dtype=np.int8),
+            polished_evaluation.minimizing_commitment,
+        ):
+            raise ScopfError(
+                "Hard-cardinality Adam minimizing commitment failed replay"
+            )
+        if polished_evaluation.conservative_lower_bound + replay_tolerance < (
+            inherited_evaluation.conservative_lower_bound
+        ):
+            raise ScopfError("Hard-cardinality Adam search weakened its seed")
+        selected_row_dual = polished_row_dual
+        selected_cut_dual = polished_cut_dual
+        evaluation = polished_evaluation
+        replay_difference = polished_replay_difference
+        gpu_evaluation = {
+            **adam_audit,
+            "initial_exact_hard_cardinality_raw_lower_bound": (
+                inherited_evaluation.raw_lower_bound
+            ),
+            "initial_gpu_host_replay_difference_dollars": (
+                inherited_replay_difference
+            ),
+            "polished_gpu_host_replay_difference_dollars": (
+                polished_replay_difference
+            ),
+        }
+        policy = (
+            "exact_disjoint_hard_cardinality_plus_multirate_gpu_"
+            "nonsmooth_adam_exact_replay_v1"
+        )
+    gpu_wall = time.perf_counter() - gpu_started
+
     if evaluation.conservative_lower_bound + replay_tolerance < (
         parent.lagrangian.conservative_lower_bound
     ):
@@ -5789,16 +5943,13 @@ def _solve_v23_hard_cardinality_region(
     feasible_cost = float(objective @ source_values)
     gpu_evaluation.update(
         {
-            "policy": (
-                "inherited_network_multipliers_plus_exact_disjoint_gpu_"
-                "cardinality_subproblems_v1"
-            ),
+            "policy": policy,
             "wall_time_seconds": gpu_wall,
             "total_wall_time_seconds": gpu_wall,
             "cpu_replay_difference_dollars": replay_difference,
             "best_raw_lower_bound": evaluation.raw_lower_bound,
             "best_minimizing_commitment": evaluation.minimizing_commitment,
-            "best_commitment_cut_dual": inherited_cut_dual,
+            "best_commitment_cut_dual": selected_cut_dual,
             "hard_cardinality_cut_count": len(hard_cuts),
             "hard_cardinality_cut_ids": [cut.cut_id for cut in hard_cuts],
             "parent_conservative_lower_bound": (
@@ -5826,7 +5977,11 @@ def _solve_v23_hard_cardinality_region(
         "secure_phase_one_primal_preserved": True,
     }
     synthetic_solve = ContinuousSolveResult(
-        status="PhaseOneFeasibleHardCardinalityEvaluated",
+        status=(
+            "PhaseOneFeasibleHardCardinalityAdamPolished"
+            if config.benchmark_id == ACTIVSG2000_V25_EXPERIMENT_ID
+            else "PhaseOneFeasibleHardCardinalityEvaluated"
+        ),
         optimal=False,
         primal_objective=feasible_cost,
         dual_objective=None,
@@ -5842,7 +5997,11 @@ def _solve_v23_hard_cardinality_region(
         ),
         statistics={
             "error_status": "Success",
-            "solved_by": "PDLP_PhaseOne_then_CuPy_Exact_Hard_Cardinality",
+            "solved_by": (
+                "PDLP_PhaseOne_then_CuPy_Exact_Hard_Cardinality_Adam"
+                if config.benchmark_id == ACTIVSG2000_V25_EXPERIMENT_ID
+                else "PDLP_PhaseOne_then_CuPy_Exact_Hard_Cardinality"
+            ),
             "relaxation_solution_role": (
                 "secure_phase_one_primal_plus_exact_hard_cardinality_bound"
             ),
@@ -5855,7 +6014,7 @@ def _solve_v23_hard_cardinality_region(
         masks=masks,
         master=master,
         solve=synthetic_solve,
-        canonical_row_dual=inherited_row_dual,
+        canonical_row_dual=selected_row_dual,
         lagrangian=evaluation,
         commitment=commitment_vector(master, source_values),
         security_pairs=security_pairs,
