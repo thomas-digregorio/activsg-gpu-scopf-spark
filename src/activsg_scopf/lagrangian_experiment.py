@@ -158,6 +158,7 @@ ACTIVSG2000_V26_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v26"
 ACTIVSG2000_V27_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v27"
 ACTIVSG2000_V28_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v28"
 ACTIVSG2000_V29_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v29"
+ACTIVSG2000_V30_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v30"
 ACTIVSG2000_EXPERIMENT_ID_SEQUENCE = (
     ACTIVSG2000_EXPERIMENT_ID,
     ACTIVSG2000_V2_EXPERIMENT_ID,
@@ -188,6 +189,7 @@ ACTIVSG2000_EXPERIMENT_ID_SEQUENCE = (
     ACTIVSG2000_V27_EXPERIMENT_ID,
     ACTIVSG2000_V28_EXPERIMENT_ID,
     ACTIVSG2000_V29_EXPERIMENT_ID,
+    ACTIVSG2000_V30_EXPERIMENT_ID,
 )
 
 
@@ -220,6 +222,7 @@ ACTIVSG2000_V24_PLUS_EXPERIMENT_IDS = _activsg2000_version_ids_from(24)
 ACTIVSG2000_V26_PLUS_EXPERIMENT_IDS = _activsg2000_version_ids_from(26)
 ACTIVSG2000_V27_PLUS_EXPERIMENT_IDS = _activsg2000_version_ids_from(27)
 ACTIVSG2000_V28_PLUS_EXPERIMENT_IDS = _activsg2000_version_ids_from(28)
+ACTIVSG2000_V29_PLUS_EXPERIMENT_IDS = _activsg2000_version_ids_from(29)
 ACTIVSG2000_COST_DUAL_CHILD_EXPERIMENT_IDS = frozenset(
     {
         ACTIVSG2000_V12_EXPERIMENT_ID,
@@ -511,6 +514,14 @@ REGISTERED_EXPERIMENTS = {
         "policy": (
             "gpu_recursive_json_safe_proof_evidence_plus_exact_argmin_replay_"
             "and_inner_conditioned_full_mip_start_activsg2000_v29"
+        ),
+    },
+    ACTIVSG2000_V30_EXPERIMENT_ID: {
+        "case_name": "ACTIVSg2000",
+        "tag": "experiment-2000-gpu-lagrangian-v30",
+        "policy": (
+            "gpu_full_coupling_root_lagrangian_dual_proposal_plus_recursive_"
+            "proof_evidence_and_exact_replay_activsg2000_v30"
         ),
     },
 }
@@ -1177,6 +1188,21 @@ ACTIVSG2000_V29_PROOF_EVIDENCE_SERIALIZATION_FIX = {
     "exact_source_pmin_changed": False,
     "mathematical_original_integer_feasible_set_changed": False,
 }
+ACTIVSG2000_V30_FULL_COUPLING_DUAL_FIX = {
+    "comparison_baseline": "activsg2000-gpu-lagrangian-v29",
+    "completed_v29_result_preserved": True,
+    "v29_numerical_and_serialization_gates_passed": True,
+    "v29_remaining_bottleneck": "weakest_frontier_lagrangian_bound_v1",
+    "proposal_model": (
+        "all_coupling_rows_centered_dimensionless_gpu_pdlp_hypograph_v1"
+    ),
+    "proposal_role": "multiplier_proposal_only_never_bound_authority_v1",
+    "certificate_authority": "original_nonsmoothed_fp64_exact_replay_v1",
+    "acceptance_policy": "strictly_monotone_or_inherited_certificate_retained_v1",
+    "cpu_solution_data_used": False,
+    "exact_source_pmin_changed": False,
+    "mathematical_original_integer_feasible_set_changed": False,
+}
 ACTIVSG2000_V1_RUNTIME = {
     "deadline_seconds": 1800.0,
     "verification_reserve_seconds": 120.0,
@@ -1393,6 +1419,14 @@ ACTIVSG2000_V27_RUNTIME = {
 }
 ACTIVSG2000_V28_RUNTIME = dict(ACTIVSG2000_V27_RUNTIME)
 ACTIVSG2000_V29_RUNTIME = dict(ACTIVSG2000_V28_RUNTIME)
+ACTIVSG2000_V30_RUNTIME = {
+    **ACTIVSG2000_V29_RUNTIME,
+    "full_coupling_root_dual_enabled": True,
+    "full_coupling_root_dual_seconds": 90.0,
+    "full_coupling_root_dual_minimum_remaining_solver_seconds": 180.0,
+    "full_coupling_root_dual_coupling_trust_radius": 100.0,
+    "full_coupling_root_dual_commitment_cut_trust_radius": 10_000.0,
+}
 ACTIVSG2000_RUNTIME_BY_EXPERIMENT_ID = dict(
     zip(
         ACTIVSG2000_EXPERIMENT_ID_SEQUENCE,
@@ -1426,6 +1460,7 @@ ACTIVSG2000_RUNTIME_BY_EXPERIMENT_ID = dict(
             ACTIVSG2000_V27_RUNTIME,
             ACTIVSG2000_V28_RUNTIME,
             ACTIVSG2000_V29_RUNTIME,
+            ACTIVSG2000_V30_RUNTIME,
         ),
         strict=True,
     )
@@ -1724,7 +1759,10 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
     is_activsg2000_v22 = config.benchmark_id == ACTIVSG2000_V22_EXPERIMENT_ID
     is_activsg2000_v25 = config.benchmark_id == ACTIVSG2000_V25_EXPERIMENT_ID
     is_activsg2000_v26 = config.benchmark_id == ACTIVSG2000_V26_EXPERIMENT_ID
-    is_activsg2000_v29 = config.benchmark_id == ACTIVSG2000_V29_EXPERIMENT_ID
+    is_activsg2000_v29_plus = (
+        config.benchmark_id in ACTIVSG2000_V29_PLUS_EXPERIMENT_IDS
+    )
+    is_activsg2000_v30 = config.benchmark_id == ACTIVSG2000_V30_EXPERIMENT_ID
     is_activsg2000_v26_plus = (
         config.benchmark_id in ACTIVSG2000_V26_PLUS_EXPERIMENT_IDS
     )
@@ -2164,7 +2202,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
                 f"expected={ACTIVSG2000_V28_ARGMIN_REPLAY_NUMERICAL_FIX}, "
                 f"observed={observed_change}"
             )
-    if is_activsg2000_v29:
+    if is_activsg2000_v29_plus:
         observed_change = benchmark.get("proof_evidence_serialization_fix")
         if observed_change != ACTIVSG2000_V29_PROOF_EVIDENCE_SERIALIZATION_FIX:
             raise ScopfError(
@@ -2172,6 +2210,29 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
                 "identity changed: "
                 f"expected={ACTIVSG2000_V29_PROOF_EVIDENCE_SERIALIZATION_FIX}, "
                 f"observed={observed_change}"
+            )
+    if is_activsg2000_v30:
+        observed_change = benchmark.get("full_coupling_dual_fix")
+        if observed_change != ACTIVSG2000_V30_FULL_COUPLING_DUAL_FIX:
+            raise ScopfError(
+                "ACTIVSg2000 GPU Lagrangian v30 full-coupling dual identity changed: "
+                f"expected={ACTIVSG2000_V30_FULL_COUPLING_DUAL_FIX}, "
+                f"observed={observed_change}"
+            )
+        required_v30_runtime = {
+            "full_coupling_root_dual_enabled": True,
+            "full_coupling_root_dual_seconds": 90.0,
+            "full_coupling_root_dual_minimum_remaining_solver_seconds": 180.0,
+            "full_coupling_root_dual_coupling_trust_radius": 100.0,
+            "full_coupling_root_dual_commitment_cut_trust_radius": 10_000.0,
+        }
+        observed_v30_runtime = {
+            key: config.runtime.get(key) for key in required_v30_runtime
+        }
+        if observed_v30_runtime != required_v30_runtime:
+            raise ScopfError(
+                "ACTIVSg2000 v30 full-coupling runtime policy changed: "
+                f"expected={required_v30_runtime}, observed={observed_v30_runtime}"
             )
     profile = config.raw["platforms"].get("dgx_spark", {})
     required_profile = {
@@ -4719,19 +4780,29 @@ def _run_centered_dual_search(
     deadline: Deadline,
     stage: str,
     maximum_passes: int | None = None,
+    include_all_coupling_rows: bool = False,
+    schedule: tuple[tuple[float, float, float], ...] | None = None,
 ) -> CenteredDualSearchResult:
     """Use scaled GPU search LPs only to propose exact replayable multipliers."""
 
-    coupling_radii = tuple(
-        float(value) for value in config.runtime["centered_dual_coupling_trust_radii"]
-    )
-    cut_radii = tuple(
-        float(value)
-        for value in config.runtime["centered_dual_commitment_cut_trust_radii"]
-    )
-    budgets = tuple(
-        float(value) for value in config.runtime["centered_dual_seconds_per_pass"]
-    )
+    if schedule is None:
+        coupling_radii = tuple(
+            float(value)
+            for value in config.runtime["centered_dual_coupling_trust_radii"]
+        )
+        cut_radii = tuple(
+            float(value)
+            for value in config.runtime["centered_dual_commitment_cut_trust_radii"]
+        )
+        budgets = tuple(
+            float(value) for value in config.runtime["centered_dual_seconds_per_pass"]
+        )
+    else:
+        if not schedule:
+            raise ScopfError("Centered dual-search override schedule is empty")
+        coupling_radii = tuple(float(item[0]) for item in schedule)
+        cut_radii = tuple(float(item[1]) for item in schedule)
+        budgets = tuple(float(item[2]) for item in schedule)
     if not coupling_radii or not (
         len(coupling_radii) == len(cut_radii) == len(budgets)
     ):
@@ -4791,6 +4862,7 @@ def _run_centered_dual_search(
                     "centered_dual_search_objective_zero_tolerance", 0.0
                 )
             ),
+            include_all_coupling_rows=include_all_coupling_rows,
         )
         build_wall = time.perf_counter() - search_started
         solve_started = time.perf_counter()
@@ -4902,6 +4974,8 @@ def _run_centered_dual_search(
         audit={
             "policy": "centered_dimensionless_gpu_pdlp_exact_replay_v1",
             "stage": stage,
+            "include_all_coupling_rows": include_all_coupling_rows,
+            "schedule_source": "explicit_override" if schedule is not None else "runtime_default",
             "passes": passes,
             "pass_count": len(passes),
             "initial_conservative_lower_bound": initial_bound,
@@ -5058,6 +5132,8 @@ def _refresh_region_with_centered_dual_search(
     deadline: Deadline,
     stage: str,
     maximum_passes: int,
+    include_all_coupling_rows: bool = False,
+    schedule: tuple[tuple[float, float, float], ...] | None = None,
 ) -> SolvedRegion:
     """Append valid cuts and improve only an exactly replayed dual certificate.
 
@@ -5127,6 +5203,8 @@ def _refresh_region_with_centered_dual_search(
         deadline=deadline,
         stage=stage,
         maximum_passes=maximum_passes,
+        include_all_coupling_rows=include_all_coupling_rows,
+        schedule=schedule,
     )
     if searched.evaluation.conservative_lower_bound + replay_tolerance < (
         region.lagrangian.conservative_lower_bound
@@ -5144,6 +5222,7 @@ def _refresh_region_with_centered_dual_search(
             "separation_and_branching_reference_only_not_strengthened_lp_feasibility_claim"
         ),
         "centered_search_primal_used": False,
+        "include_all_coupling_rows": include_all_coupling_rows,
     }
     synthetic_solve = ContinuousSolveResult(
         status="CenteredDualSearchOnly",
@@ -10668,6 +10747,97 @@ def run_gpu_lagrangian_experiment(
             )
 
         if (
+            config.benchmark_id == ACTIVSG2000_V30_EXPERIMENT_ID
+            and best_primal is not None
+        ):
+            if not bool(config.runtime["full_coupling_root_dual_enabled"]):
+                raise ScopfError("v30 full-coupling root dual proposal was disabled")
+            try:
+                full_coupling_remaining = deadline.solver_budget()
+            except DeadlineExceeded:
+                full_coupling_remaining = 0.0
+            full_coupling_minimum_remaining = float(
+                config.runtime[
+                    "full_coupling_root_dual_minimum_remaining_solver_seconds"
+                ]
+            )
+            full_coupling_schedule = (
+                (
+                    float(
+                        config.runtime[
+                            "full_coupling_root_dual_coupling_trust_radius"
+                        ]
+                    ),
+                    float(
+                        config.runtime[
+                            "full_coupling_root_dual_commitment_cut_trust_radius"
+                        ]
+                    ),
+                    float(config.runtime["full_coupling_root_dual_seconds"]),
+                ),
+            )
+            payload["full_coupling_root_dual_policy"] = {
+                "enabled": True,
+                "remaining_solver_seconds_before_attempt": full_coupling_remaining,
+                "minimum_remaining_solver_seconds": full_coupling_minimum_remaining,
+                "schedule": [
+                    {
+                        "coupling_trust_radius": full_coupling_schedule[0][0],
+                        "commitment_cut_trust_radius": full_coupling_schedule[0][1],
+                        "solver_cap_seconds": full_coupling_schedule[0][2],
+                    }
+                ],
+                "all_coupling_rows_in_proposal_model": True,
+                "proposal_lp_objective_used_as_bound": False,
+                "exact_nonsmoothed_fp64_replay_is_bound_authority": True,
+                "monotone_acceptance": True,
+                "cpu_solution_data_used": False,
+                "exact_source_pmin_pmax_changed": False,
+            }
+            if full_coupling_remaining >= full_coupling_minimum_remaining:
+                payload["active_stage"] = "full_coupling_root_lagrangian_dual_proposal"
+                bound_before_full_coupling = float(
+                    root.lagrangian.conservative_lower_bound
+                )
+                root = _refresh_region_with_centered_dual_search(
+                    region=root,
+                    commitment_cuts=root.commitment_cuts,
+                    case=case,
+                    network=network,
+                    config=config,
+                    deadline=deadline,
+                    stage="root_full_coupling_dual_proposal",
+                    maximum_passes=1,
+                    include_all_coupling_rows=True,
+                    schedule=full_coupling_schedule,
+                )
+                frontier[root.region_id] = root
+                all_region_records[0] = serialize_region(root)
+                bound_after_full_coupling = float(
+                    root.lagrangian.conservative_lower_bound
+                )
+                payload["full_coupling_root_dual_policy"].update(
+                    {
+                        "status": "completed_pending_final_raw_input_replay",
+                        "bound_before": bound_before_full_coupling,
+                        "bound_after": bound_after_full_coupling,
+                        "bound_lift_dollars": (
+                            bound_after_full_coupling - bound_before_full_coupling
+                        ),
+                        "audit": _json_safe_evidence(root.gpu_lagrangian),
+                    }
+                )
+                persist_region_evidence()
+                replay_or_defer_intermediate_frontier(
+                    "independent_root_replay_after_full_coupling_dual_proposal"
+                )
+            else:
+                payload["full_coupling_root_dual_policy"]["status"] = (
+                    "skipped_insufficient_remaining_solver_budget"
+                )
+                save()
+
+        if (
             config.benchmark_id == ACTIVSG2000_V22_EXPERIMENT_ID
             and best_primal is not None
         ):
@@ -11770,6 +11940,11 @@ def run_gpu_lagrangian_experiment(
                     payload.get("strengthened_root_cost_dual_policy", {})
                     .get("audit", {})
                     .get("cost_pdlp_adapter_wall_time_seconds", 0.0)
+                ),
+                "full_coupling_root_dual_wall": float(
+                    payload.get("full_coupling_root_dual_policy", {})
+                    .get("audit", {})
+                    .get("total_wall_time_seconds", 0.0)
                 ),
                 "independent_lagrangian_raw_input_replay_wall": sum(
                     float(record.get("elapsed_seconds", 0.0))

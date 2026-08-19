@@ -80,6 +80,9 @@ from activsg_scopf.lagrangian_experiment import (
     ACTIVSG2000_V29_EXPERIMENT_ID,
     ACTIVSG2000_V29_PROOF_EVIDENCE_SERIALIZATION_FIX,
     ACTIVSG2000_V29_RUNTIME,
+    ACTIVSG2000_V30_EXPERIMENT_ID,
+    ACTIVSG2000_V30_FULL_COUPLING_DUAL_FIX,
+    ACTIVSG2000_V30_RUNTIME,
     EXPERIMENT_ID,
     EXPERIMENT_TAG,
     PrimalCandidatePolicy,
@@ -996,7 +999,7 @@ def test_registered_activsg2000_v29_proof_serialization_fix_is_fail_closed() -> 
     assert registration["benchmark"]["proof_evidence_serialization_fix"] == (
         ACTIVSG2000_V29_PROOF_EVIDENCE_SERIALIZATION_FIX
     )
-    assert ACTIVSG2000_EXPERIMENT_ID_SEQUENCE[-1] == ACTIVSG2000_V29_EXPERIMENT_ID
+    assert ACTIVSG2000_V29_EXPERIMENT_ID in ACTIVSG2000_EXPERIMENT_ID_SEQUENCE
     assert all(
         _activsg2000_solver_path_registration(ACTIVSG2000_V29_EXPERIMENT_ID).values()
     )
@@ -1005,6 +1008,38 @@ def test_registered_activsg2000_v29_proof_serialization_fix_is_fail_closed() -> 
     ] = "changed"
     with pytest.raises(ScopfError, match="v29 proof-evidence serialization-fix"):
         validate_lagrangian_experiment_config(v29)
+
+
+def test_registered_activsg2000_v30_full_coupling_dual_is_fail_closed() -> None:
+    v29 = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v29.json")
+    v30 = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v30.json")
+    registration = validate_lagrangian_experiment_config(v30)
+
+    assert v30.benchmark_id == ACTIVSG2000_V30_EXPERIMENT_ID
+    assert registration["benchmark"]["required_git_tag"] == (
+        "experiment-2000-gpu-lagrangian-v30"
+    )
+    assert v30.raw["raw_inputs"] == v29.raw["raw_inputs"]
+    assert v30.model == v29.model
+    assert v30.runtime == ACTIVSG2000_V30_RUNTIME
+    assert v30.runtime["full_coupling_root_dual_enabled"] is True
+    assert v30.runtime["full_coupling_root_dual_seconds"] == 90.0
+    assert v30.runtime[
+        "full_coupling_root_dual_minimum_remaining_solver_seconds"
+    ] == 180.0
+    assert registration["benchmark"]["proof_evidence_serialization_fix"] == (
+        ACTIVSG2000_V29_PROOF_EVIDENCE_SERIALIZATION_FIX
+    )
+    assert registration["benchmark"]["full_coupling_dual_fix"] == (
+        ACTIVSG2000_V30_FULL_COUPLING_DUAL_FIX
+    )
+    assert ACTIVSG2000_EXPERIMENT_ID_SEQUENCE[-1] == ACTIVSG2000_V30_EXPERIMENT_ID
+    assert all(
+        _activsg2000_solver_path_registration(ACTIVSG2000_V30_EXPERIMENT_ID).values()
+    )
+    v30.raw["benchmark"]["full_coupling_dual_fix"]["proposal_role"] = "changed"
+    with pytest.raises(ScopfError, match="v30 full-coupling dual identity changed"):
+        validate_lagrangian_experiment_config(v30)
 
 
 def test_gpu_alternate_argmin_requires_exact_host_objective_replay() -> None:
