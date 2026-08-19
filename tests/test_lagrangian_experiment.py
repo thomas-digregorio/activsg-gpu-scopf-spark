@@ -21,6 +21,9 @@ from activsg_scopf.lagrangian_experiment import (
     ACTIVSG2000_V11_EXPERIMENT_ID,
     ACTIVSG2000_V12_EXPERIMENT_ID,
     ACTIVSG2000_V13_EXPERIMENT_ID,
+    ACTIVSG2000_V14_CENTERED_DUAL_FIX,
+    ACTIVSG2000_V14_EXPERIMENT_ID,
+    ACTIVSG2000_V14_RUNTIME,
     EXPERIMENT_ID,
     EXPERIMENT_TAG,
     PrimalCandidatePolicy,
@@ -460,6 +463,34 @@ def test_registered_activsg2000_v13_capacity_cover_fix_is_fail_closed() -> None:
     v13.raw["runtime"]["analytic_capacity_cover_rounds"] = 2
     with pytest.raises(ScopfError, match="runtime policy changed"):
         validate_lagrangian_experiment_config(v13)
+
+
+def test_registered_activsg2000_v14_centered_dual_fix_is_fail_closed() -> None:
+    v13 = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v13.json")
+    v14 = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v14.json")
+    registration = validate_lagrangian_experiment_config(v14)
+
+    assert v14.benchmark_id == ACTIVSG2000_V14_EXPERIMENT_ID
+    assert registration["benchmark"]["required_git_tag"] == (
+        "experiment-2000-gpu-lagrangian-v14"
+    )
+    assert v14.raw["raw_inputs"] == v13.raw["raw_inputs"]
+    assert v14.model == v13.model
+    assert v14.runtime == ACTIVSG2000_V14_RUNTIME
+    assert v14.runtime["deadline_seconds"] == 900.0
+    assert v14.runtime["gpu_primal_heuristics_seconds"] == 15.0
+    assert v14.runtime["minimum_refinement_launch_seconds"] == 81.0
+    assert v14.runtime["centered_dual_child_maximum_passes"] == 1
+    assert v14.runtime["centered_dual_cover_maximum_passes"] == 2
+    assert registration["benchmark"]["centered_dual_fix"] == (
+        ACTIVSG2000_V14_CENTERED_DUAL_FIX
+    )
+    assert registration["benchmark"]["centered_dual_fix"][
+        "cpu_commitment_dispatch_objective_or_bound_seeded"
+    ] is False
+    v14.raw["runtime"]["centered_dual_coupling_trust_radii"][0] = 11.0
+    with pytest.raises(ScopfError, match="runtime policy changed"):
+        validate_lagrangian_experiment_config(v14)
 
 
 def test_analytic_capacity_cover_separator_selects_raw_row_proof() -> None:
