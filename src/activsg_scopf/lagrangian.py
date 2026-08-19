@@ -808,6 +808,393 @@ def optimize_lagrangian_bound_cupy(
     }
 
 
+def _generator_breakpoint_state_arrays(
+    master: ReducedMaster,
+) -> tuple[FloatArray, FloatArray, npt.NDArray[np.int8]]:
+    """Return every exact extreme state of each one-hour generator model.
+
+    The off state is column zero.  The remaining columns are the committed
+    PMIN point followed by the ten cumulative PWL segment endpoints.  A
+    linear objective over one generator's convex PWL epigraph attains its
+    minimum at one of these states, so enumerating them does not approximate
+    the registered production-cost model or its exact PMIN/PMAX bounds.
+    """
+
+    curves = [master.costs[int(index)] for index in master.index.generator_source_rows]
+    if not curves:
+        raise ScopfError("Lagrangian state enumeration requires at least one generator")
+    segment_count = int(curves[0].segment_widths_mw.size)
+    if any(
+        curve.segment_widths_mw.shape != (segment_count,)
+        or curve.segment_slopes_per_mwh.shape != (segment_count,)
+        for curve in curves
+    ):
+        raise ScopfError("Generator PWL state dimensions are inconsistent")
+
+    generator_count = len(curves)
+    state_count = segment_count + 2
+    dispatch = np.zeros((generator_count, state_count), dtype=np.float64)
+    cost = np.zeros_like(dispatch)
+    commitment = np.zeros((generator_count, state_count), dtype=np.int8)
+    commitment[:, 1:] = 1
+    for position, curve in enumerate(curves):
+        cumulative_dispatch = curve.pmin_mw + np.concatenate(
+            (
+                np.zeros(1, dtype=np.float64),
+                np.cumsum(curve.segment_widths_mw, dtype=np.float64),
+            )
+        )
+        cumulative_cost = curve.committed_base_cost + np.concatenate(
+            (
+                np.zeros(1, dtype=np.float64),
+                np.cumsum(
+                    curve.segment_widths_mw * curve.segment_slopes_per_mwh,
+                    dtype=np.float64,
+                ),
+            )
+        )
+        dispatch[position, 1:] = cumulative_dispatch
+        cost[position, 1:] = cumulative_cost
+        if not (
+            np.all(np.isfinite(cumulative_dispatch))
+            and np.all(np.isfinite(cumulative_cost))
+            and abs(float(cumulative_dispatch[0]) - curve.pmin_mw) <= 1e-12
+            and abs(float(cumulative_dispatch[-1]) - curve.pmax_mw) <= 1e-9
+        ):
+            raise ScopfError("Generator breakpoint enumeration changed PMIN/PMAX")
+    return dispatch, cost, commitment
+
+
+def optimize_lagrangian_bound_cupy_smoothed(
+    master: ReducedMaster,
+    row_dual: npt.ArrayLike,
+    region: RegionMasks,
+    *,
+    temperatures_dollars: tuple[float, ...],
+    iterations_per_temperature: int,
+    learning_rate: float,
+    commitment_cuts: tuple[CommitmentUpperCut, ...] = (),
+    initial_commitment_cut_dual: npt.ArrayLike | None = None,
+    coupling_row_scales: npt.ArrayLike | None = None,
+    commitment_cut_scales: npt.ArrayLike | None = None,
+    adam_beta1: float = 0.9,
+    adam_beta2: float = 0.999,
+    adam_epsilon: float = 1e-8,
+) -> tuple[FloatArray, dict[str, Any]]:
+    """Optimize a smooth dual surrogate while retaining exact GPU bounds.
+
+    For temperature ``tau``, each generator minimum is replaced during the
+    search by ``-tau * log(sum(exp(-state/tau)))``.  This is a smooth lower
+    approximation of the exact finite-state minimum.  Adam is used only to
+    propose multipliers; every proposal is scored with the original
+    nonsmoothed minimum, and only the best exact score is returned.  Thus no
+    convergence claim or smoothing-error estimate is needed for validity.
+
+    Canonical upper-row and commitment-cut multipliers are projected onto the
+    nonpositive cone after every update.  Positive diagonal row scales merely
+    reparameterize the dual variables and do not alter the certificate.
+    """
+
+    if iterations_per_temperature < 1:
+        raise ScopfError("Smoothed GPU Lagrangian iterations must be positive")
+    if not temperatures_dollars or any(
+        not np.isfinite(value) or value <= 0.0 for value in temperatures_dollars
+    ):
+        raise ScopfError("Smoothed GPU Lagrangian temperatures must be finite and positive")
+    if any(
+        temperatures_dollars[index + 1] > temperatures_dollars[index]
+        for index in range(len(temperatures_dollars) - 1)
+    ):
+        raise ScopfError("Smoothed GPU Lagrangian temperatures must be nonincreasing")
+    if not np.isfinite(learning_rate) or learning_rate <= 0.0:
+        raise ScopfError("Smoothed GPU Lagrangian learning rate must be positive")
+    if not (0.0 <= adam_beta1 < 1.0 and 0.0 <= adam_beta2 < 1.0):
+        raise ScopfError("Smoothed GPU Lagrangian Adam factors must be in [0, 1)")
+    if not np.isfinite(adam_epsilon) or adam_epsilon <= 0.0:
+        raise ScopfError("Smoothed GPU Lagrangian Adam epsilon must be positive")
+    try:
+        import cupy as cp
+    except ImportError as exc:
+        raise ScopfError("Smoothed GPU Lagrangian optimization requires CuPy") from exc
+
+    generator_count = master.index.generator_source_rows.size
+    region.validate(generator_count)
+    for cut in commitment_cuts:
+        cut.validate(generator_count)
+    full_dual = np.asarray(row_dual, dtype=np.float64)
+    if full_dual.shape != (master.canonical.num_rows,) or not np.all(
+        np.isfinite(full_dual)
+    ):
+        raise ScopfError("Smoothed GPU Lagrangian initial row dual is invalid")
+
+    coupling_rows = sorted(master.coupling_rows, key=lambda row: row.row_name)
+    coupling_indices_host = np.asarray(
+        [row.row_index for row in coupling_rows], dtype=np.int64
+    )
+    upper_host = np.asarray(
+        [row.kind != "balance_equality" for row in coupling_rows], dtype=bool
+    )
+    supplied_coupling_scales = (
+        np.ones(len(coupling_rows), dtype=np.float64)
+        if coupling_row_scales is None
+        else np.asarray(coupling_row_scales, dtype=np.float64)
+    )
+    if supplied_coupling_scales.shape != (len(coupling_rows),) or not np.all(
+        np.isfinite(supplied_coupling_scales) & (supplied_coupling_scales > 0.0)
+    ):
+        raise ScopfError("Smoothed GPU Lagrangian coupling scales are invalid")
+
+    supplied_cut_dual = (
+        np.zeros(len(commitment_cuts), dtype=np.float64)
+        if initial_commitment_cut_dual is None
+        else np.asarray(initial_commitment_cut_dual, dtype=np.float64)
+    )
+    supplied_cut_scales = (
+        np.ones(len(commitment_cuts), dtype=np.float64)
+        if commitment_cut_scales is None
+        else np.asarray(commitment_cut_scales, dtype=np.float64)
+    )
+    if supplied_cut_dual.shape != (len(commitment_cuts),) or not np.all(
+        np.isfinite(supplied_cut_dual)
+    ):
+        raise ScopfError("Smoothed GPU Lagrangian initial cut dual is invalid")
+    if supplied_cut_scales.shape != (len(commitment_cuts),) or not np.all(
+        np.isfinite(supplied_cut_scales) & (supplied_cut_scales > 0.0)
+    ):
+        raise ScopfError("Smoothed GPU Lagrangian cut scales are invalid")
+
+    dispatch_host, state_cost_host, state_commitment_host = (
+        _generator_breakpoint_state_arrays(master)
+    )
+    coupling_scale = cp.asarray(supplied_coupling_scales, dtype=cp.float64)
+    cut_scale = cp.asarray(supplied_cut_scales, dtype=cp.float64)
+    upper = cp.asarray(upper_host, dtype=cp.bool_)
+    rhs = cp.asarray([row.rhs for row in coupling_rows], dtype=cp.float64)
+    coefficients = cp.asarray(
+        np.stack([row.generator_coefficients for row in coupling_rows]),
+        dtype=cp.float64,
+    )
+    cut_coefficients = (
+        cp.asarray(
+            np.stack([cut.coefficients for cut in commitment_cuts]),
+            dtype=cp.float64,
+        )
+        if commitment_cuts
+        else cp.empty((0, generator_count), dtype=cp.float64)
+    )
+    cut_rhs = cp.asarray([cut.rhs for cut in commitment_cuts], dtype=cp.float64)
+    dispatch_states = cp.asarray(dispatch_host, dtype=cp.float64)
+    state_cost = cp.asarray(state_cost_host, dtype=cp.float64)
+    state_commitment = cp.asarray(state_commitment_host, dtype=cp.float64)
+    valid_state = cp.ones(dispatch_states.shape, dtype=cp.bool_)
+    fixed_off = cp.asarray(region.fixed_off, dtype=cp.bool_)
+    fixed_on = cp.asarray(region.fixed_on, dtype=cp.bool_)
+    valid_state[:, 0] = ~fixed_on
+    valid_state[:, 1:] = (~fixed_off)[:, None]
+
+    initial_y = cp.asarray(full_dual[coupling_indices_host], dtype=cp.float64)
+    initial_y = cp.where(upper, cp.minimum(initial_y, 0.0), initial_y)
+    initial_z = cp.minimum(cp.asarray(supplied_cut_dual, dtype=cp.float64), 0.0)
+    # Optimize scaled coordinates v and w where canonical multipliers are
+    # y = scale*v and z = scale*w.
+    v = initial_y / coupling_scale
+    w = initial_z / cut_scale
+    best_y = initial_y.copy()
+    best_z = initial_z.copy()
+    best_q = cp.asarray(-cp.inf, dtype=cp.float64)
+    best_commitment = cp.zeros(generator_count, dtype=cp.int8)
+    stage_records: list[dict[str, Any]] = []
+
+    def state_values(y: Any, z: Any) -> Any:
+        effective = -(y @ coefficients)
+        cut_adjustment = (
+            -(z @ cut_coefficients)
+            if commitment_cuts
+            else cp.zeros(generator_count, dtype=cp.float64)
+        )
+        values = (
+            state_cost
+            + effective[:, None] * dispatch_states
+            + cut_adjustment[:, None] * state_commitment
+        )
+        return cp.where(valid_state, values, cp.inf)
+
+    def exact_score(y: Any, z: Any, values: Any) -> tuple[Any, Any]:
+        state_index = cp.argmin(values, axis=1)
+        local = cp.take_along_axis(values, state_index[:, None], axis=1)[:, 0]
+        constant = y @ rhs + (z @ cut_rhs if commitment_cuts else 0.0)
+        return constant + cp.sum(local), (state_index > 0).astype(cp.int8)
+
+    initial_values = state_values(initial_y, initial_z)
+    best_q, best_commitment = exact_score(initial_y, initial_z, initial_values)
+    initial_q = best_q.copy()
+    maximum_softmin_error_bound = 0.0
+    total_iterations = 0
+    first_temperature = float(temperatures_dollars[0])
+    for stage, temperature in enumerate(temperatures_dollars, start=1):
+        tau = cp.asarray(float(temperature), dtype=cp.float64)
+        # Reset moments at each continuation temperature.  Start the new stage
+        # from the best exact certificate, not a possibly inferior smooth
+        # terminal point.
+        v = best_y / coupling_scale
+        w = best_z / cut_scale
+        first_moment_v = cp.zeros_like(v)
+        second_moment_v = cp.zeros_like(v)
+        first_moment_w = cp.zeros_like(w)
+        second_moment_w = cp.zeros_like(w)
+        stage_initial_q = best_q.copy()
+        stage_learning_rate = float(learning_rate) * max(
+            0.05, np.sqrt(float(temperature) / first_temperature)
+        )
+        for iteration in range(1, iterations_per_temperature + 1):
+            y = coupling_scale * v
+            y = cp.where(upper, cp.minimum(y, 0.0), y)
+            z = cp.minimum(cut_scale * w, 0.0)
+            values = state_values(y, z)
+            row_minimum = cp.min(values, axis=1, keepdims=True)
+            exponential = cp.where(
+                valid_state,
+                cp.exp(-(values - row_minimum) / tau),
+                0.0,
+            )
+            weights = exponential / cp.sum(exponential, axis=1, keepdims=True)
+            expected_dispatch = cp.sum(weights * dispatch_states, axis=1)
+            expected_commitment = cp.sum(weights * state_commitment, axis=1)
+            gradient_v = coupling_scale * (rhs - coefficients @ expected_dispatch)
+            gradient_w = cut_scale * (
+                cut_rhs - cut_coefficients @ expected_commitment
+            )
+
+            first_moment_v = (
+                adam_beta1 * first_moment_v + (1.0 - adam_beta1) * gradient_v
+            )
+            second_moment_v = (
+                adam_beta2 * second_moment_v
+                + (1.0 - adam_beta2) * gradient_v * gradient_v
+            )
+            first_moment_w = (
+                adam_beta1 * first_moment_w + (1.0 - adam_beta1) * gradient_w
+            )
+            second_moment_w = (
+                adam_beta2 * second_moment_w
+                + (1.0 - adam_beta2) * gradient_w * gradient_w
+            )
+            corrected_v = first_moment_v / (1.0 - adam_beta1**iteration)
+            corrected_v2 = second_moment_v / (1.0 - adam_beta2**iteration)
+            corrected_w = first_moment_w / (1.0 - adam_beta1**iteration)
+            corrected_w2 = second_moment_w / (1.0 - adam_beta2**iteration)
+            v = v + stage_learning_rate * corrected_v / (
+                cp.sqrt(corrected_v2) + adam_epsilon
+            )
+            w = w + stage_learning_rate * corrected_w / (
+                cp.sqrt(corrected_w2) + adam_epsilon
+            )
+            v = cp.where(upper, cp.minimum(v, 0.0), v)
+            w = cp.minimum(w, 0.0)
+
+            candidate_y = coupling_scale * v
+            candidate_z = cut_scale * w
+            candidate_values = state_values(candidate_y, candidate_z)
+            candidate_q, candidate_commitment = exact_score(
+                candidate_y, candidate_z, candidate_values
+            )
+            better = candidate_q > best_q
+            best_q = cp.where(better, candidate_q, best_q)
+            best_y = cp.where(better, candidate_y, best_y)
+            best_z = cp.where(better, candidate_z, best_z)
+            best_commitment = cp.where(
+                better, candidate_commitment, best_commitment
+            )
+            total_iterations += 1
+
+        cp.cuda.get_current_stream().synchronize()
+        finite_stage = bool(
+            cp.all(cp.isfinite(best_y)).item()
+            and cp.all(cp.isfinite(best_z)).item()
+            and cp.isfinite(best_q).item()
+        )
+        if not finite_stage:
+            raise ScopfError("Smoothed GPU Lagrangian stage produced nonfinite state")
+        stage_records.append(
+            {
+                "stage": stage,
+                "temperature_dollars": float(temperature),
+                "iterations": iterations_per_temperature,
+                "learning_rate": stage_learning_rate,
+                "initial_exact_raw_lower_bound": float(stage_initial_q.item()),
+                "best_exact_raw_lower_bound": float(best_q.item()),
+                "improvement_dollars": float(
+                    best_q.item() - stage_initial_q.item()
+                ),
+            }
+        )
+        valid_counts = np.where(
+            region.fixed_off,
+            1,
+            np.where(region.fixed_on, dispatch_host.shape[1] - 1, dispatch_host.shape[1]),
+        )
+        maximum_softmin_error_bound = max(
+            maximum_softmin_error_bound,
+            float(temperature) * float(np.sum(np.log(valid_counts))),
+        )
+
+    cp.cuda.get_current_stream().synchronize()
+    polished = np.zeros_like(full_dual)
+    polished[coupling_indices_host] = cp.asnumpy(best_y)
+    best_z_host = cp.asnumpy(best_z)
+    initial_q_host = float(initial_q.item())
+    best_q_host = float(best_q.item())
+    return polished, {
+        "backend": "cupy_fp64_smoothed_finite_state_adam_exact_bound_tracking_v1",
+        "temperature_schedule_dollars": [
+            float(value) for value in temperatures_dollars
+        ],
+        "iterations_per_temperature": iterations_per_temperature,
+        "total_iterations": total_iterations,
+        "base_learning_rate": float(learning_rate),
+        "adam_beta1": float(adam_beta1),
+        "adam_beta2": float(adam_beta2),
+        "adam_epsilon": float(adam_epsilon),
+        "initial_raw_lower_bound": initial_q_host,
+        "best_raw_lower_bound": best_q_host,
+        "improvement_dollars": best_q_host - initial_q_host,
+        "best_minimizing_commitment": cp.asnumpy(best_commitment),
+        "best_commitment_cut_dual": best_z_host,
+        "stage_records": stage_records,
+        "generator_state_count": int(dispatch_host.shape[1]),
+        "generator_subproblem_count": int(generator_count),
+        "commitment_cut_count": len(commitment_cuts),
+        "maximum_smooth_underestimate_bound_dollars": (
+            maximum_softmin_error_bound
+        ),
+        "exact_bound_scored_every_iteration": True,
+        "smoothing_used_as_certificate": False,
+        "exact_source_pmin_pmax_changed": False,
+        "device_state_persistent_within_each_temperature_stage": True,
+        "host_transfer_during_iterations": False,
+        "diagonal_reparameterization": {
+            "enabled": bool(
+                coupling_row_scales is not None
+                or commitment_cut_scales is not None
+            ),
+            "coupling_scale_minimum": float(np.min(supplied_coupling_scales)),
+            "coupling_scale_maximum": float(np.max(supplied_coupling_scales)),
+            "commitment_cut_scale_minimum": (
+                None
+                if not supplied_cut_scales.size
+                else float(np.min(supplied_cut_scales))
+            ),
+            "commitment_cut_scale_maximum": (
+                None
+                if not supplied_cut_scales.size
+                else float(np.max(supplied_cut_scales))
+            ),
+            "certificate_validity_changed": False,
+        },
+        "device_id": int(cp.cuda.Device().id),
+    }
+
+
 def canonical_row_duals(
     master: ReducedMaster,
     native_row_dual: npt.ArrayLike,

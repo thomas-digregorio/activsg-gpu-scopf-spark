@@ -4,6 +4,7 @@ import pytest
 from activsg_scopf.errors import ScopfError
 from activsg_scopf.lagrangian import (
     RegionMasks,
+    _generator_breakpoint_state_arrays,
     bus_prices_from_coupling_duals,
     choose_split_generator,
     evaluate_lagrangian_bound,
@@ -24,6 +25,58 @@ from activsg_scopf.reduced import (
 from activsg_scopf.screening import ContingencyScreener, SecurityPair
 
 from .helpers import triangle_case
+
+
+def test_generator_breakpoint_states_are_exact_pmin_pmax_pwl_extremes() -> None:
+    case, _ = triangle_case()
+    case.gen[1, 7] = 1.0
+    network = build_network(case)
+    master = build_reduced_master(case, network)
+
+    dispatch, cost, commitment = _generator_breakpoint_state_arrays(master)
+
+    assert dispatch.shape == cost.shape == commitment.shape == (2, 12)
+    np.testing.assert_array_equal(dispatch[:, 0], np.zeros(2))
+    np.testing.assert_array_equal(cost[:, 0], np.zeros(2))
+    np.testing.assert_array_equal(commitment[:, 0], np.zeros(2, dtype=np.int8))
+    np.testing.assert_array_equal(commitment[:, 1:], np.ones((2, 11), dtype=np.int8))
+    for position, generator_index in enumerate(master.index.generator_source_rows):
+        curve = master.costs[int(generator_index)]
+        assert dispatch[position, 1] == pytest.approx(curve.pmin_mw)
+        assert dispatch[position, -1] == pytest.approx(curve.pmax_mw)
+        expected_cost = np.asarray(
+            [curve.pwl_value(float(power)) for power in dispatch[position, 1:]]
+        )
+        np.testing.assert_allclose(cost[position, 1:], expected_cost, atol=1e-12)
+
+
+def test_generator_breakpoint_minimum_matches_exact_lagrangian_subproblems() -> None:
+    case, _ = triangle_case()
+    case.gen[1, 7] = 1.0
+    network = build_network(case)
+    master = build_reduced_master(case, network)
+    row_dual = np.zeros(master.canonical.num_rows, dtype=np.float64)
+    for number, row in enumerate(sorted(master.coupling_rows, key=lambda item: item.row_name)):
+        row_dual[row.row_index] = (
+            7.25 if row.kind == "balance_equality" else -0.1 * (number + 1)
+        )
+
+    evaluation = evaluate_lagrangian_bound(
+        master,
+        row_dual,
+        RegionMasks.root(master.index.generator_source_rows.size),
+        safety_margin_dollars=0.0,
+    )
+    dispatch, cost, _commitment = _generator_breakpoint_state_arrays(master)
+    coupling = sorted(master.coupling_rows, key=lambda row: row.row_name)
+    dual = np.asarray([row_dual[row.row_index] for row in coupling])
+    coefficients = np.stack([row.generator_coefficients for row in coupling])
+    rhs = np.asarray([row.rhs for row in coupling])
+    effective = -(dual @ coefficients)
+    state_values = cost + effective[:, None] * dispatch
+    enumerated = float(dual @ rhs + np.sum(np.min(state_values, axis=1)))
+
+    assert enumerated == pytest.approx(evaluation.raw_lower_bound, abs=1e-10)
 
 
 def test_injection_elimination_matches_explicit_dc_solve() -> None:
