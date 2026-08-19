@@ -313,11 +313,31 @@ def _coordinate_ascent_commitment_cut_arrays(
             breakpoints = xp.where(
                 valid_breakpoint, breakpoints, z[cut_index]
             )
+            # At an exact generator indifference point, ``on_value == 0`` and
+            # the canonical minimizer chooses the unit off.  For an at-least
+            # cut this can leave the same violated minimizer even though the
+            # dual is optimal at that kink, causing the cutting-plane loop to
+            # cycle.  Include both adjacent FP64 values and, among bitwise
+            # equal dual maxima, choose the minimizer with the smallest
+            # current-cut violation.  The raw bound remains exactly monotone;
+            # this only resolves a degenerate argmin face.
+            lower_neighbors = xp.where(
+                valid_breakpoint,
+                xp.nextafter(breakpoints, -xp.inf),
+                z[cut_index],
+            )
+            upper_neighbors = xp.where(
+                valid_breakpoint,
+                xp.minimum(0.0, xp.nextafter(breakpoints, xp.inf)),
+                z[cut_index],
+            )
             candidates = xp.concatenate(
                 (
                     z[cut_index : cut_index + 1],
                     zero_candidate,
                     breakpoints,
+                    lower_neighbors,
+                    upper_neighbors,
                 )
             )
             candidate_on = (
@@ -334,7 +354,21 @@ def _coordinate_ascent_commitment_cut_arrays(
             candidate_raw = xp.where(
                 xp.isfinite(candidate_raw), candidate_raw, -xp.inf
             )
-            z[cut_index] = candidates[xp.argmax(candidate_raw)]
+            maximum_raw = xp.max(candidate_raw)
+            candidate_commitment = xp.where(
+                fixed_off[None, :],
+                0,
+                xp.where(fixed_on[None, :] | (candidate_on < 0.0), 1, 0),
+            )
+            candidate_violation = (
+                candidate_commitment @ coefficients - cut_rhs[cut_index]
+            )
+            tie_score = xp.where(
+                candidate_raw == maximum_raw,
+                xp.abs(candidate_violation),
+                xp.inf,
+            )
+            z[cut_index] = candidates[xp.argmin(tie_score)]
         cycle_raw[cycle + 1] = state()[0]
     final_raw, final_on, final_commitment = state()
     return z, final_raw, final_on, final_commitment, cycle_raw
@@ -508,7 +542,7 @@ def optimize_commitment_cut_duals_coordinate_cupy(
         "device_state_persistent_across_coordinates": True,
         "host_transfer_during_coordinates": False,
         "coordinate_policy": (
-            "current_zero_and_all_nonpositive_generator_indifference_breakpoints_v1"
+            "exact_breakpoints_with_adjacent_fp64_minimum_cut_violation_tie_break_v2"
         ),
         "device_id": int(cp.cuda.Device().id),
     }

@@ -203,6 +203,11 @@ def test_exact_coordinate_ascent_handles_negated_at_least_cut() -> None:
     assert cut_dual[0] < 0.0
     assert strengthened.raw_lower_bound > initial.raw_lower_bound
     assert strengthened.raw_lower_bound == pytest.approx(audit["best_raw_lower_bound"])
+    assert strengthened.minimizing_commitment[0] == 1
+    assert (
+        float(cut.coefficients @ strengthened.minimizing_commitment - cut.rhs)
+        <= 0.0
+    )
 
 
 def test_commitment_cut_dust_cleanup_is_an_outward_relaxation() -> None:
