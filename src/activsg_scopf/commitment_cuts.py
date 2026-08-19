@@ -1261,6 +1261,144 @@ def derive_commitment_capacity_cut(
     }
 
 
+def derive_commitment_capacity_cut_for_side(
+    *,
+    master: ReducedMaster,
+    source_row_name: str,
+    source_row_side: str,
+    base_mva: float,
+    safety_margin_pu: float,
+) -> tuple[CommitmentCapacityCut, dict[str, Any]]:
+    """Derive a deterministic row envelope without a trial commitment.
+
+    For one finite side of a reduced dispatch row, the maximally violating
+    binary commitment is known analytically: turn on every generator whose
+    projected coefficient is positive and turn off every generator whose
+    coefficient is nonpositive.  If even that binary point does not violate
+    the envelope, the row cannot yield a nontrivial binary cover.  Otherwise
+    the resulting capacity cut is the same globally valid exact-PMIN/PMAX
+    necessary condition used by :func:`derive_commitment_capacity_cut`, but
+    its source identity is independent of a solver-generated candidate.
+    """
+
+    if source_row_side not in {"upper", "lower"}:
+        raise ScopfError("Commitment capacity-cut side must be upper or lower")
+    if not isfinite(base_mva) or base_mva <= 0.0:
+        raise ScopfError("Commitment capacity cut requires positive base MVA")
+    if not isfinite(safety_margin_pu) or safety_margin_pu < 0.0:
+        raise ScopfError("Commitment capacity cut safety margin must be nonnegative")
+
+    source_rows = np.asarray(master.index.generator_source_rows, dtype=np.int64)
+    matches = [row for row in master.coupling_rows if row.row_name == source_row_name]
+    if len(matches) != 1:
+        raise ScopfError("Commitment capacity cut source row is missing or duplicated")
+    coupling = matches[0]
+    coefficients = np.asarray(coupling.generator_coefficients, dtype=np.float64)
+    curves = [master.costs[int(row)] for row in source_rows]
+    pmin = np.asarray([curve.pmin_mw for curve in curves], dtype=np.float64)
+    pmax = np.asarray([curve.pmax_mw for curve in curves], dtype=np.float64)
+    if (
+        coefficients.shape != (source_rows.size,)
+        or np.any(~np.isfinite(coefficients))
+        or np.any(~np.isfinite(pmin))
+        or np.any(~np.isfinite(pmax))
+        or np.any(pmin > pmax)
+    ):
+        raise ScopfError("Commitment capacity cut found invalid row or generator bounds")
+
+    minimum_activity = np.minimum(coefficients * pmin, coefficients * pmax)
+    maximum_activity = np.maximum(coefficients * pmin, coefficients * pmax)
+    row_lower, row_upper = master.canonical.row_bound_arrays()
+    if source_row_side == "upper":
+        source_bound = float(row_upper[coupling.row_index])
+        if not isfinite(source_bound):
+            raise ScopfError("Commitment capacity-cut upper side is not finite")
+        cut_coefficients = minimum_activity / base_mva
+        raw_rhs = source_bound / base_mva
+    else:
+        source_bound = float(row_lower[coupling.row_index])
+        if not isfinite(source_bound):
+            raise ScopfError("Commitment capacity-cut lower side is not finite")
+        cut_coefficients = -maximum_activity / base_mva
+        raw_rhs = -source_bound / base_mva
+
+    cut_coefficients = np.where(
+        cut_coefficients == 0.0, 0.0, cut_coefficients
+    ).astype(np.float64, copy=False)
+    source_commitment = np.asarray(cut_coefficients > 0.0, dtype=np.int8)
+    raw_violation = fsum(
+        [-raw_rhs]
+        + [
+            float(cut_coefficients[position])
+            for position in np.flatnonzero(source_commitment)
+        ]
+    )
+    if raw_violation <= safety_margin_pu:
+        raise ScopfError(
+            "Commitment capacity-cut side has no binary violation beyond its margin"
+        )
+
+    rounding_margin = 32.0 * np.finfo(np.float64).eps * max(
+        1.0,
+        abs(raw_rhs),
+        float(np.sum(np.abs(cut_coefficients))),
+    )
+    outward_relaxation = float(safety_margin_pu + rounding_margin)
+    rhs = float(raw_rhs + outward_relaxation)
+    source_violation = fsum(
+        [-rhs]
+        + [
+            float(cut_coefficients[position])
+            for position in np.flatnonzero(source_commitment)
+        ]
+    )
+    if source_violation <= 0.0:
+        raise ScopfError("Commitment capacity-cut margin consumed its source violation")
+
+    source_sha = hashlib.sha256(source_commitment.tobytes()).hexdigest()
+    identity_bytes = (
+        b"conditional_dispatch_row_capacity_cut_v1\0"
+        + source_row_name.encode("utf-8")
+        + b"\0"
+        + source_row_side.encode("ascii")
+        + np.asarray([rhs], dtype=np.float64).tobytes()
+        + cut_coefficients.tobytes()
+    )
+    cut = CommitmentCapacityCut(
+        cut_id="rc_" + hashlib.sha256(identity_bytes).hexdigest()[:24],
+        coefficients=cut_coefficients,
+        rhs=rhs,
+        source_commitment_sha256=source_sha,
+        conservative_source_violation_pu=source_violation,
+        source_row_name=source_row_name,
+        source_row_side=source_row_side,
+        source_row_bound_pu=source_bound / base_mva,
+        outward_rhs_relaxation_pu=outward_relaxation,
+    )
+    cut.validate(source_rows.size)
+    return cut, {
+        "derivation": (
+            "direct_conditional_pmin_pmax_row_activity_envelope_"
+            "analytic_maximizer_v1"
+        ),
+        "source_row_name": source_row_name,
+        "source_row_side": source_row_side,
+        "source_row_kind": coupling.kind,
+        "source_row_bound_pu": source_bound / base_mva,
+        "raw_source_violation_pu": raw_violation,
+        "conservative_source_violation_pu": source_violation,
+        "outward_rhs_relaxation_pu": outward_relaxation,
+        "analytic_source_commitment_policy": (
+            "positive_projected_coefficient_online_else_off_v1"
+        ),
+        "analytic_source_commitment_generator_rows": (
+            source_rows[source_commitment == 1] + 1
+        ).tolist(),
+        "nonzero_coefficient_count": int(np.count_nonzero(cut_coefficients)),
+        "cut": cut.as_dict(source_rows + 1),
+    }
+
+
 def derive_commitment_feasibility_cut(
     *,
     master: ReducedMaster,

@@ -20,6 +20,7 @@ from activsg_scopf.lagrangian_experiment import (
     ACTIVSG2000_V10_EXPERIMENT_ID,
     ACTIVSG2000_V11_EXPERIMENT_ID,
     ACTIVSG2000_V12_EXPERIMENT_ID,
+    ACTIVSG2000_V13_EXPERIMENT_ID,
     EXPERIMENT_ID,
     EXPERIMENT_TAG,
     PrimalCandidatePolicy,
@@ -31,13 +32,14 @@ from activsg_scopf.lagrangian_experiment import (
     _relative_gap,
     _replay_cleanup_audit_comparison,
     _run_phase_one_attempt,
+    _select_analytic_capacity_cover_cuts,
     _solve_region,
     _validate_prepared_region_master,
     validate_lagrangian_experiment_config,
 )
 from activsg_scopf.matpower import GEN_STATUS
 from activsg_scopf.network import build_contingency_catalog, build_network
-from activsg_scopf.reduced import build_reduced_master
+from activsg_scopf.reduced import CouplingRow, build_reduced_master
 from activsg_scopf.screening import (
     ContingencyScreener,
     ScreenResult,
@@ -434,6 +436,79 @@ def test_registered_activsg2000_v12_numerical_throughput_fix_is_fail_closed() ->
     v12.raw["runtime"]["phase_one_precheck_optimality_tolerance"] = 1e-8
     with pytest.raises(ScopfError, match="runtime policy changed"):
         validate_lagrangian_experiment_config(v12)
+
+
+def test_registered_activsg2000_v13_capacity_cover_fix_is_fail_closed() -> None:
+    v12 = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v12.json")
+    v13 = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v13.json")
+    registration = validate_lagrangian_experiment_config(v13)
+
+    assert v13.benchmark_id == ACTIVSG2000_V13_EXPERIMENT_ID
+    assert registration["benchmark"]["required_git_tag"] == (
+        "experiment-2000-gpu-lagrangian-v13"
+    )
+    assert v13.raw["raw_inputs"] == v12.raw["raw_inputs"]
+    assert v13.model["reduced_coefficient_zero_tolerance"] == 2e-6
+    assert v13.model["mip_relative_gap_tolerance"] == 1e-3
+    assert v13.runtime["analytic_capacity_cover_rounds"] == 1
+    assert v13.runtime["analytic_capacity_cover_maximum_cuts"] == 16
+    fix = registration["benchmark"]["numerical_cover_fix"]
+    assert fix["v12_result_preserved"] is True
+    assert fix["exact_source_pmin_changed"] is False
+    assert fix["mathematical_original_integer_optimum_changed"] is False
+    assert fix["cpu_commitment_dispatch_objective_or_bound_seeded"] is False
+    v13.raw["runtime"]["analytic_capacity_cover_rounds"] = 2
+    with pytest.raises(ScopfError, match="runtime policy changed"):
+        validate_lagrangian_experiment_config(v13)
+
+
+def test_analytic_capacity_cover_separator_selects_raw_row_proof() -> None:
+    case, _ = triangle_case()
+    case.gen[1, GEN_STATUS] = 1.0
+    network = build_network(case)
+    master = build_reduced_master(case, network)
+    source_rows = master.index.generator_source_rows
+    dispatch_columns = [
+        master.index.dispatch_by_generator[int(generator)] for generator in source_rows
+    ]
+    row = master.canonical.add_row(
+        "test_cover_capacity_row",
+        {dispatch_columns[0]: 1.0, dispatch_columns[1]: 1.0},
+        upper=20.0,
+    )
+    master.coupling_rows.append(
+        CouplingRow(
+            row_index=row,
+            row_name="test_cover_capacity_row",
+            rhs=20.0,
+            generator_coefficients=np.asarray([1.0, 1.0]),
+            bus_coefficients=np.zeros(network.bus_ids.size),
+            kind="test_upper",
+        )
+    )
+
+    covers, records, audit = _select_analytic_capacity_cover_cuts(
+        master=master,
+        separation_reference=np.asarray([0.8, 0.8]),
+        base_mva=100.0,
+        safety_margin_pu=1e-8,
+        minimum_reference_violation=1e-6,
+        maximum_selected_cuts=4,
+        maximum_signed_cosine_similarity=0.98,
+    )
+
+    assert covers
+    assert len(covers) == len(records) == audit["selected_cut_count"]
+    selected = next(
+        record
+        for record in records
+        if record["parent_cut"]["source_row_name"] == "test_cover_capacity_row"
+    )
+    assert selected["parent_cut"]["source_row_side"] == "upper"
+    assert selected["cover_derivation"]["verification"]["passed"] is True
+    assert selected["reference_violation"] > 0.0
+    assert audit["cpu_problem_solution_data_used"] is False
+    assert audit["original_binary_feasible_set_changed"] is False
 
 
 def test_v12_cost_dual_seed_never_replaces_secure_phase_one_primal(

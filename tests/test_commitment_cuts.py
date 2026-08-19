@@ -13,6 +13,7 @@ from activsg_scopf.commitment_cuts import (
     commitment_upper_cut_from_record,
     derive_binary_knapsack_cover_cut,
     derive_commitment_capacity_cut,
+    derive_commitment_capacity_cut_for_side,
     derive_commitment_feasibility_cut,
     generate_commitment_cut_repairs,
     verify_binary_knapsack_cover_derivation,
@@ -210,6 +211,58 @@ def test_direct_lower_row_capacity_cut_uses_conditional_pmax() -> None:
     assert cut.violation(np.asarray([0, 1], dtype=np.int8)) == pytest.approx(0.09999999)
     assert cut.violation(np.asarray([1, 0], dtype=np.int8)) < 0.0
     assert audit["source_row_side"] == "lower"
+
+
+def test_analytic_row_capacity_cut_uses_maximally_violating_binary() -> None:
+    case, _ = triangle_case()
+    case.gen[1, 7] = 1.0
+    network = build_network(case)
+    master = build_reduced_master(case, network)
+    source_rows = master.index.generator_source_rows
+    dispatch_columns = [
+        master.index.dispatch_by_generator[int(generator)] for generator in source_rows
+    ]
+    row = master.canonical.add_row(
+        "test_analytic_capacity_limit",
+        {dispatch_columns[0]: 1.0, dispatch_columns[1]: 1.0},
+        upper=20.0,
+    )
+    master.coupling_rows.append(
+        CouplingRow(
+            row_index=row,
+            row_name="test_analytic_capacity_limit",
+            rhs=20.0,
+            generator_coefficients=np.asarray([1.0, 1.0]),
+            bus_coefficients=np.zeros(network.bus_ids.size),
+            kind="test_upper",
+        )
+    )
+
+    cut, audit = derive_commitment_capacity_cut_for_side(
+        master=master,
+        source_row_name="test_analytic_capacity_limit",
+        source_row_side="upper",
+        base_mva=100.0,
+        safety_margin_pu=1e-8,
+    )
+
+    np.testing.assert_array_equal(cut.coefficients, np.asarray([0.25, 0.10]))
+    analytic_source = np.asarray([1, 1], dtype=np.int8)
+    assert cut.source_commitment_sha256 == hashlib.sha256(
+        analytic_source.tobytes()
+    ).hexdigest()
+    assert cut.violation(analytic_source) == pytest.approx(
+        cut.conservative_source_violation_pu
+    )
+    assert audit["analytic_source_commitment_generator_rows"] == [1, 2]
+    assert audit["analytic_source_commitment_policy"].endswith("_v1")
+    for encoded in range(4):
+        binary = np.asarray([(encoded >> position) & 1 for position in range(2)])
+        if cut.violation(binary) <= 0.0:
+            minimum_dispatch_activity = float(
+                np.asarray([25.0, 10.0]) @ binary
+            )
+            assert minimum_dispatch_activity <= 20.0 + 1e-5
 
 
 def test_exact_coordinate_ascent_strengthens_at_most_commitment_cut() -> None:
