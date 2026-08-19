@@ -9,6 +9,7 @@ from activsg_scopf.solvers.cuopt import (
     FULL_MIP_START,
     INTEGER_ONLY_MIP_START,
     NO_NATIVE_SCALING,
+    POWER_SYSTEM_CERTIFIED_EQUILIBRATED_SCALING,
     POWER_SYSTEM_EQUILIBRATED_SCALING,
     POWER_SYSTEM_PER_UNIT_SCALING,
     POWER_SYSTEM_SAFE_EQUILIBRATED_SCALING,
@@ -461,6 +462,29 @@ def test_equilibrated_power_system_scaling_normalizes_each_native_row() -> None:
     )
     assert audit["maximum_native_activity_identity_error"] < 1e-12
     assert audit["maximum_canonicalized_row_violation_identity_error"] < 1e-12
+
+
+def test_certified_equilibration_normalizes_coefficients_without_rate_rhs_shrinkage() -> None:
+    model = _scaling_model()
+    columns, row_scale = native_scaling_vectors(
+        model,
+        mode=POWER_SYSTEM_CERTIFIED_EQUILIBRATED_SCALING,
+        base_mva=100.0,
+    )
+    v2_columns, v2_rows = native_scaling_vectors(
+        model,
+        mode=POWER_SYSTEM_EQUILIBRATED_SCALING,
+        base_mva=100.0,
+    )
+
+    np.testing.assert_array_equal(columns, v2_columns)
+    matrix = model.matrix_csr().multiply(columns).multiply(row_scale[:, None])
+    for row in range(model.num_rows):
+        coefficients = np.abs(matrix.getrow(row).data)
+        if coefficients.size:
+            assert float(np.max(coefficients)) == pytest.approx(1.0)
+    assert np.any(row_scale != v2_rows)
+    assert np.min(row_scale) > 0.0
 
 
 def test_safe_equilibrated_scaling_never_weakens_per_unit_row_scale() -> None:

@@ -24,6 +24,7 @@ from activsg_scopf.lagrangian import (
     RegionMasks,
     _coordinate_ascent_commitment_cut_arrays,
     evaluate_lagrangian_bound,
+    evaluate_lagrangian_bound_cupy,
     optimize_commitment_cut_duals_coordinate_numpy,
     replay_lagrangian_certificate,
 )
@@ -408,6 +409,120 @@ def test_exact_coordinate_ascent_handles_negated_at_least_cut() -> None:
         float(cut.coefficients @ strengthened.minimizing_commitment - cut.rhs)
         <= 0.0
     )
+
+
+def test_exact_hard_cardinality_subproblem_is_replayable() -> None:
+    case, _table = triangle_case()
+    case.gen[1, 7] = 1.0
+    master = build_reduced_master(case, build_network(case))
+    rows = master.index.generator_source_rows
+    cut = build_commitment_cardinality_cut(
+        generator_source_rows=rows,
+        subset_positions=np.asarray([0, 1], dtype=np.int64),
+        subset_id="both_generators",
+        branch_side="at_least",
+        integer_threshold=1,
+    )
+    region = RegionMasks.root(2)
+    evaluation = evaluate_lagrangian_bound(
+        master,
+        np.zeros(master.canonical.num_rows, dtype=np.float64),
+        region,
+        safety_margin_dollars=0.0,
+        commitment_cuts=(cut,),
+        commitment_cut_dual=np.asarray([0.0]),
+        hard_cardinality_cuts=(cut,),
+    )
+
+    assert evaluation.hard_cardinality_cut_ids == (cut.cut_id,)
+    assert int(np.sum(evaluation.minimizing_commitment)) == 1
+    assert float(cut.coefficients @ evaluation.minimizing_commitment - cut.rhs) == 0.0
+    assert evaluation.minimizing_commitment[1] == 1
+    certificate = evaluation.as_dict(rows + 1, compact=True)
+    replayed = replay_lagrangian_certificate(
+        master,
+        certificate,
+        region,
+        commitment_cuts_by_id={cut.cut_id: cut},
+    )
+    assert certificate["certificate_kind"].endswith("cardinality_v4")
+    assert replayed.raw_lower_bound == pytest.approx(evaluation.raw_lower_bound)
+    np.testing.assert_array_equal(
+        replayed.minimizing_commitment,
+        evaluation.minimizing_commitment,
+    )
+
+
+def test_exact_hard_cardinality_subproblem_rejects_overlapping_supports() -> None:
+    case, _table = triangle_case()
+    case.gen[1, 7] = 1.0
+    master = build_reduced_master(case, build_network(case))
+    rows = master.index.generator_source_rows
+    at_most = build_commitment_cardinality_cut(
+        generator_source_rows=rows,
+        subset_positions=np.asarray([0, 1], dtype=np.int64),
+        subset_id="overlap_at_most",
+        branch_side="at_most",
+        integer_threshold=1,
+    )
+    at_least = build_commitment_cardinality_cut(
+        generator_source_rows=rows,
+        subset_positions=np.asarray([1], dtype=np.int64),
+        subset_id="overlap_at_least",
+        branch_side="at_least",
+        integer_threshold=1,
+    )
+
+    with pytest.raises(ScopfError, match="supports overlap"):
+        evaluate_lagrangian_bound(
+            master,
+            np.zeros(master.canonical.num_rows, dtype=np.float64),
+            RegionMasks.root(2),
+            safety_margin_dollars=0.0,
+            commitment_cuts=(at_most, at_least),
+            commitment_cut_dual=np.zeros(2, dtype=np.float64),
+            hard_cardinality_cuts=(at_most, at_least),
+        )
+
+
+def test_gpu_exact_hard_cardinality_subproblem_matches_host_fp64() -> None:
+    pytest.importorskip("cupy")
+    case, _table = triangle_case()
+    case.gen[1, 7] = 1.0
+    master = build_reduced_master(case, build_network(case))
+    rows = master.index.generator_source_rows
+    cut = build_commitment_cardinality_cut(
+        generator_source_rows=rows,
+        subset_positions=np.asarray([0, 1], dtype=np.int64),
+        subset_id="gpu_both_generators",
+        branch_side="at_least",
+        integer_threshold=1,
+    )
+    dual = np.zeros(master.canonical.num_rows, dtype=np.float64)
+    region = RegionMasks.root(2)
+    host = evaluate_lagrangian_bound(
+        master,
+        dual,
+        region,
+        safety_margin_dollars=0.0,
+        commitment_cuts=(cut,),
+        commitment_cut_dual=np.asarray([0.0]),
+        hard_cardinality_cuts=(cut,),
+    )
+    gpu = evaluate_lagrangian_bound_cupy(
+        master,
+        dual,
+        region,
+        commitment_cuts=(cut,),
+        commitment_cut_dual=np.asarray([0.0]),
+        hard_cardinality_cuts=(cut,),
+    )
+
+    assert gpu["raw_lower_bound"] == pytest.approx(host.raw_lower_bound, abs=1e-9)
+    np.testing.assert_array_equal(
+        gpu["minimizing_commitment"], host.minimizing_commitment
+    )
+    assert gpu["hard_cardinality_cut_ids"] == [cut.cut_id]
 
 
 def test_commitment_cut_dust_cleanup_is_an_outward_relaxation() -> None:

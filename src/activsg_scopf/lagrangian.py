@@ -76,6 +76,7 @@ class LagrangianEvaluation:
     on_subproblem_values: FloatArray
     minimizing_commitment: npt.NDArray[np.int8]
     commitment_cut_duals: tuple[tuple[str, float], ...] = ()
+    hard_cardinality_cut_ids: tuple[str, ...] = ()
 
     def as_dict(
         self,
@@ -86,7 +87,10 @@ class LagrangianEvaluation:
         rows = np.asarray(generator_source_rows, dtype=np.int64)
         certificate: dict[str, Any] = {
             "certificate_kind": (
-                "separable_binary_generator_lagrangian_with_commitment_upper_cuts_v3"
+                "separable_binary_generator_lagrangian_with_exact_disjoint_"
+                "cardinality_v4"
+                if self.hard_cardinality_cut_ids
+                else "separable_binary_generator_lagrangian_with_commitment_upper_cuts_v3"
                 if self.commitment_cut_duals
                 else "separable_binary_generator_lagrangian_v1"
             ),
@@ -102,6 +106,7 @@ class LagrangianEvaluation:
                 {"cut_id": cut_id, "canonical_row_dual": value}
                 for cut_id, value in self.commitment_cut_duals
             ],
+            "hard_cardinality_cut_ids": list(self.hard_cardinality_cut_ids),
         }
         if not compact:
             certificate["generator_subproblems"] = [
@@ -181,6 +186,41 @@ class LagrangianMultiplierDeltaSearchModel:
     audit: dict[str, Any]
 
 
+def _validate_disjoint_hard_cardinality_cuts(
+    cuts: tuple[CommitmentCardinalityCut, ...],
+    *,
+    generator_count: int,
+    available_cut_ids: set[str],
+) -> tuple[frozenset[str], tuple[npt.NDArray[np.int64], ...]]:
+    """Validate exact cardinality subproblems that remain generator-separable.
+
+    Disjoint cardinality supports can each be minimized by one ordered choice
+    over generator on-values.  Overlapping supports would require a coupled
+    binary solve, so this first GPU implementation rejects them fail-closed.
+    """
+
+    ids: set[str] = set()
+    occupied = np.zeros(generator_count, dtype=bool)
+    supports: list[npt.NDArray[np.int64]] = []
+    for cut in cuts:
+        if not isinstance(cut, CommitmentCardinalityCut):
+            raise ScopfError("Hard Lagrangian cuts must be cardinality branches")
+        cut.validate(generator_count)
+        if cut.cut_id not in available_cut_ids:
+            raise ScopfError("Hard cardinality cut is absent from the region master")
+        if cut.cut_id in ids:
+            raise ScopfError("Hard cardinality cut identity is duplicated")
+        support = np.flatnonzero(cut.coefficients != 0.0).astype(np.int64)
+        if not 0 <= int(cut.integer_threshold) <= int(support.size):
+            raise ScopfError("Hard cardinality threshold is outside its subset")
+        if np.any(occupied[support]):
+            raise ScopfError("Hard cardinality cut supports overlap")
+        occupied[support] = True
+        ids.add(cut.cut_id)
+        supports.append(support)
+    return frozenset(ids), tuple(supports)
+
+
 def evaluate_lagrangian_bound_cupy(
     master: ReducedMaster,
     row_dual: npt.ArrayLike,
@@ -188,6 +228,7 @@ def evaluate_lagrangian_bound_cupy(
     *,
     commitment_cuts: tuple[CommitmentUpperCut, ...] = (),
     commitment_cut_dual: npt.ArrayLike | None = None,
+    hard_cardinality_cuts: tuple[CommitmentCardinalityCut, ...] = (),
 ) -> dict[str, Any]:
     """Evaluate all exact generator subproblems with CuPy FP64 primitives."""
 
@@ -199,6 +240,11 @@ def evaluate_lagrangian_bound_cupy(
     region.validate(generator_count)
     for cut in commitment_cuts:
         cut.validate(generator_count)
+    hard_cut_ids, hard_supports = _validate_disjoint_hard_cardinality_cuts(
+        hard_cardinality_cuts,
+        generator_count=generator_count,
+        available_cut_ids={cut.cut_id for cut in commitment_cuts},
+    )
     dual_host = np.asarray(row_dual, dtype=np.float64)
     if dual_host.shape != (master.canonical.num_rows,):
         raise ScopfError("GPU Lagrangian row dual has the wrong shape")
@@ -248,14 +294,57 @@ def evaluate_lagrangian_bound_cupy(
         ):
             raise ScopfError("GPU Lagrangian commitment-cut dual has invalid values")
         cut_dual = cp.minimum(cp.asarray(supplied_cut_dual), 0.0)
-        on_value = on_value - cut_dual @ cut_coefficients
-        cut_constant = cut_dual @ cut_rhs
+        hard_positions = np.asarray(
+            [cut.cut_id in hard_cut_ids for cut in commitment_cuts],
+            dtype=bool,
+        )
+        if np.any(np.asarray(supplied_cut_dual)[hard_positions] != 0.0):
+            raise ScopfError(
+                "Hard cardinality cuts cannot also carry Lagrangian multipliers"
+            )
+        active_cut_dual = cp.where(cp.asarray(hard_positions), 0.0, cut_dual)
+        on_value = on_value - active_cut_dual @ cut_coefficients
+        cut_constant = active_cut_dual @ cut_rhs
+        cut_dual = active_cut_dual
     else:
         cut_dual = cp.empty(0, dtype=cp.float64)
         cut_constant = cp.asarray(0.0, dtype=cp.float64)
     fixed_off = cp.asarray(region.fixed_off)
     fixed_on = cp.asarray(region.fixed_on)
     commitment = cp.where(fixed_off, 0, cp.where(fixed_on | (on_value < 0.0), 1, 0))
+    for cut, support in zip(hard_cardinality_cuts, hard_supports, strict=True):
+        free_support = support[
+            ~(region.fixed_off[support] | region.fixed_on[support])
+        ]
+        fixed_on_count = int(np.count_nonzero(region.fixed_on[support]))
+        if cut.branch_side == "at_most":
+            free_limit = int(cut.integer_threshold) - fixed_on_count
+            if free_limit < 0:
+                raise ScopfError("Hard at-most cardinality region is empty")
+            free_limit = min(free_limit, int(free_support.size))
+            required_count = 0
+        else:
+            required_count = max(
+                0, int(cut.integer_threshold) - fixed_on_count
+            )
+            if required_count > int(free_support.size):
+                raise ScopfError("Hard at-least cardinality region is empty")
+            free_limit = int(free_support.size)
+        free_device = cp.asarray(free_support, dtype=cp.int64)
+        free_values = on_value[free_device]
+        order = cp.lexsort((free_device, free_values))
+        negative_count = int(cp.count_nonzero(free_values < 0.0).item())
+        selected_count = (
+            min(free_limit, negative_count)
+            if cut.branch_side == "at_most"
+            else max(required_count, negative_count)
+        )
+        commitment[cp.asarray(support, dtype=cp.int64)] = 0
+        fixed_on_support = support[region.fixed_on[support]]
+        if fixed_on_support.size:
+            commitment[cp.asarray(fixed_on_support, dtype=cp.int64)] = 1
+        if selected_count:
+            commitment[free_device[order[:selected_count]]] = 1
     local_value = cp.where(commitment > 0, on_value, 0.0)
     raw_bound = cp.sum(coupling_dual * rhs) + cut_constant + cp.sum(local_value)
     cp.cuda.get_current_stream().synchronize()
@@ -267,6 +356,8 @@ def evaluate_lagrangian_bound_cupy(
         "on_subproblem_values": cp.asnumpy(on_value),
         "projected_commitment_cut_dual": cp.asnumpy(cut_dual),
         "commitment_feasibility_cut_count": len(commitment_cuts),
+        "hard_cardinality_cut_ids": sorted(hard_cut_ids),
+        "hard_cardinality_subproblem": bool(hard_cardinality_cuts),
         "device_id": int(cp.cuda.Device().id),
     }
 
@@ -2046,6 +2137,7 @@ def evaluate_lagrangian_bound(
     safety_margin_dollars: float,
     commitment_cuts: tuple[CommitmentUpperCut, ...] = (),
     commitment_cut_dual: npt.ArrayLike | None = None,
+    hard_cardinality_cuts: tuple[CommitmentCardinalityCut, ...] = (),
 ) -> LagrangianEvaluation:
     """Evaluate a valid lower bound over the exact binary generator sets.
 
@@ -2061,6 +2153,11 @@ def evaluate_lagrangian_bound(
     region.validate(generator_count)
     for cut in commitment_cuts:
         cut.validate(generator_count)
+    hard_cut_ids, hard_supports = _validate_disjoint_hard_cardinality_cuts(
+        hard_cardinality_cuts,
+        generator_count=generator_count,
+        available_cut_ids={cut.cut_id for cut in commitment_cuts},
+    )
     dual = np.asarray(row_dual, dtype=np.float64)
     if dual.shape != (master.canonical.num_rows,) or not np.all(np.isfinite(dual)):
         raise ScopfError("Lagrangian row dual has invalid shape or values")
@@ -2098,6 +2195,12 @@ def evaluate_lagrangian_bound(
         projected_cut_dual,
         strict=True,
     ):
+        if cut.cut_id in hard_cut_ids:
+            if float(observed) != 0.0:
+                raise ScopfError(
+                    "Hard cardinality cuts cannot also carry Lagrangian multipliers"
+                )
+            projected = 0.0
         maximum_sign_violation = max(maximum_sign_violation, max(float(observed), 0.0))
         commitment_cut_duals.append((cut.cut_id, float(projected)))
         constant_terms.append(float(projected) * float(cut.rhs))
@@ -2105,7 +2208,6 @@ def evaluate_lagrangian_bound(
 
     on_values = np.empty(generator_count, dtype=np.float64)
     minimizing = np.empty(generator_count, dtype=np.int8)
-    local_terms: list[float] = []
     for position, generator_index in enumerate(master.index.generator_source_rows):
         curve = master.costs[int(generator_index)]
         dispatch_coefficient = float(effective[position])
@@ -2121,18 +2223,45 @@ def evaluate_lagrangian_bound(
             ]
         ) + float(commitment_adjustment[position])
         on_values[position] = on_value
-        if region.fixed_off[position]:
-            commitment = 0
-            local_value = 0.0
-        elif region.fixed_on[position] or on_value < 0.0:
-            commitment = 1
-            local_value = on_value
-        else:
-            commitment = 0
-            local_value = 0.0
-        minimizing[position] = commitment
-        local_terms.append(local_value)
+        minimizing[position] = int(
+            not region.fixed_off[position]
+            and (region.fixed_on[position] or on_value < 0.0)
+        )
 
+    for cut, support in zip(hard_cardinality_cuts, hard_supports, strict=True):
+        free_support = support[
+            ~(region.fixed_off[support] | region.fixed_on[support])
+        ]
+        fixed_on_count = int(np.count_nonzero(region.fixed_on[support]))
+        if cut.branch_side == "at_most":
+            free_limit = int(cut.integer_threshold) - fixed_on_count
+            if free_limit < 0:
+                raise ScopfError("Hard at-most cardinality region is empty")
+            selected_count = min(
+                free_limit,
+                int(np.count_nonzero(on_values[free_support] < 0.0)),
+            )
+        else:
+            required_count = max(
+                0, int(cut.integer_threshold) - fixed_on_count
+            )
+            if required_count > int(free_support.size):
+                raise ScopfError("Hard at-least cardinality region is empty")
+            selected_count = max(
+                required_count,
+                int(np.count_nonzero(on_values[free_support] < 0.0)),
+            )
+        order = np.lexsort((free_support, on_values[free_support]))
+        minimizing[support] = 0
+        minimizing[support[region.fixed_on[support]]] = 1
+        minimizing[free_support[order[:selected_count]]] = 1
+        if float(cut.coefficients @ minimizing - cut.rhs) > 0.0:
+            raise ScopfError("Hard cardinality subproblem violated its branch cut")
+
+    local_terms = [
+        float(on_values[position]) if minimizing[position] else 0.0
+        for position in range(generator_count)
+    ]
     raw_bound = fsum(constant_terms + local_terms)
     return LagrangianEvaluation(
         raw_lower_bound=raw_bound,
@@ -2144,6 +2273,7 @@ def evaluate_lagrangian_bound(
         on_subproblem_values=on_values,
         minimizing_commitment=minimizing,
         commitment_cut_duals=tuple(commitment_cut_duals),
+        hard_cardinality_cut_ids=tuple(sorted(hard_cut_ids)),
     )
 
 
@@ -2209,6 +2339,16 @@ def replay_lagrangian_certificate(
         [float(record["canonical_row_dual"]) for record in cut_records],
         dtype=np.float64,
     )
+    hard_ids = tuple(str(value) for value in certificate.get("hard_cardinality_cut_ids", []))
+    if len(set(hard_ids)) != len(hard_ids):
+        raise ScopfError("Lagrangian certificate duplicates hard cardinality cuts")
+    cut_by_id = {cut.cut_id: cut for cut in cuts}
+    if any(
+        cut_id not in cut_by_id
+        or not isinstance(cut_by_id[cut_id], CommitmentCardinalityCut)
+        for cut_id in hard_ids
+    ):
+        raise ScopfError("Lagrangian certificate has an unknown hard cardinality cut")
     replayed = evaluate_lagrangian_bound(
         master,
         row_dual,
@@ -2216,6 +2356,9 @@ def replay_lagrangian_certificate(
         safety_margin_dollars=float(certificate["safety_margin_dollars"]),
         commitment_cuts=cuts,
         commitment_cut_dual=cut_dual,
+        hard_cardinality_cuts=tuple(
+            cut_by_id[cut_id] for cut_id in hard_ids
+        ),
     )
     if compact_v2:
         source_rows = np.asarray(master.index.generator_source_rows, dtype=np.int64) + 1

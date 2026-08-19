@@ -5,6 +5,7 @@ import pytest
 
 from activsg_scopf import lagrangian_experiment as experiment_module
 from activsg_scopf.canonical import CanonicalMILP
+from activsg_scopf.commitment_cuts import build_commitment_cardinality_cut
 from activsg_scopf.config import load_config
 from activsg_scopf.deadline import Deadline
 from activsg_scopf.errors import PrimalCandidateRejected, ScopfError
@@ -57,6 +58,9 @@ from activsg_scopf.lagrangian_experiment import (
     ACTIVSG2000_V22_EXPERIMENT_ID,
     ACTIVSG2000_V22_LOWER_BOUND_THROUGHPUT_FIX,
     ACTIVSG2000_V22_RUNTIME,
+    ACTIVSG2000_V23_EXPERIMENT_ID,
+    ACTIVSG2000_V23_NUMERICAL_HARD_CARDINALITY_FIX,
+    ACTIVSG2000_V23_RUNTIME,
     EXPERIMENT_ID,
     EXPERIMENT_TAG,
     PrimalCandidatePolicy,
@@ -763,7 +767,7 @@ def test_registered_activsg2000_v22_lower_bound_throughput_is_fail_closed() -> N
     assert registration["benchmark"]["lower_bound_throughput_fix"] == (
         ACTIVSG2000_V22_LOWER_BOUND_THROUGHPUT_FIX
     )
-    assert ACTIVSG2000_EXPERIMENT_ID_SEQUENCE[-1] == ACTIVSG2000_V22_EXPERIMENT_ID
+    assert ACTIVSG2000_V22_EXPERIMENT_ID in ACTIVSG2000_EXPERIMENT_ID_SEQUENCE
     assert all(
         _activsg2000_solver_path_registration(ACTIVSG2000_V22_EXPERIMENT_ID).values()
     )
@@ -772,6 +776,38 @@ def test_registered_activsg2000_v22_lower_bound_throughput_is_fail_closed() -> N
     ] = "changed"
     with pytest.raises(ScopfError, match="lower-bound throughput identity changed"):
         validate_lagrangian_experiment_config(v22)
+
+
+def test_registered_activsg2000_v23_numerical_hard_cardinality_is_fail_closed() -> None:
+    v22 = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v22.json")
+    v23 = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v23.json")
+    registration = validate_lagrangian_experiment_config(v23)
+
+    assert v23.benchmark_id == ACTIVSG2000_V23_EXPERIMENT_ID
+    assert registration["benchmark"]["required_git_tag"] == (
+        "experiment-2000-gpu-lagrangian-v23"
+    )
+    assert v23.raw["raw_inputs"] == v22.raw["raw_inputs"]
+    assert v23.model == v22.model
+    assert v23.runtime == ACTIVSG2000_V23_RUNTIME
+    assert v23.runtime["minimum_refinement_launch_seconds"] == 35.0
+    assert v23.runtime["child_cost_dual_seed_seconds"] == 0.0
+    assert v23.runtime["post_cut_root_cost_dual_seconds"] == 0.0
+    assert v23.raw["platforms"]["dgx_spark"]["native_scaling_mode"] == (
+        "power_system_equilibrated_certified_v4"
+    )
+    assert registration["benchmark"]["numerical_hard_cardinality_fix"] == (
+        ACTIVSG2000_V23_NUMERICAL_HARD_CARDINALITY_FIX
+    )
+    assert ACTIVSG2000_EXPERIMENT_ID_SEQUENCE[-1] == ACTIVSG2000_V23_EXPERIMENT_ID
+    assert all(
+        _activsg2000_solver_path_registration(ACTIVSG2000_V23_EXPERIMENT_ID).values()
+    )
+    v23.raw["benchmark"]["numerical_hard_cardinality_fix"][
+        "child_cost_pdlp_removed"
+    ] = False
+    with pytest.raises(ScopfError, match="numerical/hard-cardinality identity changed"):
+        validate_lagrangian_experiment_config(v23)
 
 
 def test_gpu_lagrangian_timing_accepts_centered_and_legacy_audits() -> None:
@@ -968,6 +1004,139 @@ def test_v12_cost_dual_seed_never_replaces_secure_phase_one_primal(
     assert not np.array_equal(child.solve.values, np.zeros_like(values))
     assert child.solve.statistics["cost_pdlp_returned_primal_used"] is False
     assert rounds[0]["cost_dual_seed"]["secure_phase_one_primal_preserved"] is True
+
+
+def test_v23_hard_cardinality_child_preserves_secure_primal_without_cost_lp(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v23.json")
+    case, _table = triangle_case()
+    case.gen[1, GEN_STATUS] = 1.0
+    network = build_network(case)
+    masks = RegionMasks.root(2)
+    parent_master = _prepare_region_master(
+        case=case,
+        network=network,
+        config=config,
+        masks=masks,
+        initial_pairs=(),
+        commitment_cuts=(),
+    )
+    cut = build_commitment_cardinality_cut(
+        generator_source_rows=parent_master.index.generator_source_rows,
+        subset_positions=np.asarray([0, 1], dtype=np.int64),
+        subset_id="fixture_both",
+        branch_side="at_least",
+        integer_threshold=1,
+    )
+    child_master = _prepare_region_master(
+        case=case,
+        network=network,
+        config=config,
+        masks=masks,
+        initial_pairs=(),
+        commitment_cuts=(cut,),
+    )
+    values = np.zeros(child_master.canonical.num_columns, dtype=np.float64)
+    values[child_master.index.commitment_by_generator[0]] = 1.0
+    values[child_master.index.dispatch_by_generator[0]] = 62.0
+    remaining = 37.0
+    for column, width in zip(
+        child_master.index.segments_by_generator[0],
+        child_master.costs[0].segment_widths_mw,
+        strict=True,
+    ):
+        if column is not None:
+            values[column] = min(remaining, width)
+            remaining -= values[column]
+    assert child_master.canonical.max_row_violation(values) == pytest.approx(0.0)
+
+    parent_dual = np.zeros(parent_master.canonical.num_rows, dtype=np.float64)
+    parent_lagrangian = experiment_module.evaluate_lagrangian_bound(
+        parent_master,
+        parent_dual,
+        masks,
+        safety_margin_dollars=float(
+            config.raw["benchmark"]["certificate_safety_margin_dollars"]
+        ),
+    )
+    dummy_solve = ContinuousSolveResult(
+        status="Fixture",
+        optimal=False,
+        primal_objective=float(np.asarray(parent_master.canonical.objective) @ values),
+        dual_objective=None,
+        values=values.copy(),
+        native_primal=values.copy(),
+        native_row_dual=parent_dual.copy(),
+        solve_time_seconds=0.0,
+        statistics={"error_status": "Success"},
+    )
+    parent = experiment_module.SolvedRegion(
+        region_id="parent",
+        masks=masks,
+        master=parent_master,
+        solve=dummy_solve,
+        canonical_row_dual=parent_dual,
+        lagrangian=parent_lagrangian,
+        commitment=np.asarray([1.0, 0.0]),
+        security_pairs=(),
+        rounds=[],
+        final_screen={"new_violated_pairs": 0, "maximum_violation_pu": 0.0},
+        gpu_lagrangian={},
+    )
+    phase = experiment_module.PhaseOneAttemptResult(
+        record={},
+        source_native_primal=values.copy(),
+        source_native_row_dual=None,
+        source_values=values.copy(),
+    )
+    gpu_calls: list[dict[str, object]] = []
+
+    def fake_gpu_evaluation(inner_master, row_dual, region, **kwargs):
+        gpu_calls.append(kwargs)
+        replay = experiment_module.evaluate_lagrangian_bound(
+            inner_master,
+            row_dual,
+            region,
+            safety_margin_dollars=0.0,
+            commitment_cuts=kwargs["commitment_cuts"],
+            commitment_cut_dual=kwargs["commitment_cut_dual"],
+            hard_cardinality_cuts=kwargs["hard_cardinality_cuts"],
+        )
+        return {
+            "backend": "fixture",
+            "raw_lower_bound": replay.raw_lower_bound,
+            "minimizing_commitment": replay.minimizing_commitment,
+        }
+
+    monkeypatch.setattr(
+        experiment_module,
+        "evaluate_lagrangian_bound_cupy",
+        fake_gpu_evaluation,
+    )
+    rounds = [{"phase_one": {"adapter_wall_time_seconds": 0.01}}]
+    child = experiment_module._solve_v23_hard_cardinality_region(
+        region_id="child",
+        masks=masks,
+        parent=parent,
+        master=child_master,
+        secure_phase=phase,
+        security_pairs=(),
+        phase_rounds=rounds,
+        final_screen={"new_violated_pairs": 0, "maximum_violation_pu": 0.0},
+        case=case,
+        config=config,
+        commitment_cuts=(cut,),
+    )
+
+    assert len(gpu_calls) == 1
+    assert gpu_calls[0]["hard_cardinality_cuts"] == (cut,)
+    assert np.array_equal(child.solve.values, values)
+    assert child.solve.statistics["ordinary_cost_lp_solved"] is False
+    assert child.lagrangian.hard_cardinality_cut_ids == (cut.cut_id,)
+    assert rounds[0]["hard_cardinality_lagrangian"][
+        "secure_phase_one_primal_preserved"
+    ] is True
 
 
 def test_v22_strengthened_root_uses_only_exact_replayed_cost_dual(

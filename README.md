@@ -224,6 +224,23 @@ bash scripts/spark-build-2000-gpu-lagrangian-v22.sh
 bash scripts/spark-run-2000-gpu-lagrangian-v22.sh
 ```
 
+The v23 numerical/refinement revision preserves the same SCOPF model,
+source-derived PWL costs, exact source PMIN/PMAX values, tolerances, and
+900-second deadline. Its native transformation equilibrates coefficients
+without shrinking a row merely because its finite limit is large, and maps
+cuOpt's absolute primal tolerance back to the canonical per-unit residual
+gate. For disjoint commitment-cardinality branches, the GPU now minimizes the
+binary generator subproblem exactly by ordered on-values at the inherited
+replayable multipliers. This removes the v22 child cost-PDLP searches and the
+zero-lift strengthened-root cost search. Phase I still supplies and screens
+each child's feasible continuous primal; the final raw-input replay and
+exhaustive N-1 verifier remain mandatory. The one-shot commands are:
+
+```bash
+bash scripts/spark-build-2000-gpu-lagrangian-v23.sh
+bash scripts/spark-run-2000-gpu-lagrangian-v23.sh
+```
+
 ## MIP-gap sensitivity experiments
 
 The separately registered `activsg10k-gap-sensitivity-v2` experiment runs the

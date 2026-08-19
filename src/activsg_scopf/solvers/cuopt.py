@@ -31,12 +31,16 @@ NO_NATIVE_SCALING = "none"
 POWER_SYSTEM_PER_UNIT_SCALING = "power_system_per_unit_v1"
 POWER_SYSTEM_EQUILIBRATED_SCALING = "power_system_equilibrated_v2"
 POWER_SYSTEM_SAFE_EQUILIBRATED_SCALING = "power_system_equilibrated_safe_v3"
+POWER_SYSTEM_CERTIFIED_EQUILIBRATED_SCALING = (
+    "power_system_equilibrated_certified_v4"
+)
 SUPPORTED_NATIVE_SCALING_MODES = frozenset(
     {
         NO_NATIVE_SCALING,
         POWER_SYSTEM_PER_UNIT_SCALING,
         POWER_SYSTEM_EQUILIBRATED_SCALING,
         POWER_SYSTEM_SAFE_EQUILIBRATED_SCALING,
+        POWER_SYSTEM_CERTIFIED_EQUILIBRATED_SCALING,
     }
 )
 MIP_START_NATIVE_POLICY = "presolve_off_full_feasible_assignment_readback_v3"
@@ -684,6 +688,7 @@ def native_scaling_vectors(
     if mode in {
         POWER_SYSTEM_EQUILIBRATED_SCALING,
         POWER_SYSTEM_SAFE_EQUILIBRATED_SCALING,
+        POWER_SYSTEM_CERTIFIED_EQUILIBRATED_SCALING,
     }:
         row_lower, row_upper = model.row_bound_arrays()
         for row in range(model.num_rows):
@@ -692,20 +697,27 @@ def native_scaling_vectors(
                 abs(float(coefficient) * column_scale[index] * row_scale[row])
                 for index, coefficient in zip(indices, coefficients, strict=True)
             ]
-            magnitudes = native_coefficients + [
-                abs(float(bound) * row_scale[row])
-                for bound in (row_lower[row], row_upper[row])
-                if np.isfinite(bound)
-            ]
+            magnitudes = list(native_coefficients)
+            if mode != POWER_SYSTEM_CERTIFIED_EQUILIBRATED_SCALING:
+                magnitudes.extend(
+                    abs(float(bound) * row_scale[row])
+                    for bound in (row_lower[row], row_upper[row])
+                    if np.isfinite(bound)
+                )
             maximum = max(magnitudes, default=0.0)
             if maximum > 0.0:
                 # A positive diagonal row transformation is mathematically
-                # exact.  v2 normalizes in both directions.  The safe v3 mode
-                # only strengthens rows that are below unit scale; it never
-                # reduces the established per-unit row multiplier.  Thus a
-                # native absolute residual tolerance cannot map back to a
-                # weaker canonical tolerance than under v1.
-                if mode == POWER_SYSTEM_EQUILIBRATED_SCALING:
+                # exact.  v2 normalizes coefficients and finite bounds in both
+                # directions.  The safe v3 mode only strengthens rows below
+                # unit scale.  Certified v4 normalizes coefficients in both
+                # directions but deliberately excludes finite bounds: a large
+                # RATE_A or cost RHS must not shrink otherwise well-scaled
+                # PTDF coefficients.  Its adapter tightens the native primal
+                # tolerance against the smallest resulting row multiplier.
+                if mode in {
+                    POWER_SYSTEM_EQUILIBRATED_SCALING,
+                    POWER_SYSTEM_CERTIFIED_EQUILIBRATED_SCALING,
+                }:
                     factor = float(np.clip(1.0 / maximum, 1e-6, 1e6))
                 else:
                     factor = float(min(max(1.0 / maximum, 1.0), 1e6))

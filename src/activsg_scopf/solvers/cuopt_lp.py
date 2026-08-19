@@ -17,7 +17,11 @@ from scipy import sparse
 from ..canonical import CanonicalMILP
 from ..errors import ScopfError
 from ..network import NetworkData
-from .cuopt import audit_cuopt_native_log, native_scaling_vectors
+from .cuopt import (
+    POWER_SYSTEM_CERTIFIED_EQUILIBRATED_SCALING,
+    audit_cuopt_native_log,
+    native_scaling_vectors,
+)
 
 
 @dataclass(frozen=True)
@@ -660,6 +664,32 @@ def solve_cuopt_continuous_pdlp(
     settings.set_parameter("presolve", int(presolve))
     settings.set_parameter("log_to_console", bool(log_to_console))
     settings.set_optimality_tolerance(float(optimality_tolerance))
+    certified_native_primal_tolerance: float | None = None
+    if native_scaling_mode == POWER_SYSTEM_CERTIFIED_EQUILIBRATED_SCALING:
+        # Coefficient-only row equilibration can reduce the original per-unit
+        # row multiplier.  Keep that exact reformulation, but tighten cuOpt's
+        # native primal stopping test so its absolute residual still maps to
+        # no more than half of the registered canonical residual allowance.
+        # The independent canonical check remains authoritative.
+        certified_native_primal_tolerance = min(
+            float(optimality_tolerance),
+            0.5
+            * float(primal_feasibility_tolerance)
+            * float(native_base_mva)
+            * float(np.min(row_scale)),
+        )
+        if not np.isfinite(certified_native_primal_tolerance) or (
+            certified_native_primal_tolerance <= 0.0
+        ):
+            raise ScopfError(
+                "Certified cuOpt equilibration produced an invalid primal tolerance"
+            )
+        settings.set_parameter(
+            "absolute_primal_tolerance", certified_native_primal_tolerance
+        )
+        settings.set_parameter(
+            "relative_primal_tolerance", certified_native_primal_tolerance
+        )
     requested_parameters = {
         "method": 1,
         "pdlp_solver_mode": int(pdlp_solver_mode),
@@ -681,6 +711,22 @@ def solve_cuopt_continuous_pdlp(
             "cuOpt continuous PDLP parameter readback mismatch: "
             f"requested={requested_parameters}, observed={readback}"
         )
+    certified_primal_tolerance_readback: dict[str, float] | None = None
+    if certified_native_primal_tolerance is not None:
+        certified_primal_tolerance_readback = {
+            name: float(settings.get_parameter(name))
+            for name in (
+                "absolute_primal_tolerance",
+                "relative_primal_tolerance",
+            )
+        }
+        if any(
+            value != certified_native_primal_tolerance
+            for value in certified_primal_tolerance_readback.values()
+        ):
+            raise ScopfError(
+                "cuOpt certified primal-tolerance readback did not match"
+            )
 
     native_log_path: Path | None = None
     if not concurrent_solver_context:
@@ -917,6 +963,13 @@ def solve_cuopt_continuous_pdlp(
             "canonical_rows_translated": model.num_rows,
             "native_constraints_translated": native_constraint_count,
             "native_scaling_mode": native_scaling_mode,
+            "certified_native_primal_tolerance": (
+                certified_native_primal_tolerance
+            ),
+            "minimum_native_row_scale": float(np.min(row_scale)),
+            "certified_primal_tolerance_readback": (
+                certified_primal_tolerance_readback
+            ),
             "redundant_bounds": redundant_bounds_audit,
             "method_parameters_requested": requested_parameters,
             "method_parameters_readback": readback,
