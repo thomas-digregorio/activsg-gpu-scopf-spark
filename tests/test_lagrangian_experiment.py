@@ -24,6 +24,9 @@ from activsg_scopf.lagrangian_experiment import (
     ACTIVSG2000_V14_CENTERED_DUAL_FIX,
     ACTIVSG2000_V14_EXPERIMENT_ID,
     ACTIVSG2000_V14_RUNTIME,
+    ACTIVSG2000_V15_EXPERIMENT_ID,
+    ACTIVSG2000_V15_MINIMIZER_CUT_FIX,
+    ACTIVSG2000_V15_RUNTIME,
     EXPERIMENT_ID,
     EXPERIMENT_TAG,
     PrimalCandidatePolicy,
@@ -492,6 +495,35 @@ def test_registered_activsg2000_v14_centered_dual_fix_is_fail_closed() -> None:
     v14.raw["runtime"]["centered_dual_coupling_trust_radii"][0] = 11.0
     with pytest.raises(ScopfError, match="runtime policy changed"):
         validate_lagrangian_experiment_config(v14)
+
+
+def test_registered_activsg2000_v15_minimizer_cut_fix_is_fail_closed() -> None:
+    v14 = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v14.json")
+    v15 = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v15.json")
+    registration = validate_lagrangian_experiment_config(v15)
+
+    assert v15.benchmark_id == ACTIVSG2000_V15_EXPERIMENT_ID
+    assert registration["benchmark"]["required_git_tag"] == (
+        "experiment-2000-gpu-lagrangian-v15"
+    )
+    assert v15.raw["raw_inputs"] == v14.raw["raw_inputs"]
+    assert v15.model == v14.model
+    assert v15.runtime == ACTIVSG2000_V15_RUNTIME
+    assert v15.runtime["deadline_seconds"] == 900.0
+    assert v15.runtime["maximum_primal_candidate_seconds"] == 30.0
+    assert v15.runtime["maximum_primal_candidate_round_seconds"] == 15.0
+    assert v15.runtime["always_run_gpu_primal_heuristics"] is False
+    assert v15.runtime["minimizer_feasibility_cut_enabled"] is True
+    assert v15.runtime["minimizer_feasibility_cut_maximum_iterations"] == 24
+    assert registration["benchmark"]["minimizer_cut_fix"] == (
+        ACTIVSG2000_V15_MINIMIZER_CUT_FIX
+    )
+    assert registration["benchmark"]["minimizer_cut_fix"][
+        "cpu_commitment_dispatch_objective_or_bound_seeded"
+    ] is False
+    v15.raw["runtime"]["minimizer_feasibility_cut_maximum_iterations"] = 25
+    with pytest.raises(ScopfError, match="runtime policy changed"):
+        validate_lagrangian_experiment_config(v15)
 
 
 def test_gpu_lagrangian_timing_accepts_centered_and_legacy_audits() -> None:
