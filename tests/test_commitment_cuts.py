@@ -3,6 +3,7 @@ import pytest
 
 from activsg_scopf.commitment_cuts import (
     _relax_commitment_cut_coefficient_dust,
+    build_commitment_cardinality_cut,
     commitment_feasibility_cut_from_record,
     commitment_upper_cut_from_record,
     derive_commitment_feasibility_cut,
@@ -12,6 +13,7 @@ from activsg_scopf.fixed_commitment import build_fixed_commitment_projection
 from activsg_scopf.lagrangian import (
     RegionMasks,
     evaluate_lagrangian_bound,
+    optimize_commitment_cut_duals_coordinate_numpy,
     replay_lagrangian_certificate,
 )
 from activsg_scopf.network import build_network
@@ -19,6 +21,99 @@ from activsg_scopf.phase_one import build_phase_one_model, phase_one_certificate
 from activsg_scopf.reduced import CouplingRow, build_reduced_master, fix_commitments
 
 from .helpers import triangle_case
+
+
+def test_exact_coordinate_ascent_strengthens_at_most_commitment_cut() -> None:
+    case, _table = triangle_case()
+    master = build_reduced_master(case, build_network(case))
+    rows = master.index.generator_source_rows
+    cut = build_commitment_cardinality_cut(
+        generator_source_rows=rows,
+        subset_positions=np.asarray([0], dtype=np.int64),
+        subset_id="only_generator",
+        branch_side="at_most",
+        integer_threshold=0,
+    )
+    row_dual = np.zeros(master.canonical.num_rows, dtype=np.float64)
+    balance = next(row for row in master.coupling_rows if row.kind == "balance_equality")
+    row_dual[balance.row_index] = 20.0
+    region = RegionMasks.root(1)
+    initial = evaluate_lagrangian_bound(
+        master,
+        row_dual,
+        region,
+        safety_margin_dollars=0.0,
+        commitment_cuts=(cut,),
+        commitment_cut_dual=np.asarray([0.0]),
+    )
+
+    cut_dual, audit = optimize_commitment_cut_duals_coordinate_numpy(
+        master,
+        row_dual,
+        region,
+        commitment_cuts=(cut,),
+        initial_commitment_cut_dual=np.asarray([0.0]),
+        cycles=2,
+    )
+    strengthened = evaluate_lagrangian_bound(
+        master,
+        row_dual,
+        region,
+        safety_margin_dollars=0.0,
+        commitment_cuts=(cut,),
+        commitment_cut_dual=cut_dual,
+    )
+
+    assert cut_dual[0] < 0.0
+    assert strengthened.raw_lower_bound > initial.raw_lower_bound
+    assert strengthened.raw_lower_bound == pytest.approx(audit["best_raw_lower_bound"])
+    assert np.all(np.diff(audit["cycle_raw_lower_bounds"]) >= -1e-8)
+
+
+def test_exact_coordinate_ascent_handles_negated_at_least_cut() -> None:
+    case, _table = triangle_case()
+    master = build_reduced_master(case, build_network(case))
+    rows = master.index.generator_source_rows
+    cut = build_commitment_cardinality_cut(
+        generator_source_rows=rows,
+        subset_positions=np.asarray([0], dtype=np.int64),
+        subset_id="only_generator",
+        branch_side="at_least",
+        integer_threshold=1,
+    )
+    row_dual = np.zeros(master.canonical.num_rows, dtype=np.float64)
+    region = RegionMasks.root(1)
+    initial = evaluate_lagrangian_bound(
+        master,
+        row_dual,
+        region,
+        safety_margin_dollars=0.0,
+        commitment_cuts=(cut,),
+        commitment_cut_dual=np.asarray([0.0]),
+    )
+
+    cut_dual, audit = optimize_commitment_cut_duals_coordinate_numpy(
+        master,
+        row_dual,
+        region,
+        commitment_cuts=(cut,),
+        initial_commitment_cut_dual=np.asarray([0.0]),
+        cycles=2,
+    )
+    strengthened = evaluate_lagrangian_bound(
+        master,
+        row_dual,
+        region,
+        safety_margin_dollars=0.0,
+        commitment_cuts=(cut,),
+        commitment_cut_dual=cut_dual,
+    )
+
+    assert cut.coefficients[0] == -1.0
+    assert cut.rhs == -1.0
+    assert cut_dual[0] < 0.0
+    assert strengthened.raw_lower_bound > initial.raw_lower_bound
+    assert strengthened.raw_lower_bound == pytest.approx(audit["best_raw_lower_bound"])
 
 
 def test_commitment_cut_dust_cleanup_is_an_outward_relaxation() -> None:

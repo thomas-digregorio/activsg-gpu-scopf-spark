@@ -238,6 +238,282 @@ def evaluate_lagrangian_bound_cupy(
     }
 
 
+def _coordinate_ascent_commitment_cut_arrays(
+    *,
+    xp: Any,
+    base_on_values: Any,
+    coupling_constant: Any,
+    cut_coefficients: Any,
+    cut_rhs: Any,
+    initial_cut_dual: Any,
+    fixed_off: Any,
+    fixed_on: Any,
+    cycles: int,
+) -> tuple[Any, Any, Any, Any, Any]:
+    """Maximize each commitment-cut multiplier over its exact breakpoints.
+
+    With the network-coupling multipliers fixed, the Lagrangian dual is a
+    concave piecewise-linear function of any one commitment-cut multiplier.
+    Its only finite breakpoints are generator on/off indifference points.
+    Evaluating the current point, zero, and every nonpositive breakpoint
+    therefore gives an exact one-dimensional coordinate maximizer.  Keeping
+    the current multiplier as the first candidate makes every coordinate move
+    monotone even when several candidates tie.
+    """
+
+    if cycles < 0:
+        raise ScopfError("Commitment-cut coordinate-ascent cycles must be nonnegative")
+    cut_count = int(cut_rhs.size)
+    generator_count = int(base_on_values.size)
+    if cut_coefficients.shape != (cut_count, generator_count):
+        raise ScopfError("Commitment-cut coordinate matrix has an invalid shape")
+    if initial_cut_dual.shape != (cut_count,):
+        raise ScopfError("Commitment-cut coordinate initial dual has an invalid shape")
+    if fixed_off.shape != (generator_count,) or fixed_on.shape != (generator_count,):
+        raise ScopfError("Commitment-cut coordinate region masks have an invalid shape")
+
+    z = xp.minimum(initial_cut_dual.copy(), 0.0)
+    zero_candidate = xp.zeros(1, dtype=xp.float64)
+
+    def local_values(on_values: Any) -> Any:
+        return xp.where(
+            fixed_off,
+            0.0,
+            xp.where(fixed_on, on_values, xp.minimum(0.0, on_values)),
+        )
+
+    def state() -> tuple[Any, Any, Any]:
+        on_values = base_on_values - z @ cut_coefficients
+        commitment = xp.where(
+            fixed_off,
+            0,
+            xp.where(fixed_on | (on_values < 0.0), 1, 0),
+        )
+        raw = coupling_constant + z @ cut_rhs + xp.sum(local_values(on_values))
+        return raw, on_values, commitment
+
+    initial_raw, _initial_on, _initial_commitment = state()
+    cycle_raw = xp.empty(cycles + 1, dtype=xp.float64)
+    cycle_raw[0] = initial_raw
+    for cycle in range(cycles):
+        for cut_index in range(cut_count):
+            coefficients = cut_coefficients[cut_index]
+            without_coordinate = (
+                base_on_values
+                - z @ cut_coefficients
+                + z[cut_index] * coefficients
+            )
+            nonzero = coefficients != 0.0
+            breakpoints = without_coordinate / xp.where(
+                nonzero, coefficients, 1.0
+            )
+            valid_breakpoint = (
+                nonzero & xp.isfinite(breakpoints) & (breakpoints <= 0.0)
+            )
+            breakpoints = xp.where(
+                valid_breakpoint, breakpoints, z[cut_index]
+            )
+            candidates = xp.concatenate(
+                (
+                    z[cut_index : cut_index + 1],
+                    zero_candidate,
+                    breakpoints,
+                )
+            )
+            candidate_on = (
+                without_coordinate[None, :]
+                - candidates[:, None] * coefficients[None, :]
+            )
+            other_constant = z @ cut_rhs - z[cut_index] * cut_rhs[cut_index]
+            candidate_raw = (
+                coupling_constant
+                + other_constant
+                + candidates * cut_rhs[cut_index]
+                + xp.sum(local_values(candidate_on), axis=1)
+            )
+            candidate_raw = xp.where(
+                xp.isfinite(candidate_raw), candidate_raw, -xp.inf
+            )
+            z[cut_index] = candidates[xp.argmax(candidate_raw)]
+        cycle_raw[cycle + 1] = state()[0]
+    final_raw, final_on, final_commitment = state()
+    return z, final_raw, final_on, final_commitment, cycle_raw
+
+
+def optimize_commitment_cut_duals_coordinate_numpy(
+    master: ReducedMaster,
+    row_dual: npt.ArrayLike,
+    region: RegionMasks,
+    *,
+    commitment_cuts: tuple[CommitmentUpperCut, ...],
+    initial_commitment_cut_dual: npt.ArrayLike | None = None,
+    cycles: int = 1,
+) -> tuple[FloatArray, dict[str, Any]]:
+    """CPU reference for exact commitment-cut coordinate ascent."""
+
+    generator_count = master.index.generator_source_rows.size
+    region.validate(generator_count)
+    for cut in commitment_cuts:
+        cut.validate(generator_count)
+    initial = (
+        np.zeros(len(commitment_cuts), dtype=np.float64)
+        if initial_commitment_cut_dual is None
+        else np.asarray(initial_commitment_cut_dual, dtype=np.float64)
+    )
+    if initial.shape != (len(commitment_cuts),) or not np.all(np.isfinite(initial)):
+        raise ScopfError("Commitment-cut coordinate initial dual has invalid values")
+    base = evaluate_lagrangian_bound(
+        master,
+        row_dual,
+        region,
+        safety_margin_dollars=0.0,
+    )
+    coupling_by_name = dict(base.coupling_duals)
+    coupling_constant = fsum(
+        coupling_by_name[row.row_name] * row.rhs for row in master.coupling_rows
+    )
+    coefficients = (
+        np.stack([cut.coefficients for cut in commitment_cuts])
+        if commitment_cuts
+        else np.empty((0, generator_count), dtype=np.float64)
+    )
+    rhs = np.asarray([cut.rhs for cut in commitment_cuts], dtype=np.float64)
+    z, raw, on_values, commitment, cycle_raw = _coordinate_ascent_commitment_cut_arrays(
+        xp=np,
+        base_on_values=np.asarray(base.on_subproblem_values, dtype=np.float64),
+        coupling_constant=np.asarray(coupling_constant, dtype=np.float64),
+        cut_coefficients=coefficients,
+        cut_rhs=rhs,
+        initial_cut_dual=initial,
+        fixed_off=region.fixed_off,
+        fixed_on=region.fixed_on,
+        cycles=cycles,
+    )
+    if not np.all(np.diff(cycle_raw) >= -1e-8):
+        raise ScopfError("Commitment-cut coordinate ascent weakened a completed cycle")
+    return np.asarray(z, dtype=np.float64), {
+        "backend": "numpy_fp64_exact_commitment_cut_coordinate_ascent",
+        "cycles": cycles,
+        "coordinate_count": len(commitment_cuts),
+        "initial_raw_lower_bound": float(cycle_raw[0]),
+        "best_raw_lower_bound": float(raw),
+        "improvement_dollars": float(raw - cycle_raw[0]),
+        "cycle_raw_lower_bounds": np.asarray(cycle_raw, dtype=np.float64),
+        "best_minimizing_commitment": np.asarray(commitment, dtype=np.int8),
+        "best_on_subproblem_values": np.asarray(on_values, dtype=np.float64),
+        "best_commitment_cut_dual": np.asarray(z, dtype=np.float64),
+    }
+
+
+def optimize_commitment_cut_duals_coordinate_cupy(
+    master: ReducedMaster,
+    row_dual: npt.ArrayLike,
+    region: RegionMasks,
+    *,
+    commitment_cuts: tuple[CommitmentUpperCut, ...],
+    initial_commitment_cut_dual: npt.ArrayLike | None = None,
+    cycles: int = 8,
+) -> tuple[FloatArray, dict[str, Any]]:
+    """GPU-resident exact coordinate ascent for commitment-cut multipliers."""
+
+    try:
+        import cupy as cp
+    except ImportError as exc:
+        raise ScopfError("GPU commitment-cut coordinate ascent requires CuPy") from exc
+    generator_count = master.index.generator_source_rows.size
+    region.validate(generator_count)
+    for cut in commitment_cuts:
+        cut.validate(generator_count)
+    dual_host = np.asarray(row_dual, dtype=np.float64)
+    if dual_host.shape != (master.canonical.num_rows,) or not np.all(
+        np.isfinite(dual_host)
+    ):
+        raise ScopfError("GPU commitment-cut coordinate row dual has invalid values")
+    initial = (
+        np.zeros(len(commitment_cuts), dtype=np.float64)
+        if initial_commitment_cut_dual is None
+        else np.asarray(initial_commitment_cut_dual, dtype=np.float64)
+    )
+    if initial.shape != (len(commitment_cuts),) or not np.all(np.isfinite(initial)):
+        raise ScopfError("GPU commitment-cut coordinate initial dual has invalid values")
+
+    coupling_rows = sorted(master.coupling_rows, key=lambda row: row.row_name)
+    coupling_indices = np.asarray(
+        [row.row_index for row in coupling_rows], dtype=np.int64
+    )
+    coupling_dual = cp.asarray(dual_host[coupling_indices], dtype=cp.float64)
+    upper = cp.asarray(
+        [row.kind != "balance_equality" for row in coupling_rows], dtype=cp.bool_
+    )
+    coupling_dual = cp.where(upper, cp.minimum(coupling_dual, 0.0), coupling_dual)
+    coupling_rhs = cp.asarray([row.rhs for row in coupling_rows], dtype=cp.float64)
+    coupling_coefficients = cp.asarray(
+        np.stack([row.generator_coefficients for row in coupling_rows]),
+        dtype=cp.float64,
+    )
+    effective = -(coupling_dual @ coupling_coefficients)
+    curves = [master.costs[int(index)] for index in master.index.generator_source_rows]
+    pmin = cp.asarray([curve.pmin_mw for curve in curves], dtype=cp.float64)
+    base_cost = cp.asarray(
+        [curve.committed_base_cost for curve in curves], dtype=cp.float64
+    )
+    widths = cp.asarray(
+        np.stack([curve.segment_widths_mw for curve in curves]), dtype=cp.float64
+    )
+    slopes = cp.asarray(
+        np.stack([curve.segment_slopes_per_mwh for curve in curves]), dtype=cp.float64
+    )
+    base_on = base_cost + effective * pmin + cp.sum(
+        cp.minimum(0.0, (slopes + effective[:, None]) * widths), axis=1
+    )
+    cut_coefficients = (
+        cp.asarray(
+            np.stack([cut.coefficients for cut in commitment_cuts]),
+            dtype=cp.float64,
+        )
+        if commitment_cuts
+        else cp.empty((0, generator_count), dtype=cp.float64)
+    )
+    cut_rhs = cp.asarray([cut.rhs for cut in commitment_cuts], dtype=cp.float64)
+    z, raw, on_values, commitment, cycle_raw = _coordinate_ascent_commitment_cut_arrays(
+        xp=cp,
+        base_on_values=base_on,
+        coupling_constant=coupling_dual @ coupling_rhs,
+        cut_coefficients=cut_coefficients,
+        cut_rhs=cut_rhs,
+        initial_cut_dual=cp.asarray(initial, dtype=cp.float64),
+        fixed_off=cp.asarray(region.fixed_off),
+        fixed_on=cp.asarray(region.fixed_on),
+        cycles=cycles,
+    )
+    cp.cuda.get_current_stream().synchronize()
+    cycle_host = cp.asnumpy(cycle_raw)
+    if not np.all(np.isfinite(cycle_host)) or not np.all(
+        np.diff(cycle_host) >= -1e-8
+    ):
+        raise ScopfError("GPU commitment-cut coordinate ascent lost monotonicity")
+    initial_raw = float(cycle_host[0])
+    final_raw = float(raw.item())
+    return cp.asnumpy(z), {
+        "backend": "cupy_fp64_exact_commitment_cut_coordinate_ascent",
+        "cycles": cycles,
+        "coordinate_count": len(commitment_cuts),
+        "initial_raw_lower_bound": initial_raw,
+        "best_raw_lower_bound": final_raw,
+        "improvement_dollars": final_raw - initial_raw,
+        "cycle_raw_lower_bounds": cycle_host,
+        "best_minimizing_commitment": cp.asnumpy(commitment).astype(np.int8),
+        "best_on_subproblem_values": cp.asnumpy(on_values),
+        "best_commitment_cut_dual": cp.asnumpy(z),
+        "device_state_persistent_across_coordinates": True,
+        "host_transfer_during_coordinates": False,
+        "coordinate_policy": (
+            "current_zero_and_all_nonpositive_generator_indifference_breakpoints_v1"
+        ),
+        "device_id": int(cp.cuda.Device().id),
+    }
+
+
 def optimize_lagrangian_bound_cupy(
     master: ReducedMaster,
     row_dual: npt.ArrayLike,
