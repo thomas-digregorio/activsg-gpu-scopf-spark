@@ -192,6 +192,15 @@ def main() -> None:
     candidate_global_bound = min(candidate_frontier_bounds)
     gpu_incumbent = float(prior["objective"])
     candidate_gap = (gpu_incumbent - candidate_global_bound) / abs(gpu_incumbent)
+    requested_gap = float(config.model["mip_relative_gap_tolerance"])
+    required_bound = gpu_incumbent * (1.0 - requested_gap)
+    required_lift = max(0.0, required_bound - root_bound)
+    achieved_lift = max(0.0, candidate_global_bound - root_bound)
+    # A few cents of exact coordinate improvement are numerically real but do
+    # not justify a full registered run when the certificate needs thousands
+    # of dollars of lift.  Treat at least one percent of the required lift as
+    # the component-probe gate for a material algorithmic improvement.
+    material_lift_threshold = 0.01 * required_lift
     print(
         "V13_CUT_COORDINATE_ASCENT_PROBE="
         + json.dumps(
@@ -204,10 +213,17 @@ def main() -> None:
                 "root_bound": root_bound,
                 "candidate_global_bound": candidate_global_bound,
                 "candidate_relative_gap": candidate_gap,
-                "requested_relative_gap": float(
-                    config.model["mip_relative_gap_tolerance"]
+                "requested_relative_gap": requested_gap,
+                "required_bound": required_bound,
+                "required_lift_dollars": required_lift,
+                "achieved_lift_dollars": achieved_lift,
+                "achieved_fraction_of_required_lift": (
+                    1.0 if required_lift == 0.0 else achieved_lift / required_lift
                 ),
-                "material_global_improvement": candidate_global_bound > root_bound + 1e-6,
+                "material_lift_threshold_dollars": material_lift_threshold,
+                "material_global_improvement": (
+                    required_lift == 0.0 or achieved_lift >= material_lift_threshold
+                ),
                 "regions": records,
                 "total_probe_wall_time_seconds": time.perf_counter() - started,
             },
