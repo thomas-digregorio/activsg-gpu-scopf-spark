@@ -1,0 +1,105 @@
+{
+  "schema_version": "1.0.0",
+  "benchmark_id": "activsg2000-gpu-lagrangian-v11",
+  "frozen_identity": {
+    "commit": "9eed34bbdac6a21ef6fee3713fb277635bbd17f1",
+    "tag": "experiment-2000-gpu-lagrangian-v11",
+    "config_sha256": "257bf44aed3ab76f4d723cbc2b3d32d4e1fb487947cc8aa5bdef5d691c650e44"
+  },
+  "source_identity": {
+    "case_file": "case_ACTIVSg2000.m",
+    "case_sha256": "8d00618de8fd10bf35a599f59d2deebfecd0d86e28fcff73219ad7c4ebab860b",
+    "contingency_file": "contab_ACTIVSg2000.m",
+    "contingency_sha256": "198b39f0381925a4ddacbe2148973cb1d93ddfe220303829cf87b16d45190bba"
+  },
+  "raw_artifacts": {
+    "result_path": "/home/dgxsparktd/activsg-gpu-scopf-spark/results/experiments/activsg2000-gpu-lagrangian-v11-dgx-spark.json",
+    "result_bytes": 17973629,
+    "result_sha256": "209a11ddf6b423d6e1b2199aca3319340af7bf159ddfdbf07f5d6ddbb96735d9",
+    "launcher_log_sha256": "acaa27ab208fac810430198ed5ecb62fc75494ca126b9c0454d1b73f39dc0b71",
+    "worker_console_log_sha256": "1a17a73dcf44bdcb5629848f8355dc17dff227426fe5e06b8444b6fa37120ece"
+  },
+  "outcome": {
+    "status": "incomplete_refinement_budget_reserve_reached",
+    "elapsed_seconds": 754.8066088230116,
+    "total_wall_time_seconds": 756.1708413610031,
+    "objective": 1142133.3767435683,
+    "bound": 1128529.212256944,
+    "bound_status": "independently_replayed_current_frontier",
+    "relative_gap": 0.011911187225271595,
+    "requested_relative_gap": 0.001,
+    "commitment_count": 331,
+    "secure_primal": true,
+    "gap_certified": false,
+    "success_gate_passed": false
+  },
+  "verification": {
+    "passed": true,
+    "checked_valid_outages": 2740,
+    "checked_security_sides": 17563400,
+    "maximum_model_residual_pu": 2.3442225938197226e-12,
+    "maximum_security_violation_pu": 3.489135451673064e-9,
+    "maximum_integrality_violation": 0.0,
+    "objective_difference": 1.6298145055770874e-9
+  },
+  "lower_bound_verification": {
+    "passed": true,
+    "frontier_region_count": 3,
+    "validated_global_feasibility_cut_count": 5,
+    "recorded_global_lower_bound": 1128529.212256944,
+    "replayed_global_lower_bound": 1128529.212256944,
+    "global_bound_difference_dollars": 0.0
+  },
+  "work_counts": {
+    "successful_disjunctive_splits": 2,
+    "rolled_back_disjunctive_splits": 2,
+    "solved_regions": 5,
+    "frontier_regions": 3,
+    "global_feasibility_cuts": 5,
+    "primal_repairs": 7
+  },
+  "mip_start": {
+    "contract_passed": true,
+    "submitted_canonical_columns": 9220,
+    "submitted_native_columns": 9215,
+    "presolve_parameter_readback": 0,
+    "native_translated_vector_readback": true,
+    "native_rejection_detected": false,
+    "maximum_native_row_violation": 3.489137867518366e-9
+  },
+  "pricing": {
+    "status": "gpu_pdlp_fixed_commitment_exact_cost_epigraph_dual_certified",
+    "certified_for_returned_dispatch": true,
+    "bus_price_count": 2000,
+    "interpretation": "certified_fixed_commitment_lp_prices"
+  },
+  "numerical_audit": {
+    "native_log_audit_count": 44,
+    "native_mip_start_rejections": 0,
+    "native_barrier_warnings": 0,
+    "native_free_variable_warnings": 0,
+    "coefficient_range_warnings": 27,
+    "unique_long_child_cost_lp_rejections": 6,
+    "phase_one_zero_violation_child_not_reused": true
+  },
+  "timings_seconds": {
+    "network_and_reduced_model_build": 1.4256451370019931,
+    "relaxation_pdlp_adapter_wall": 285.72475243301596,
+    "cupy_lagrangian_evaluation_wall": 4.421420512997429,
+    "gpu_primal_heuristics_adapter_wall": 104.80463186799898,
+    "independent_verification": 0.3977763180009788,
+    "result_serialization": 0.061594150000019
+  },
+  "peak_memory": {
+    "cuda_device_memory_delta_bytes": 9420439552,
+    "cupy_pool_used_bytes": 70301696,
+    "process_rss_bytes": 7168335872
+  },
+  "cpu_boundary": {
+    "laptop_end_to_end_seconds": 1007.3702709000063,
+    "laptop_relative_gap": 0.0007763998859633739,
+    "gpu_seconds_less_than_cpu": 251.199429539003,
+    "gpu_percent_less_wall_time": 24.9361567236421,
+    "comparable_successful_solution": false
+  }
+}
