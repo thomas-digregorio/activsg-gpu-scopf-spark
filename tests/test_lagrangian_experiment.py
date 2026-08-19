@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import numpy as np
@@ -76,6 +77,9 @@ from activsg_scopf.lagrangian_experiment import (
     ACTIVSG2000_V28_ARGMIN_REPLAY_NUMERICAL_FIX,
     ACTIVSG2000_V28_EXPERIMENT_ID,
     ACTIVSG2000_V28_RUNTIME,
+    ACTIVSG2000_V29_EXPERIMENT_ID,
+    ACTIVSG2000_V29_PROOF_EVIDENCE_SERIALIZATION_FIX,
+    ACTIVSG2000_V29_RUNTIME,
     EXPERIMENT_ID,
     EXPERIMENT_TAG,
     PrimalCandidatePolicy,
@@ -963,7 +967,7 @@ def test_registered_activsg2000_v28_argmin_replay_fix_is_fail_closed() -> None:
     assert registration["benchmark"]["argmin_replay_numerical_fix"] == (
         ACTIVSG2000_V28_ARGMIN_REPLAY_NUMERICAL_FIX
     )
-    assert ACTIVSG2000_EXPERIMENT_ID_SEQUENCE[-1] == ACTIVSG2000_V28_EXPERIMENT_ID
+    assert ACTIVSG2000_V28_EXPERIMENT_ID in ACTIVSG2000_EXPERIMENT_ID_SEQUENCE
     assert all(
         _activsg2000_solver_path_registration(ACTIVSG2000_V28_EXPERIMENT_ID).values()
     )
@@ -972,6 +976,35 @@ def test_registered_activsg2000_v28_argmin_replay_fix_is_fail_closed() -> None:
     ] = "changed"
     with pytest.raises(ScopfError, match="v28 argmin-replay numerical-fix"):
         validate_lagrangian_experiment_config(v28)
+
+
+def test_registered_activsg2000_v29_proof_serialization_fix_is_fail_closed() -> None:
+    v28 = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v28.json")
+    v29 = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v29.json")
+    registration = validate_lagrangian_experiment_config(v29)
+
+    assert v29.benchmark_id == ACTIVSG2000_V29_EXPERIMENT_ID
+    assert registration["benchmark"]["required_git_tag"] == (
+        "experiment-2000-gpu-lagrangian-v29"
+    )
+    assert v29.raw["raw_inputs"] == v28.raw["raw_inputs"]
+    assert v29.model == v28.model
+    assert v29.runtime == ACTIVSG2000_V29_RUNTIME == ACTIVSG2000_V28_RUNTIME
+    assert registration["benchmark"]["argmin_replay_numerical_fix"] == (
+        ACTIVSG2000_V28_ARGMIN_REPLAY_NUMERICAL_FIX
+    )
+    assert registration["benchmark"]["proof_evidence_serialization_fix"] == (
+        ACTIVSG2000_V29_PROOF_EVIDENCE_SERIALIZATION_FIX
+    )
+    assert ACTIVSG2000_EXPERIMENT_ID_SEQUENCE[-1] == ACTIVSG2000_V29_EXPERIMENT_ID
+    assert all(
+        _activsg2000_solver_path_registration(ACTIVSG2000_V29_EXPERIMENT_ID).values()
+    )
+    v29.raw["benchmark"]["proof_evidence_serialization_fix"][
+        "serialization_fix"
+    ] = "changed"
+    with pytest.raises(ScopfError, match="v29 proof-evidence serialization-fix"):
+        validate_lagrangian_experiment_config(v29)
 
 
 def test_gpu_alternate_argmin_requires_exact_host_objective_replay() -> None:
@@ -1504,6 +1537,16 @@ def test_v26_proof_only_child_uses_conditioned_proposal_and_exact_replay(
     assert child.lagrangian.hard_cardinality_cut_ids == (cut.cut_id,)
     assert child.gpu_lagrangian["exact_host_replay_is_bound_authority"] is True
     assert child.gpu_lagrangian["search_lp_solution_used_as_bound"] is False
+    record = experiment_module._region_record(
+        child,
+        compact_lagrangian_certificate=True,
+    )
+    json.dumps(record)
+    nested_audit = record["constraint_generation_rounds"][0][
+        "proof_only_hard_cardinality"
+    ]["gpu_dual_search"]
+    assert isinstance(nested_audit["best_commitment_cut_dual"], list)
+    assert isinstance(nested_audit["best_minimizing_commitment"], list)
 
 
 def test_v22_strengthened_root_uses_only_exact_replayed_cost_dual(

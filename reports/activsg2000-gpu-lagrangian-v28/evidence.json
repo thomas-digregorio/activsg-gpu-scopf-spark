@@ -1,0 +1,33 @@
+{
+  "schema_version": "1.0.0",
+  "benchmark_id": "activsg2000-gpu-lagrangian-v28",
+  "status": "failed_exception",
+  "one_shot": true,
+  "frozen_identity": {
+    "commit": "cfe04f2fda2d310d81b8c7b9fed39232d3cde4e0",
+    "tag": "experiment-2000-gpu-lagrangian-v28",
+    "config_sha256": "70a3a589e97a0a7628d9a2a9b1f33d862c44cb2cd3b7f8252038b1af8d89be4b"
+  },
+  "total_wall_time_seconds": 306.21677517000353,
+  "objective": 1142133.305099282,
+  "bound": 1130027.3066126746,
+  "relative_gap": 0.010599461930194742,
+  "commitment_count": 331,
+  "failure": {
+    "error_type": "TypeError",
+    "error": "Object of type ndarray is not JSON serializable",
+    "stage": "first_proof_only_child_checkpoint_serialization",
+    "first_nested_field": "best_commitment_cut_dual"
+  },
+  "passed_gates": {
+    "independent_secure_incumbent_verification": true,
+    "full_mip_start_polish": true,
+    "native_mip_start_contract": true,
+    "initial_gpu_host_argmin_replay": true,
+    "first_proof_only_child_returned": true
+  },
+  "cpu_solution_data_used": false,
+  "proof_values_changed_by_v29_fix": false,
+  "requested_gap_certified": false,
+  "final_exhaustive_verification_completed": false
+}

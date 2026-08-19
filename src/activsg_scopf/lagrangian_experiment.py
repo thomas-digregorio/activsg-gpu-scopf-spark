@@ -157,6 +157,7 @@ ACTIVSG2000_V25_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v25"
 ACTIVSG2000_V26_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v26"
 ACTIVSG2000_V27_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v27"
 ACTIVSG2000_V28_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v28"
+ACTIVSG2000_V29_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v29"
 ACTIVSG2000_EXPERIMENT_ID_SEQUENCE = (
     ACTIVSG2000_EXPERIMENT_ID,
     ACTIVSG2000_V2_EXPERIMENT_ID,
@@ -186,6 +187,7 @@ ACTIVSG2000_EXPERIMENT_ID_SEQUENCE = (
     ACTIVSG2000_V26_EXPERIMENT_ID,
     ACTIVSG2000_V27_EXPERIMENT_ID,
     ACTIVSG2000_V28_EXPERIMENT_ID,
+    ACTIVSG2000_V29_EXPERIMENT_ID,
 )
 
 
@@ -217,6 +219,7 @@ ACTIVSG2000_V23_PLUS_EXPERIMENT_IDS = _activsg2000_version_ids_from(23)
 ACTIVSG2000_V24_PLUS_EXPERIMENT_IDS = _activsg2000_version_ids_from(24)
 ACTIVSG2000_V26_PLUS_EXPERIMENT_IDS = _activsg2000_version_ids_from(26)
 ACTIVSG2000_V27_PLUS_EXPERIMENT_IDS = _activsg2000_version_ids_from(27)
+ACTIVSG2000_V28_PLUS_EXPERIMENT_IDS = _activsg2000_version_ids_from(28)
 ACTIVSG2000_COST_DUAL_CHILD_EXPERIMENT_IDS = frozenset(
     {
         ACTIVSG2000_V12_EXPERIMENT_ID,
@@ -500,6 +503,14 @@ REGISTERED_EXPERIMENTS = {
         "policy": (
             "gpu_exact_argmin_objective_replay_plus_inner_conditioned_full_"
             "mip_start_and_proof_only_refinement_activsg2000_v28"
+        ),
+    },
+    ACTIVSG2000_V29_EXPERIMENT_ID: {
+        "case_name": "ACTIVSg2000",
+        "tag": "experiment-2000-gpu-lagrangian-v29",
+        "policy": (
+            "gpu_recursive_json_safe_proof_evidence_plus_exact_argmin_replay_"
+            "and_inner_conditioned_full_mip_start_activsg2000_v29"
         ),
     },
 }
@@ -1151,6 +1162,21 @@ ACTIVSG2000_V28_ARGMIN_REPLAY_NUMERICAL_FIX = {
     "exact_source_pmin_changed": False,
     "mathematical_original_integer_feasible_set_changed": False,
 }
+ACTIVSG2000_V29_PROOF_EVIDENCE_SERIALIZATION_FIX = {
+    "comparison_baseline": "activsg2000-gpu-lagrangian-v28",
+    "failed_v28_result_preserved": True,
+    "v28_argmin_replay_fix_passed": True,
+    "v28_failure_stage": "first_proof_only_child_checkpoint_serialization",
+    "v28_failure": "nested_numpy_array_not_json_serializable_v1",
+    "serialization_fix": (
+        "recursive_numpy_array_and_scalar_conversion_for_complete_region_"
+        "evidence_v1"
+    ),
+    "proof_values_changed": False,
+    "cpu_solution_data_used": False,
+    "exact_source_pmin_changed": False,
+    "mathematical_original_integer_feasible_set_changed": False,
+}
 ACTIVSG2000_V1_RUNTIME = {
     "deadline_seconds": 1800.0,
     "verification_reserve_seconds": 120.0,
@@ -1366,6 +1392,7 @@ ACTIVSG2000_V27_RUNTIME = {
     "full_mip_start_polish_primal_feasibility_tolerance": 1e-8,
 }
 ACTIVSG2000_V28_RUNTIME = dict(ACTIVSG2000_V27_RUNTIME)
+ACTIVSG2000_V29_RUNTIME = dict(ACTIVSG2000_V28_RUNTIME)
 ACTIVSG2000_RUNTIME_BY_EXPERIMENT_ID = dict(
     zip(
         ACTIVSG2000_EXPERIMENT_ID_SEQUENCE,
@@ -1398,6 +1425,7 @@ ACTIVSG2000_RUNTIME_BY_EXPERIMENT_ID = dict(
             ACTIVSG2000_V26_RUNTIME,
             ACTIVSG2000_V27_RUNTIME,
             ACTIVSG2000_V28_RUNTIME,
+            ACTIVSG2000_V29_RUNTIME,
         ),
         strict=True,
     )
@@ -1696,12 +1724,15 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
     is_activsg2000_v22 = config.benchmark_id == ACTIVSG2000_V22_EXPERIMENT_ID
     is_activsg2000_v25 = config.benchmark_id == ACTIVSG2000_V25_EXPERIMENT_ID
     is_activsg2000_v26 = config.benchmark_id == ACTIVSG2000_V26_EXPERIMENT_ID
-    is_activsg2000_v28 = config.benchmark_id == ACTIVSG2000_V28_EXPERIMENT_ID
+    is_activsg2000_v29 = config.benchmark_id == ACTIVSG2000_V29_EXPERIMENT_ID
     is_activsg2000_v26_plus = (
         config.benchmark_id in ACTIVSG2000_V26_PLUS_EXPERIMENT_IDS
     )
     is_activsg2000_v27_plus = (
         config.benchmark_id in ACTIVSG2000_V27_PLUS_EXPERIMENT_IDS
+    )
+    is_activsg2000_v28_plus = (
+        config.benchmark_id in ACTIVSG2000_V28_PLUS_EXPERIMENT_IDS
     )
     is_activsg2000_v16_plus = (
         config.benchmark_id in ACTIVSG2000_V16_PLUS_EXPERIMENT_IDS
@@ -2124,13 +2155,22 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
                 "ACTIVSg2000 v27 MIP-start runtime policy changed: "
                 f"expected={required_v27_runtime}, observed={observed_v27_runtime}"
             )
-    if is_activsg2000_v28:
+    if is_activsg2000_v28_plus:
         observed_change = benchmark.get("argmin_replay_numerical_fix")
         if observed_change != ACTIVSG2000_V28_ARGMIN_REPLAY_NUMERICAL_FIX:
             raise ScopfError(
                 "ACTIVSg2000 GPU Lagrangian v28 argmin-replay numerical-fix "
                 "identity changed: "
                 f"expected={ACTIVSG2000_V28_ARGMIN_REPLAY_NUMERICAL_FIX}, "
+                f"observed={observed_change}"
+            )
+    if is_activsg2000_v29:
+        observed_change = benchmark.get("proof_evidence_serialization_fix")
+        if observed_change != ACTIVSG2000_V29_PROOF_EVIDENCE_SERIALIZATION_FIX:
+            raise ScopfError(
+                "ACTIVSg2000 GPU Lagrangian v29 proof-evidence serialization-fix "
+                "identity changed: "
+                f"expected={ACTIVSG2000_V29_PROOF_EVIDENCE_SERIALIZATION_FIX}, "
                 f"observed={observed_change}"
             )
     profile = config.raw["platforms"].get("dgx_spark", {})
@@ -5440,6 +5480,23 @@ def _enforce_monotone_child_certificate(
     )
 
 
+def _json_safe_evidence(value: Any) -> Any:
+    """Recursively convert NumPy evidence values to stable JSON primitives."""
+
+    if isinstance(value, np.ndarray):
+        return _json_safe_evidence(value.tolist())
+    if isinstance(value, np.generic):
+        return value.item()
+    if isinstance(value, dict):
+        return {
+            str(key): _json_safe_evidence(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, (list, tuple)):
+        return [_json_safe_evidence(item) for item in value]
+    return value
+
+
 def _region_record(
     region: SolvedRegion, *, compact_lagrangian_certificate: bool = False
 ) -> dict[str, Any]:
@@ -5463,16 +5520,16 @@ def _region_record(
             _commitment_upper_cut_record(cut, region.master.index.generator_source_rows)
             for cut in region.commitment_cuts
         ],
-        "gpu_lagrangian_evaluation": {
-            key: value.tolist() if isinstance(value, np.ndarray) else value
-            for key, value in region.gpu_lagrangian.items()
-        },
+        "gpu_lagrangian_evaluation": region.gpu_lagrangian,
         "lagrangian_certificate": region.lagrangian.as_dict(
             region.master.index.generator_source_rows + 1,
             compact=compact_lagrangian_certificate,
         ),
     }
-    return record
+    serialized = _json_safe_evidence(record)
+    if not isinstance(serialized, dict):
+        raise ScopfError("Solved-region JSON evidence conversion changed record type")
+    return serialized
 
 
 def _gpu_lagrangian_wall_time(region_record: dict[str, Any]) -> float:
