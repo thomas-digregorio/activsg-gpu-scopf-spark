@@ -1,0 +1,71 @@
+{
+  "artifact_hashes": {
+    "checkpoint_sha256": "86a9ed170354c99930a6f452acb8ee5dce011bd1bd59278ae28b079877abe80c",
+    "launcher_log_sha256": "2f620be74f5283dc12b4d1b5fe6ebd0456d182f4044ab0c02415be0632ac8078",
+    "result_sha256": "21d3a800e52e4956036838aaeddbfbf9e553cb337f5f862ca9c1bffeecd08645",
+    "run_registry_sha256": "2c073c7cb11b3f582af1a7e68cc59172767fd6a79b84b01130fe9d01ac9de03c",
+    "worker_console_sha256": "d080ac10995ee565047dfb584643bda2903627be7d8d343f17aeefbf6bac2a6e"
+  },
+  "benchmark_id": "activsg2000-gpu-lagrangian-v33",
+  "bound": {
+    "final_raw_input_replay_reached": false,
+    "frontier_region_count": 145,
+    "in_memory_frontier_bound_dollars": 1130041.1601321911,
+    "relative_gap": 0.010587332418293917,
+    "requested_relative_gap": 0.001,
+    "status": "gpu_generated_pending_independent_replay"
+  },
+  "commit": "a761552bd5c7f5bca5393e394f354e16d65e0131",
+  "config_sha256": "cfe981ab0cac573c75d918c649aa6a641e606617f909d50a147955e8838ba513",
+  "error": {
+    "message": "Hard at-least cardinality region is empty",
+    "type": "ScopfError"
+  },
+  "image_id": "sha256:640aeb14feb7ee174ef9706676d10ab3f020b97d58c84981c91a4f402a542674",
+  "numerical_audit": {
+    "child_region_count": 288,
+    "failed_child_replay_count": 0,
+    "maximum_finite_bound_absolute": 1.0,
+    "maximum_gpu_host_replay_difference_dollars": 4.65661287307739e-10,
+    "maximum_snapped_normalized_bound_absolute": 9.92552246714421e-05,
+    "minimum_nonzero_finite_bound_absolute": 0.000101438026296768,
+    "minimum_nonzero_matrix_coefficient_absolute": 0.000100000270654084,
+    "minimum_nonzero_objective_coefficient_absolute": 0.000262933640132586,
+    "native_large_coefficient_range_advisory_count": 0,
+    "native_numerical_warning_count": 0,
+    "post_normalization_snapped_bound_count": 1662
+  },
+  "primal": {
+    "commitment_count": 331,
+    "commitment_sha256": "ca2bedaf17974833d9725adab18773c10ed9d322e6b42c5ce87079cba083c6b0",
+    "independent_verification_passed": true,
+    "maximum_model_residual_pu": 2.46018316829577e-12,
+    "maximum_security_violation_pu": 4.67490141176086e-06,
+    "objective_dollars": 1142133.305099282,
+    "pricing_status": "gpu_pdlp_fixed_commitment_exact_cost_epigraph_dual_certified"
+  },
+  "proof": {
+    "all_solved_region_count": 289,
+    "completed_disjunctive_splits": 144,
+    "failed_child_count": 0,
+    "gpu_sibling_batch_count": 144
+  },
+  "root_cause": {
+    "classification": "branch_state_logic_not_numerical_solver_failure",
+    "description": "cardinality subset selection used the inherited fractional reference without first forcing candidate-region fixed commitment masks",
+    "future_correction": "mask the branching reference, require both children nonempty, and prune exact empty children"
+  },
+  "status": "failed_exception",
+  "stop_policy": {
+    "replacement_run_launched": false,
+    "v34_implemented": false,
+    "worker_or_container_left_running": false
+  },
+  "tag": "experiment-2000-gpu-lagrangian-v33",
+  "timing_seconds": {
+    "alternative_primal_beam": 123.3543472349993,
+    "proof_batch_solver_sum": 125.07332588514,
+    "proof_batch_total_sum": 210.516187933856,
+    "total_wall": 574.2317364840128
+  }
+}
