@@ -1,0 +1,49 @@
+{
+  "schema_version": "1.0.0",
+  "experiment_id": "activsg2000-gpu-lagrangian-v32",
+  "status": "failed_exception",
+  "successful_certificate": false,
+  "final_exhaustive_verification_passed": false,
+  "frozen_identity": {
+    "commit": "e59e49988bd92712893ec801df4604c6bfd951ee",
+    "tag": "experiment-2000-gpu-lagrangian-v32",
+    "config_sha256": "4f0b9d818563df64195607cf16ade084f185d3691d7b43ee5b548325e9227db8",
+    "image_id": "sha256:f02b8c0118f26ccd52cd5cee45e13c4f4959e2ba23aa52dd8f1eb6f16f4655b1"
+  },
+  "result": {
+    "total_wall_time_seconds": 453.6286579290172,
+    "objective": 1142133.305099282,
+    "in_memory_lower_bound": 1130026.5017574436,
+    "relative_gap_at_failure": 0.010600166624845857,
+    "commitment_count": 331,
+    "secure_incumbent_checkpoint_count": 2,
+    "primal_repair_record_count": 52,
+    "additional_unique_primal_attempts": 45,
+    "primal_beam_wall_time_seconds": 241.86151393302134,
+    "primal_beam_objective_improvement_dollars": 0.0,
+    "analytic_cover_bound_before": 1128529.5536016348,
+    "analytic_cover_bound_after": 1130026.5017574436,
+    "analytic_cover_bound_lift_dollars": 1496.9481558087338,
+    "completed_proof_batches": 0,
+    "peak_process_rss_bytes": 3432210432,
+    "peak_cuda_device_memory_delta_bytes": 3285782528,
+    "peak_cupy_pool_used_bytes": 70301696
+  },
+  "failure": {
+    "error_type": "ScopfError",
+    "message": "Hard-cardinality search retained a below-threshold finite_column_bound magnitude",
+    "stage": "first_v32_proof_pair_preparation",
+    "cause": "post_normalization_asymmetric_epigraph_bound_below_registered_floor_v1",
+    "cuopt_proof_batch_launched": false,
+    "original_scopf_feasible_set_changed": false,
+    "exact_source_pmin_changed": false,
+    "cpu_solution_data_used": false
+  },
+  "artifact_sha256": {
+    "result": "0778332e6aaffeba4ecd78b1c8799ec0019915076304ed5b388b46a2af3bdbf0",
+    "checkpoint": "e123eb19f671d7d954f2849b3d1896dcad0eb1eb100d31c2891c7388c098c8dc",
+    "worker_console_log": "39535c7be44216d91aad94c26dbe97374062efe7bc078ac7bf19ff221b5b4502",
+    "launcher_log": "5661517bb22bbfe2676ae90a0f2032bef3bf4c02f46b977d75603a9ee0545765",
+    "run_registry": "c09006840148ac2dd2fc34d9d8b74ddd475a1786a43918eb93bea47b81852572"
+  }
+}
