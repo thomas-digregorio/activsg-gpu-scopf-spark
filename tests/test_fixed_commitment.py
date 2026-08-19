@@ -12,6 +12,7 @@ from activsg_scopf.errors import ScopfError
 from activsg_scopf.fixed_commitment import (
     FixedCommitmentProjectionInfeasible,
     build_fixed_commitment_projection,
+    condition_fixed_commitment_start_projection,
     project_boxed_sum,
     repair_along_feasible_segment,
 )
@@ -152,6 +153,53 @@ def test_feasible_segment_repair_keeps_largest_linear_feasible_step() -> None:
     np.testing.assert_allclose(repaired, [0.6, 0.4], atol=2e-10)
     assert audit["step_fraction"] == pytest.approx(1.0 / 3.0, abs=1e-9)
     assert model.max_row_violation(repaired) <= 1e-10
+
+
+def test_start_projection_dust_cleanup_is_an_inner_approximation() -> None:
+    model = CanonicalMILP()
+    x = model.add_variable("x", lower=-2.0, upper=3.0)
+    y = model.add_variable("y", lower=0.0, upper=1.0)
+    model.add_row(
+        "ranged",
+        {x: 1.0, y: 1e-9},
+        lower=-1.0,
+        upper=1.0,
+    )
+
+    conditioned, audit = condition_fixed_commitment_start_projection(
+        model,
+        coefficient_zero_tolerance=1e-8,
+    )
+
+    indices, coefficients = conditioned.row_entries(0)
+    assert indices == [x]
+    assert coefficients == [1.0]
+    assert conditioned.row_lower[0] > -1.0
+    assert conditioned.row_upper[0] < 1.0 - 1e-9
+    assert audit["dropped_coefficient_count"] == 1
+    assert audit["solver_rows_are_inner_approximations_of_exact_rows"] is True
+    assert audit["target_milp_changed"] is False
+    for y_value in (0.0, 1.0):
+        for x_value in (
+            conditioned.row_lower[0],
+            conditioned.row_upper[0],
+        ):
+            values = np.asarray([x_value, y_value])
+            assert model.max_row_violation(values) <= 1e-15
+
+
+def test_start_projection_keeps_dust_with_unbounded_column() -> None:
+    model = CanonicalMILP()
+    x = model.add_variable("x")
+    model.add_row("row", {x: 1e-12}, upper=1.0)
+
+    conditioned, audit = condition_fixed_commitment_start_projection(
+        model,
+        coefficient_zero_tolerance=1e-8,
+    )
+
+    assert conditioned.row_entries(0) == ([x], [1e-12])
+    assert audit["dropped_coefficient_count"] == 0
 
 
 def test_registered_activsg2000_v2_feasibility_fix_is_fail_closed() -> None:

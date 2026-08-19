@@ -70,6 +70,9 @@ from activsg_scopf.lagrangian_experiment import (
     ACTIVSG2000_V26_EXPERIMENT_ID,
     ACTIVSG2000_V26_NUMERICAL_PROOF_THROUGHPUT_FIX,
     ACTIVSG2000_V26_RUNTIME,
+    ACTIVSG2000_V27_EXPERIMENT_ID,
+    ACTIVSG2000_V27_MIP_START_NUMERICAL_FIX,
+    ACTIVSG2000_V27_RUNTIME,
     EXPERIMENT_ID,
     EXPERIMENT_TAG,
     PrimalCandidatePolicy,
@@ -897,7 +900,7 @@ def test_registered_activsg2000_v26_proof_only_path_is_fail_closed() -> None:
     assert registration["benchmark"]["numerical_proof_throughput_fix"] == (
         ACTIVSG2000_V26_NUMERICAL_PROOF_THROUGHPUT_FIX
     )
-    assert ACTIVSG2000_EXPERIMENT_ID_SEQUENCE[-1] == ACTIVSG2000_V26_EXPERIMENT_ID
+    assert ACTIVSG2000_V26_EXPERIMENT_ID in ACTIVSG2000_EXPERIMENT_ID_SEQUENCE
     assert all(
         _activsg2000_solver_path_registration(ACTIVSG2000_V26_EXPERIMENT_ID).values()
     )
@@ -906,6 +909,37 @@ def test_registered_activsg2000_v26_proof_only_path_is_fail_closed() -> None:
     ] = "changed"
     with pytest.raises(ScopfError, match="v26 numerical/proof-throughput"):
         validate_lagrangian_experiment_config(v26)
+
+
+def test_registered_activsg2000_v27_mip_start_fix_is_fail_closed() -> None:
+    v26 = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v26.json")
+    v27 = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v27.json")
+    registration = validate_lagrangian_experiment_config(v27)
+
+    assert v27.benchmark_id == ACTIVSG2000_V27_EXPERIMENT_ID
+    assert registration["benchmark"]["required_git_tag"] == (
+        "experiment-2000-gpu-lagrangian-v27"
+    )
+    assert v27.raw["raw_inputs"] == v26.raw["raw_inputs"]
+    assert v27.model == v26.model
+    assert v27.runtime == ACTIVSG2000_V27_RUNTIME
+    assert v27.runtime["gpu_primal_heuristics_seconds"] == 60.0
+    assert v27.runtime["full_mip_start_polish_seconds"] == 20.0
+    assert registration["benchmark"]["numerical_proof_throughput_fix"] == (
+        ACTIVSG2000_V26_NUMERICAL_PROOF_THROUGHPUT_FIX
+    )
+    assert registration["benchmark"]["mip_start_numerical_fix"] == (
+        ACTIVSG2000_V27_MIP_START_NUMERICAL_FIX
+    )
+    assert ACTIVSG2000_EXPERIMENT_ID_SEQUENCE[-1] == ACTIVSG2000_V27_EXPERIMENT_ID
+    assert all(
+        _activsg2000_solver_path_registration(ACTIVSG2000_V27_EXPERIMENT_ID).values()
+    )
+    v27.raw["benchmark"]["mip_start_numerical_fix"][
+        "start_polish_conditioning"
+    ] = "changed"
+    with pytest.raises(ScopfError, match="v27 MIP-start numerical-fix"):
+        validate_lagrangian_experiment_config(v27)
 
 
 def test_gpu_lagrangian_timing_accepts_centered_and_legacy_audits() -> None:

@@ -246,6 +246,141 @@ def repair_along_feasible_segment(
     }
 
 
+def condition_fixed_commitment_start_projection(
+    model: CanonicalMILP,
+    *,
+    coefficient_zero_tolerance: float,
+) -> tuple[CanonicalMILP, dict[str, object]]:
+    """Drop numerical dust from an auxiliary start LP using an inner approximation.
+
+    The ordinary reduced SCOPF cleanup relaxes row bounds outward because that
+    model is used for lower bounds.  A MIP-start polisher has the opposite
+    requirement: every point it returns must remain feasible for the exact
+    target row.  For each dropped coefficient this routine therefore tightens
+    finite row bounds by the exact boxed minimum/maximum omitted activity.
+    The conditioned model is used only to construct a start and never changes
+    the target MILP or any lower-bound certificate.
+    """
+
+    tolerance = float(coefficient_zero_tolerance)
+    if not np.isfinite(tolerance) or tolerance < 0.0:
+        raise ScopfError("Start-projection coefficient tolerance must be nonnegative")
+    conditioned = CanonicalMILP()
+    for name, objective, lower, upper, integer in zip(
+        model.variable_names,
+        model.objective,
+        model.column_lower,
+        model.column_upper,
+        model.integrality,
+        strict=True,
+    ):
+        conditioned.add_variable(
+            name,
+            objective=float(objective),
+            lower=float(lower),
+            upper=float(upper),
+            integer=bool(integer),
+        )
+
+    dropped_count = 0
+    reverted_row_count = 0
+    maximum_dropped = 0.0
+    maximum_lower_tightening = 0.0
+    maximum_upper_tightening = 0.0
+    retained_magnitudes: list[float] = []
+    for row, name in enumerate(model.row_names):
+        indices, coefficients = model.row_entries(row)
+        kept: dict[int, float] = {}
+        dropped_minimum_terms: list[float] = []
+        dropped_maximum_terms: list[float] = []
+        row_dropped = 0
+        row_maximum_dropped = 0.0
+        for column, coefficient in zip(indices, coefficients, strict=True):
+            value = float(coefficient)
+            magnitude = abs(value)
+            lower = float(model.column_lower[column])
+            upper = float(model.column_upper[column])
+            can_drop = bool(
+                0.0 < magnitude < tolerance
+                and isfinite(lower)
+                and isfinite(upper)
+            )
+            if not can_drop:
+                kept[int(column)] = value
+                if magnitude > 0.0:
+                    retained_magnitudes.append(magnitude)
+                continue
+            first = value * lower
+            second = value * upper
+            dropped_minimum_terms.append(min(first, second))
+            dropped_maximum_terms.append(max(first, second))
+            row_dropped += 1
+            row_maximum_dropped = max(row_maximum_dropped, magnitude)
+
+        original_lower = float(model.row_lower[row])
+        original_upper = float(model.row_upper[row])
+        dropped_minimum = fsum(dropped_minimum_terms)
+        dropped_maximum = fsum(dropped_maximum_terms)
+        tightened_lower = (
+            float(np.nextafter(original_lower - dropped_minimum, inf))
+            if isfinite(original_lower) and row_dropped
+            else original_lower
+        )
+        tightened_upper = (
+            float(np.nextafter(original_upper - dropped_maximum, -inf))
+            if isfinite(original_upper) and row_dropped
+            else original_upper
+        )
+        if tightened_lower > tightened_upper:
+            kept = {
+                int(column): float(value)
+                for column, value in zip(indices, coefficients, strict=True)
+            }
+            retained_magnitudes.extend(
+                abs(float(value)) for value in coefficients if float(value) != 0.0
+            )
+            tightened_lower = original_lower
+            tightened_upper = original_upper
+            reverted_row_count += 1
+            row_dropped = 0
+            row_maximum_dropped = 0.0
+        else:
+            dropped_count += row_dropped
+            maximum_dropped = max(maximum_dropped, row_maximum_dropped)
+            if isfinite(original_lower):
+                maximum_lower_tightening = max(
+                    maximum_lower_tightening,
+                    tightened_lower - original_lower,
+                )
+            if isfinite(original_upper):
+                maximum_upper_tightening = max(
+                    maximum_upper_tightening,
+                    original_upper - tightened_upper,
+                )
+        conditioned.add_row(
+            name,
+            kept,
+            lower=tightened_lower,
+            upper=tightened_upper,
+        )
+
+    return conditioned, {
+        "policy": "boxed_dust_drop_with_inward_row_bounds_for_start_only_v1",
+        "coefficient_zero_tolerance": tolerance,
+        "dropped_coefficient_count": dropped_count,
+        "reverted_incompatible_row_count": reverted_row_count,
+        "maximum_absolute_dropped_coefficient": maximum_dropped,
+        "minimum_absolute_retained_coefficient": (
+            min(retained_magnitudes) if retained_magnitudes else None
+        ),
+        "maximum_lower_bound_tightening": maximum_lower_tightening,
+        "maximum_upper_bound_tightening": maximum_upper_tightening,
+        "solver_rows_are_inner_approximations_of_exact_rows": True,
+        "target_milp_changed": False,
+        "lower_bound_certificate_used": False,
+    }
+
+
 class FixedCommitmentProjectionInfeasible(ScopfError):
     """A fixed candidate violates a coupling row with no free dispatch support."""
 

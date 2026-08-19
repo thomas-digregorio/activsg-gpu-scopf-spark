@@ -47,6 +47,7 @@ from .deadline import Deadline, PeakMemorySampler
 from .environment import environment_manifest, validate_platform
 from .errors import (
     DeadlineExceeded,
+    MipStartSolveError,
     PrimalCandidateRejected,
     ProvenanceError,
     ScopfError,
@@ -55,6 +56,7 @@ from .fixed_commitment import (
     FixedCommitmentProjection,
     FixedCommitmentProjectionInfeasible,
     build_fixed_commitment_projection,
+    condition_fixed_commitment_start_projection,
     repair_along_feasible_segment,
 )
 from .lagrangian import (
@@ -152,6 +154,7 @@ ACTIVSG2000_V23_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v23"
 ACTIVSG2000_V24_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v24"
 ACTIVSG2000_V25_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v25"
 ACTIVSG2000_V26_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v26"
+ACTIVSG2000_V27_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v27"
 ACTIVSG2000_EXPERIMENT_ID_SEQUENCE = (
     ACTIVSG2000_EXPERIMENT_ID,
     ACTIVSG2000_V2_EXPERIMENT_ID,
@@ -179,6 +182,7 @@ ACTIVSG2000_EXPERIMENT_ID_SEQUENCE = (
     ACTIVSG2000_V24_EXPERIMENT_ID,
     ACTIVSG2000_V25_EXPERIMENT_ID,
     ACTIVSG2000_V26_EXPERIMENT_ID,
+    ACTIVSG2000_V27_EXPERIMENT_ID,
 )
 
 
@@ -208,6 +212,7 @@ ACTIVSG2000_V20_PLUS_EXPERIMENT_IDS = _activsg2000_version_ids_from(20)
 ACTIVSG2000_V21_PLUS_EXPERIMENT_IDS = _activsg2000_version_ids_from(21)
 ACTIVSG2000_V23_PLUS_EXPERIMENT_IDS = _activsg2000_version_ids_from(23)
 ACTIVSG2000_V24_PLUS_EXPERIMENT_IDS = _activsg2000_version_ids_from(24)
+ACTIVSG2000_V26_PLUS_EXPERIMENT_IDS = _activsg2000_version_ids_from(26)
 ACTIVSG2000_COST_DUAL_CHILD_EXPERIMENT_IDS = frozenset(
     {
         ACTIVSG2000_V12_EXPERIMENT_ID,
@@ -228,7 +233,7 @@ ACTIVSG2000_HARD_CARDINALITY_CHILD_EXPERIMENT_IDS = frozenset(
     ACTIVSG2000_V23_PLUS_EXPERIMENT_IDS
 )
 ACTIVSG2000_PROOF_ONLY_HARD_CARDINALITY_EXPERIMENT_IDS = frozenset(
-    {ACTIVSG2000_V26_EXPERIMENT_ID}
+    ACTIVSG2000_V26_PLUS_EXPERIMENT_IDS
 )
 ACTIVSG2000_PHASE_ONE_FIRST_EXPERIMENT_IDS = frozenset(
     ACTIVSG2000_ALL_EXPERIMENT_IDS
@@ -475,6 +480,14 @@ REGISTERED_EXPERIMENTS = {
         "policy": (
             "gpu_conditioned_pdlp_proof_only_hard_cardinality_"
             "refinement_activsg2000_v26"
+        ),
+    },
+    ACTIVSG2000_V27_EXPERIMENT_ID: {
+        "case_name": "ACTIVSg2000",
+        "tag": "experiment-2000-gpu-lagrangian-v27",
+        "policy": (
+            "gpu_exact_inner_conditioned_full_mip_start_polish_plus_"
+            "proof_only_hard_cardinality_refinement_activsg2000_v27"
         ),
     },
 }
@@ -1086,6 +1099,29 @@ ACTIVSG2000_V26_NUMERICAL_PROOF_THROUGHPUT_FIX = {
     "exact_source_pmin_changed": False,
     "mathematical_original_integer_feasible_set_changed": False,
 }
+ACTIVSG2000_V27_MIP_START_NUMERICAL_FIX = {
+    "comparison_baseline": "activsg2000-gpu-lagrangian-v26",
+    "failed_v26_result_preserved": True,
+    "v26_failure_stage": "gpu_heuristics_reduced_seed",
+    "v26_start_maximum_native_row_violation": 4.674901411760857e-6,
+    "v26_start_worst_row": "c0765_m0817_lower",
+    "tolerance_coordinate_fix": (
+        "security_tolerance_candidate_is_gpu_polished_to_strict_native_start_"
+        "tolerance_before_submission_v1"
+    ),
+    "start_polish_model": (
+        "exact_unrelaxed_ptdf_lodf_fixed_commitment_convex_pwl_projection_v1"
+    ),
+    "start_polish_conditioning": (
+        "boxed_dust_drop_with_inward_row_bounds_for_start_only_v1"
+    ),
+    "start_submission": "complete_native_dimension_matched_presolve_off_readback_v3",
+    "native_rejection_fallback": "single_unseeded_gpu_heuristic_attempt_v1",
+    "start_polish_lower_bound_used": False,
+    "cpu_solution_data_used": False,
+    "exact_source_pmin_changed": False,
+    "mathematical_original_integer_feasible_set_changed": False,
+}
 ACTIVSG2000_V1_RUNTIME = {
     "deadline_seconds": 1800.0,
     "verification_reserve_seconds": 120.0,
@@ -1292,6 +1328,14 @@ ACTIVSG2000_V26_RUNTIME = {
     "always_run_gpu_primal_heuristics": True,
     "gpu_primal_heuristics_seconds": 30.0,
 }
+ACTIVSG2000_V27_RUNTIME = {
+    **ACTIVSG2000_V26_RUNTIME,
+    "gpu_primal_heuristics_seconds": 60.0,
+    "full_mip_start_polish_seconds": 20.0,
+    "full_mip_start_polish_coefficient_zero_tolerance": 1e-8,
+    "full_mip_start_polish_optimality_tolerance": 1e-10,
+    "full_mip_start_polish_primal_feasibility_tolerance": 1e-8,
+}
 ACTIVSG2000_RUNTIME_BY_EXPERIMENT_ID = dict(
     zip(
         ACTIVSG2000_EXPERIMENT_ID_SEQUENCE,
@@ -1322,6 +1366,7 @@ ACTIVSG2000_RUNTIME_BY_EXPERIMENT_ID = dict(
             ACTIVSG2000_V24_RUNTIME,
             ACTIVSG2000_V25_RUNTIME,
             ACTIVSG2000_V26_RUNTIME,
+            ACTIVSG2000_V27_RUNTIME,
         ),
         strict=True,
     )
@@ -1486,6 +1531,13 @@ class FixedCommitmentCostResult:
     pricing_audit: dict[str, Any]
 
 
+@dataclass
+class FullMipStartPolishResult:
+    source_master: ReducedMaster
+    source_values: np.ndarray
+    audit: dict[str, Any]
+
+
 @dataclass(frozen=True)
 class NetworkCommitmentRepair:
     """A deterministic binary repair for one violated coupling row."""
@@ -1539,6 +1591,10 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
     is_activsg2000_v22 = config.benchmark_id == ACTIVSG2000_V22_EXPERIMENT_ID
     is_activsg2000_v25 = config.benchmark_id == ACTIVSG2000_V25_EXPERIMENT_ID
     is_activsg2000_v26 = config.benchmark_id == ACTIVSG2000_V26_EXPERIMENT_ID
+    is_activsg2000_v27 = config.benchmark_id == ACTIVSG2000_V27_EXPERIMENT_ID
+    is_activsg2000_v26_plus = (
+        config.benchmark_id in ACTIVSG2000_V26_PLUS_EXPERIMENT_IDS
+    )
     is_activsg2000_v16_plus = (
         config.benchmark_id in ACTIVSG2000_V16_PLUS_EXPERIMENT_IDS
     )
@@ -1895,7 +1951,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
             1.0,
         ]:
             raise ScopfError("ACTIVSg2000 v25 Adam learning-rate lanes changed")
-    if is_activsg2000_v26:
+    if is_activsg2000_v26_plus:
         observed_change = benchmark.get("numerical_proof_throughput_fix")
         if observed_change != ACTIVSG2000_V26_NUMERICAL_PROOF_THROUGHPUT_FIX:
             raise ScopfError(
@@ -1904,6 +1960,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
                 f"expected={ACTIVSG2000_V26_NUMERICAL_PROOF_THROUGHPUT_FIX}, "
                 f"observed={observed_change}"
             )
+    if is_activsg2000_v26:
         required_v26_runtime = {
             "minimum_refinement_launch_seconds": 19.0,
             "proof_only_hard_cardinality_pdlp_seconds_per_child": 2.0,
@@ -1924,6 +1981,40 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
             raise ScopfError(
                 "ACTIVSg2000 v26 proof-only runtime policy changed: "
                 f"expected={required_v26_runtime}, observed={observed_v26_runtime}"
+            )
+    if is_activsg2000_v27:
+        observed_change = benchmark.get("mip_start_numerical_fix")
+        if observed_change != ACTIVSG2000_V27_MIP_START_NUMERICAL_FIX:
+            raise ScopfError(
+                "ACTIVSg2000 GPU Lagrangian v27 MIP-start numerical-fix "
+                "identity changed: "
+                f"expected={ACTIVSG2000_V27_MIP_START_NUMERICAL_FIX}, "
+                f"observed={observed_change}"
+            )
+        required_v27_runtime = {
+            "minimum_refinement_launch_seconds": 19.0,
+            "proof_only_hard_cardinality_pdlp_seconds_per_child": 2.0,
+            "proof_only_hard_cardinality_pdlp_maximum_passes": 1,
+            "proof_only_hard_cardinality_coupling_trust_radius": 10.0,
+            "proof_only_hard_cardinality_cut_trust_radius": 1_000.0,
+            "proof_only_hard_cardinality_maximum_support_size": 8,
+            "proof_only_checkpoint_interval_splits": 8,
+            "alternative_primal_candidate_maximum_attempts": 0,
+            "alternative_primal_candidate_wall_seconds": 0.0,
+            "always_run_gpu_primal_heuristics": True,
+            "gpu_primal_heuristics_seconds": 60.0,
+            "full_mip_start_polish_seconds": 20.0,
+            "full_mip_start_polish_coefficient_zero_tolerance": 1e-8,
+            "full_mip_start_polish_optimality_tolerance": 1e-10,
+            "full_mip_start_polish_primal_feasibility_tolerance": 1e-8,
+        }
+        observed_v27_runtime = {
+            key: config.runtime.get(key) for key in required_v27_runtime
+        }
+        if observed_v27_runtime != required_v27_runtime:
+            raise ScopfError(
+                "ACTIVSg2000 v27 MIP-start runtime policy changed: "
+                f"expected={required_v27_runtime}, observed={observed_v27_runtime}"
             )
     profile = config.raw["platforms"].get("dgx_spark", {})
     required_profile = {
@@ -3776,6 +3867,179 @@ def _solve_fixed_commitment_cost_projection(
         final_screen=final_screen,
         pricing_certified=pricing_certified,
         pricing_audit=pricing_audit,
+    )
+
+
+def _polish_secure_gpu_full_mip_start(
+    *,
+    case: Any,
+    network: NetworkData,
+    config: RunConfig,
+    commitment: np.ndarray,
+    source_master: ReducedMaster,
+    source_values: np.ndarray,
+    security_pairs: tuple[SecurityPair, ...],
+    screener: ContingencyScreener,
+    time_limit_seconds: float,
+) -> FullMipStartPolishResult:
+    """Produce a strict complete cuOpt start without using CPU solution data."""
+
+    if config.benchmark_id != ACTIVSG2000_V27_EXPERIMENT_ID:
+        raise ScopfError("Strict full MIP-start polishing is registered only for v27")
+    if str(screener.backend) != "cupy":
+        raise ScopfError("Strict full MIP-start polishing requires the CuPy screener")
+    started = time.perf_counter()
+    binary = np.asarray(commitment, dtype=np.int8)
+    expected_shape = (source_master.index.generator_source_rows.size,)
+    if binary.shape != expected_shape or np.any((binary != 0) & (binary != 1)):
+        raise ScopfError("Strict full MIP-start polishing requires binary commitment")
+    original_source = np.asarray(source_values, dtype=np.float64)
+    if original_source.shape != (source_master.canonical.num_columns,) or not np.all(
+        np.isfinite(original_source)
+    ):
+        raise ScopfError("Strict full MIP-start polishing received an invalid source vector")
+    if not np.isfinite(time_limit_seconds) or time_limit_seconds <= 0.0:
+        raise ScopfError("Strict full MIP-start polishing requires positive solve time")
+
+    exact = build_reduced_master(
+        case,
+        network,
+        segments=int(config.model["pwl_segments"]),
+        coefficient_zero_tolerance=0.0,
+        security_row_maximum_raw_violation_envelope_mw=None,
+    )
+    if (
+        exact.canonical.variable_names != source_master.canonical.variable_names
+        or not np.array_equal(
+            exact.index.generator_source_rows,
+            source_master.index.generator_source_rows,
+        )
+    ):
+        raise ScopfError("Exact start-polish source column identity changed")
+    add_reduced_security_pairs(exact, network, tuple(sorted(security_pairs)))
+    fix_commitments(exact, binary == 0, binary == 1)
+    projection = build_fixed_commitment_projection(
+        exact,
+        binary,
+        include_cost_epigraph=True,
+    )
+    conditioned, conditioning_audit = condition_fixed_commitment_start_projection(
+        projection.canonical,
+        coefficient_zero_tolerance=float(
+            config.runtime["full_mip_start_polish_coefficient_zero_tolerance"]
+        ),
+    )
+    projected_seed = projection.project_source_values(original_source)
+    profile = config.raw["platforms"]["dgx_spark"]
+    column_scale, _ = native_scaling_vectors(
+        conditioned,
+        mode=str(profile["native_scaling_mode"]),
+        base_mva=float(case.base_mva),
+    )
+    solve_started = time.perf_counter()
+    solve = solve_cuopt_continuous_pdlp(
+        conditioned,
+        time_limit_seconds=float(time_limit_seconds),
+        optimality_tolerance=float(
+            config.runtime["full_mip_start_polish_optimality_tolerance"]
+        ),
+        primal_feasibility_tolerance=float(
+            config.runtime["full_mip_start_polish_primal_feasibility_tolerance"]
+        ),
+        certificate_residual_tolerance=float(
+            config.runtime["full_mip_start_polish_primal_feasibility_tolerance"]
+        ),
+        native_scaling_mode=str(profile["native_scaling_mode"]),
+        native_base_mva=float(case.base_mva),
+        log_to_console=True,
+        per_constraint_residual=True,
+        presolve=0,
+        initial_native_primal=projected_seed / column_scale,
+        pdlp_solver_mode=int(profile["pdlp_solver_mode_native"]),
+    )
+    solve_wall = time.perf_counter() - solve_started
+    native_log_audit = dict(solve.statistics.get("native_log_audit", {}))
+    if any(
+        int(native_log_audit.get(key, 0)) != 0
+        for key in (
+            "barrier_numerical_warning_count",
+            "free_variable_warning_count",
+            "large_coefficient_range_advisory_count",
+        )
+    ):
+        raise ScopfError(
+            "Strict full MIP-start polish emitted a native numerical warning"
+        )
+    if (
+        str(solve.statistics.get("error_status", "")) != "Success"
+        or solve.values is None
+    ):
+        raise ScopfError(
+            "Strict full MIP-start polish returned no usable GPU primal: "
+            f"status={solve.status}"
+        )
+    balanced, balance_audit = projection.rebalance_dispatch(
+        np.asarray(solve.values, dtype=np.float64),
+        total_demand_mw=float(exact.operator.total_demand_mw),
+        backend="cupy",
+    )
+    lifted = projection.lift(balanced)
+    tolerance_mw = float(config.model["model_residual_tolerance_pu"]) * float(
+        case.base_mva
+    )
+    lift_validation = projection.validate_lift(
+        balanced,
+        tolerance_mw=tolerance_mw,
+    )
+    if not lift_validation["passed"]:
+        raise ScopfError(
+            "Strict full MIP-start polish failed the exact reduced-model residual gate"
+        )
+    screened = screener.screen(
+        exact.operator.flows(reduced_dispatch(exact, lifted)),
+        tolerance_pu=float(config.model["security_violation_tolerance_pu"]),
+        already_added=set(),
+    )
+    if screened.violations:
+        raise ScopfError(
+            "Strict full MIP-start polish failed the exhaustive contingency screen"
+        )
+    return FullMipStartPolishResult(
+        source_master=exact,
+        source_values=lifted,
+        audit={
+            "policy": (
+                "gpu_exact_unrelaxed_fixed_commitment_inner_conditioned_"
+                "full_mip_start_polish_v1"
+            ),
+            "source_security_pair_count": len(security_pairs),
+            "exact_source_pmin_pmax_retained": True,
+            "cpu_solution_data_used": False,
+            "target_milp_changed": False,
+            "lower_bound_certificate_used": False,
+            "conditioning": conditioning_audit,
+            "projection": dict(projection.audit),
+            "solve": {
+                "status": solve.status,
+                "optimal": solve.optimal,
+                "native_solve_time_seconds": solve.solve_time_seconds,
+                "adapter_wall_time_seconds": solve_wall,
+                "native_log_audit": native_log_audit,
+                "native_log_final_metrics": solve.statistics.get(
+                    "native_log_final_metrics"
+                ),
+                "warm_start": solve.statistics.get("warm_start"),
+            },
+            "balance_projection": balance_audit,
+            "exact_lift_validation": lift_validation,
+            "exhaustive_screen": {
+                "evaluated_sides": screened.evaluated_pairs,
+                "new_violated_pairs": len(screened.violations),
+                "maximum_violation_pu": screened.maximum_violation_pu,
+                "maximum_pair_id": screened.maximum_pair_id,
+            },
+            "wall_time_seconds": time.perf_counter() - started,
+        },
     )
 
 
@@ -9223,19 +9487,84 @@ def run_gpu_lagrangian_experiment(
 
             payload["active_stage"] = "gpu_heuristics_sparse_full_model_build"
             sparse_build_started = time.perf_counter()
+            total_heuristic_budget = float(
+                config.runtime["gpu_primal_heuristics_seconds"]
+            )
             secure_gpu_start_used = bool(
                 config.benchmark_id in ACTIVSG2000_V11_PLUS_EXPERIMENT_IDS
                 and best_primal is not None
             )
+            secure_gpu_start_polished = False
             if secure_gpu_start_used:
                 assert best_primal is not None
-                heuristic_master, seed_start_values = reconstruct_full_values(
-                    case,
-                    network,
-                    best_primal["_source_master"],
-                    best_primal["_source_values"],
-                    exact_commitment=best_primal["commitment"],
-                )
+                if config.benchmark_id == ACTIVSG2000_V27_EXPERIMENT_ID:
+                    payload["active_stage"] = "gpu_heuristics_full_start_polish"
+                    polish_remaining = total_heuristic_budget - (
+                        time.perf_counter() - heuristic_pipeline_started
+                    )
+                    polish_budget = min(
+                        deadline.solver_budget(),
+                        float(config.runtime["full_mip_start_polish_seconds"]),
+                        max(0.0, polish_remaining - 5.0),
+                    )
+                    try:
+                        if polish_budget <= 1.0:
+                            raise ScopfError(
+                                "GPU heuristic budget cannot fund strict full-start polish"
+                            )
+                        polished = _polish_secure_gpu_full_mip_start(
+                            case=case,
+                            network=network,
+                            config=config,
+                            commitment=np.asarray(
+                                best_primal["commitment"], dtype=np.float64
+                            ),
+                            source_master=best_primal["_source_master"],
+                            source_values=best_primal["_source_values"],
+                            security_pairs=tuple(sorted(global_pairs.values())),
+                            screener=screener,
+                            time_limit_seconds=polish_budget,
+                        )
+                    except ScopfError as exc:
+                        payload["gpu_primal_heuristics"]["stages"][
+                            "full_mip_start_polish"
+                        ] = {
+                            "status": "rejected",
+                            "error_type": type(exc).__name__,
+                            "error": str(exc),
+                            "native_mip_solver_called": False,
+                            "fallback": "single_unseeded_gpu_heuristic_attempt",
+                            "cpu_solution_data_used": False,
+                        }
+                        heuristic_master = build_master(
+                            case,
+                            network,
+                            segments=int(config.model["pwl_segments"]),
+                        )
+                        seed_start_values = None
+                    else:
+                        payload["gpu_primal_heuristics"]["stages"][
+                            "full_mip_start_polish"
+                        ] = {
+                            "status": "accepted",
+                            **polished.audit,
+                        }
+                        heuristic_master, seed_start_values = reconstruct_full_values(
+                            case,
+                            network,
+                            polished.source_master,
+                            polished.source_values,
+                            exact_commitment=best_primal["commitment"],
+                        )
+                        secure_gpu_start_polished = True
+                else:
+                    heuristic_master, seed_start_values = reconstruct_full_values(
+                        case,
+                        network,
+                        best_primal["_source_master"],
+                        best_primal["_source_values"],
+                        exact_commitment=best_primal["commitment"],
+                    )
             elif seed_values is not None and seed_commitment is not None:
                 heuristic_master, seed_start_values = reconstruct_full_values(
                     case,
@@ -9290,8 +9619,10 @@ def run_gpu_lagrangian_experiment(
                 "nonzeros": int(heuristic_master.canonical.matrix_csr().nnz),
                 "security_pair_count": len(global_pairs),
                 "complete_start_source": (
-                    "independently_verified_gpu_secure_incumbent"
-                    if secure_gpu_start_used
+                    "exact_gpu_polished_independently_verified_secure_incumbent"
+                    if secure_gpu_start_polished
+                    else "independently_verified_gpu_secure_incumbent"
+                    if secure_gpu_start_used and seed_start_values is not None
                     else "reduced_gpu_heuristic_seed"
                     if seed_start_values is not None
                     else None
@@ -9325,7 +9656,10 @@ def run_gpu_lagrangian_experiment(
                         "error": str(exc),
                         "native_solver_called": False,
                     }
-                    if secure_gpu_start_used:
+                    if (
+                        secure_gpu_start_used
+                        and config.benchmark_id != ACTIVSG2000_V27_EXPERIMENT_ID
+                    ):
                         raise ScopfError(
                             "Independently verified GPU incumbent failed the exact full "
                             "MIP-start dimensional/feasibility contract"
@@ -9335,7 +9669,6 @@ def run_gpu_lagrangian_experiment(
             payload["gpu_primal_heuristics"]["sparse_full_model"] = heuristic_model_record
             save()
 
-            total_heuristic_budget = float(config.runtime["gpu_primal_heuristics_seconds"])
             heuristic_remaining = total_heuristic_budget - (
                 time.perf_counter() - heuristic_pipeline_started
             )
@@ -9345,31 +9678,81 @@ def run_gpu_lagrangian_experiment(
             full_budget = min(deadline.solver_budget(), heuristic_remaining)
             payload["active_stage"] = "gpu_heuristics_sparse_full_improvement"
             full_started = time.perf_counter()
-            full_result = solve_cuopt(
-                heuristic_master.canonical,
-                time_limit_seconds=full_budget,
-                mip_relative_gap=target_gap,
-                threads=int(config.raw["platforms"]["dgx_spark"]["solver_threads"]),
-                mip_start_values=seed_start_values,
-                mip_start_mode=FULL_MIP_START,
-                native_scaling_mode=str(
-                    config.raw["platforms"]["dgx_spark"]["native_scaling_mode"]
-                ),
-                native_base_mva=float(case.base_mva),
-                log_to_console=True,
-                track_incumbent_commitments=True,
-                mip_certificate_residual_tolerance=float(
-                    config.model["model_residual_tolerance_pu"]
-                ),
-                mip_heuristics_only=True,
-            )
+            complete_start_submitted = seed_start_values is not None
+            mip_start_fallback: dict[str, Any] | None = None
+            try:
+                full_result = solve_cuopt(
+                    heuristic_master.canonical,
+                    time_limit_seconds=full_budget,
+                    mip_relative_gap=target_gap,
+                    threads=int(
+                        config.raw["platforms"]["dgx_spark"]["solver_threads"]
+                    ),
+                    mip_start_values=seed_start_values,
+                    mip_start_mode=FULL_MIP_START,
+                    native_scaling_mode=str(
+                        config.raw["platforms"]["dgx_spark"]["native_scaling_mode"]
+                    ),
+                    native_base_mva=float(case.base_mva),
+                    log_to_console=True,
+                    track_incumbent_commitments=True,
+                    mip_certificate_residual_tolerance=float(
+                        config.model["model_residual_tolerance_pu"]
+                    ),
+                    mip_heuristics_only=True,
+                )
+            except MipStartSolveError as exc:
+                if (
+                    config.benchmark_id != ACTIVSG2000_V27_EXPERIMENT_ID
+                    or not complete_start_submitted
+                ):
+                    raise
+                fallback_remaining = total_heuristic_budget - (
+                    time.perf_counter() - heuristic_pipeline_started
+                )
+                fallback_budget = min(deadline.solver_budget(), fallback_remaining)
+                if fallback_budget <= 1.0:
+                    raise ScopfError(
+                        "cuOpt rejected the complete start without time for the "
+                        "registered unseeded fallback"
+                    ) from exc
+                mip_start_fallback = {
+                    "triggered": True,
+                    "error_type": type(exc).__name__,
+                    "error": str(exc),
+                    "policy": "single_unseeded_gpu_heuristic_attempt_v1",
+                    "remaining_budget_seconds": fallback_budget,
+                }
+                full_result = solve_cuopt(
+                    heuristic_master.canonical,
+                    time_limit_seconds=fallback_budget,
+                    mip_relative_gap=target_gap,
+                    threads=int(
+                        config.raw["platforms"]["dgx_spark"]["solver_threads"]
+                    ),
+                    mip_start_values=None,
+                    mip_start_mode=FULL_MIP_START,
+                    native_scaling_mode=str(
+                        config.raw["platforms"]["dgx_spark"]["native_scaling_mode"]
+                    ),
+                    native_base_mva=float(case.base_mva),
+                    log_to_console=True,
+                    track_incumbent_commitments=True,
+                    mip_certificate_residual_tolerance=float(
+                        config.model["model_residual_tolerance_pu"]
+                    ),
+                    mip_heuristics_only=True,
+                )
             full_wall = time.perf_counter() - full_started
             full_record = heuristic_stage_record(
                 full_result,
                 adapter_wall_time_seconds=full_wall,
                 formulation="sparse_full_nodal_dc_scopf_v1",
             )
-            full_record["complete_gpu_feasible_start_submitted"] = seed_start_values is not None
+            full_record["complete_gpu_feasible_start_submitted"] = (
+                complete_start_submitted
+            )
+            full_record["mip_start_rejection_fallback"] = mip_start_fallback
             full_record["mip_start_contract"] = full_result.statistics.get(
                 "mip_start_native_contract"
             )
@@ -9453,7 +9836,10 @@ def run_gpu_lagrangian_experiment(
                             "commitment_count": int(np.count_nonzero(rounded_commitment)),
                             "canonical_model_residual_pu": canonical_residual_pu,
                             "dual_bound_used": False,
-                            "complete_gpu_feasible_mip_start_used": (seed_start_values is not None),
+                            "complete_gpu_feasible_mip_start_used": bool(
+                                complete_start_submitted
+                                and mip_start_fallback is None
+                            ),
                         },
                     )
                     payload["gpu_primal_heuristics"]["candidate_enqueued"] = True
