@@ -52,4 +52,3 @@ docker run --rm --gpus all \
   --config /workspace/configs/activsg2000-gpu-lagrangian-v29.json \
   --output "/workspace/results/experiments/$output" \
   2>&1 | tee "$console_log"
-
