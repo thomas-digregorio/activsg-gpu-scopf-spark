@@ -1075,6 +1075,9 @@ ACTIVSG2000_V26_NUMERICAL_PROOF_THROUGHPUT_FIX = {
     "frontier_evidence_compaction": (
         "immutable_shared_network_master_plus_child_specific_cut_certificate_v1"
     ),
+    "proof_checkpoint_policy": (
+        "one_compact_frontier_checkpoint_per_eight_committed_splits_v1"
+    ),
     "gpu_incumbent_improvement": (
         "complete_verified_gpu_start_sparse_full_cuopt_heuristics_only_v1"
     ),
@@ -1283,6 +1286,7 @@ ACTIVSG2000_V26_RUNTIME = {
     "proof_only_hard_cardinality_coupling_trust_radius": 10.0,
     "proof_only_hard_cardinality_cut_trust_radius": 1_000.0,
     "proof_only_hard_cardinality_maximum_support_size": 8,
+    "proof_only_checkpoint_interval_splits": 8,
     "alternative_primal_candidate_maximum_attempts": 0,
     "alternative_primal_candidate_wall_seconds": 0.0,
     "always_run_gpu_primal_heuristics": True,
@@ -1907,6 +1911,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
             "proof_only_hard_cardinality_coupling_trust_radius": 10.0,
             "proof_only_hard_cardinality_cut_trust_radius": 1_000.0,
             "proof_only_hard_cardinality_maximum_support_size": 8,
+            "proof_only_checkpoint_interval_splits": 8,
             "alternative_primal_candidate_maximum_attempts": 0,
             "alternative_primal_candidate_wall_seconds": 0.0,
             "always_run_gpu_primal_heuristics": True,
@@ -7818,12 +7823,18 @@ def run_gpu_lagrangian_experiment(
             ),
         }
 
-        def persist_region_evidence() -> None:
+        def persist_region_evidence(
+            *,
+            rebuild_serialized_frontier: bool = True,
+            write_checkpoint: bool = True,
+        ) -> None:
             payload["all_solved_region_count"] = len(all_region_records)
             payload["solved_region_history"] = list(all_region_records)
-            payload["frontier_regions"] = [
-                serialize_region(frontier[region_id]) for region_id in sorted(frontier)
-            ]
+            if rebuild_serialized_frontier:
+                payload["frontier_regions"] = [
+                    serialize_region(frontier[region_id])
+                    for region_id in sorted(frontier)
+                ]
             if frontier:
                 payload["bound"] = min(
                     region.lagrangian.conservative_lower_bound for region in frontier.values()
@@ -7834,7 +7845,8 @@ def run_gpu_lagrangian_experiment(
                         objective=float(payload["objective"]),
                         lower_bound=float(payload["bound"]),
                     )
-            save()
+            if write_checkpoint:
+                save()
 
         def replay_and_checkpoint_frontier(stage: str) -> None:
             payload["active_stage"] = stage
@@ -10445,7 +10457,11 @@ def run_gpu_lagrangian_experiment(
                 "status": "solving_children_parent_certificate_retained",
                 "completed_child_region_ids": [],
             }
-            save()
+            if (
+                config.benchmark_id
+                not in ACTIVSG2000_PROOF_ONLY_HARD_CARDINALITY_EXPERIMENT_IDS
+            ):
+                save()
             solved_children: dict[str, SolvedRegion] = {}
             pruned_children: dict[str, dict[str, Any]] = {}
             tentative_outcomes: list[dict[str, Any]] = []
@@ -10481,7 +10497,12 @@ def run_gpu_lagrangian_experiment(
                         {
                             "region_id": child_id,
                             "status": "proof_only_hard_cardinality_solved",
-                            "region": serialize_region(proof_child),
+                            "conservative_lower_bound": (
+                                proof_child.lagrangian.conservative_lower_bound
+                            ),
+                            "hard_cardinality_cut_count": len(
+                                proof_child.lagrangian.hard_cardinality_cut_ids
+                            ),
                         }
                     )
                     payload["pending_disjunctive_split"][
@@ -10490,7 +10511,6 @@ def run_gpu_lagrangian_experiment(
                     payload["pending_disjunctive_split"]["tentative_outcomes"] = (
                         tentative_outcomes
                     )
-                    save()
                     continue
                 if phase_one_first:
                     payload["active_stage"] = f"phase_one_precheck_{child_id}"
@@ -10997,7 +11017,17 @@ def run_gpu_lagrangian_experiment(
                 )
             payload["disjunctive_splits"].append(split_record)
             payload.pop("pending_disjunctive_split", None)
-            persist_region_evidence()
+            defer_proof_only_checkpoint = bool(
+                config.benchmark_id
+                in ACTIVSG2000_PROOF_ONLY_HARD_CARDINALITY_EXPERIMENT_IDS
+                and split_attempt_number
+                % int(config.runtime["proof_only_checkpoint_interval_splits"])
+                != 0
+            )
+            persist_region_evidence(
+                rebuild_serialized_frontier=not defer_proof_only_checkpoint,
+                write_checkpoint=not defer_proof_only_checkpoint,
+            )
             if replay_after_every_split:
                 replay_and_checkpoint_frontier(
                     f"independent_frontier_replay_after_{parent.region_id}"

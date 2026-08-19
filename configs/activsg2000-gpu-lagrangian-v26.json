@@ -127,7 +127,8 @@
     "proof_only_hard_cardinality_pdlp_maximum_passes": 1,
     "proof_only_hard_cardinality_coupling_trust_radius": 10,
     "proof_only_hard_cardinality_cut_trust_radius": 1000,
-    "proof_only_hard_cardinality_maximum_support_size": 8
+    "proof_only_hard_cardinality_maximum_support_size": 8,
+    "proof_only_checkpoint_interval_splits": 8
   },
   "platforms": {
     "dgx_spark": {
@@ -494,6 +495,7 @@
       "hard_cardinality_dual_search": "conditioned_gpu_pdlp_hypograph_proposal_then_monotone_exact_replay_v1",
     "stagnant_candidate_beam": "disabled_after_v25_zero_objective_improvement_v1",
     "frontier_evidence_compaction": "immutable_shared_network_master_plus_child_specific_cut_certificate_v1",
+    "proof_checkpoint_policy": "one_compact_frontier_checkpoint_per_eight_committed_splits_v1",
       "gpu_incumbent_improvement": "complete_verified_gpu_start_sparse_full_cuopt_heuristics_only_v1",
       "certificate_authority": "independent_exact_host_fp64_lagrangian_replay_v1",
       "cpu_solution_data_used": false,
