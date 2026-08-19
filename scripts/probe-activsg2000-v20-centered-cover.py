@@ -73,10 +73,6 @@ def main() -> None:
     v12_root = next(
         record for record in v12["solved_region_history"] if record["region_id"] == "r"
     )
-    v13_root = next(
-        record for record in v13["solved_region_history"] if record["region_id"] == "r"
-    )
-
     case = read_matpower_case(
         config.case_path,
         expected_sha256=config.raw["raw_inputs"]["case_sha256"],
@@ -136,20 +132,14 @@ def main() -> None:
             config.model["reduced_coefficient_zero_tolerance"]
         ),
     )
-    target_pairs = tuple(
-        security_pair_from_record(
-            record,
-            catalog,
-            lodf_absolute_tolerance=float(
-                config.model["serialized_lodf_replay_tolerance"]
-            ),
-        )
-        for record in v13_root["security_pairs"]
-    )
+    target_pairs = source_pairs
     add_reduced_security_pairs(target_master, network, target_pairs)
-    target_cuts = tuple(
+    appended_cover_records = [
+        record["cut"] for record in v13["commitment_cover_cuts"]
+    ]
+    target_cuts = source_cuts + tuple(
         commitment_upper_cut_from_record(record, source_rows)
-        for record in v13_root["commitment_upper_cuts"]
+        for record in appended_cover_records
     )
     add_commitment_upper_cuts(target_master, target_cuts)
     initial_row_dual, initial_cut_dual = _certificate_dual_arrays(
