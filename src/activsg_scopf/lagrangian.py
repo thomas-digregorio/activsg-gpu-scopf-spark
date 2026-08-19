@@ -724,6 +724,7 @@ def optimize_lagrangian_bound_cupy(
     initial_commitment_cut_dual: npt.ArrayLike | None = None,
     coupling_row_scales: npt.ArrayLike | None = None,
     commitment_cut_scales: npt.ArrayLike | None = None,
+    hard_cardinality_cuts: tuple[CommitmentCardinalityCut, ...] = (),
 ) -> tuple[FloatArray, dict[str, Any]]:
     """Polish coupling multipliers while all numerical state remains on GPU.
 
@@ -751,6 +752,11 @@ def optimize_lagrangian_bound_cupy(
     region.validate(generator_count)
     for cut in commitment_cuts:
         cut.validate(generator_count)
+    hard_cut_ids, hard_supports = _validate_disjoint_hard_cardinality_cuts(
+        hard_cardinality_cuts,
+        generator_count=generator_count,
+        available_cut_ids={cut.cut_id for cut in commitment_cuts},
+    )
     full_dual = np.asarray(row_dual, dtype=np.float64)
     if full_dual.shape != (master.canonical.num_rows,) or not np.all(
         np.isfinite(full_dual)
@@ -809,6 +815,14 @@ def optimize_lagrangian_bound_cupy(
             np.isfinite(supplied_cut_dual)
         ):
             raise ScopfError("GPU Lagrangian initial commitment-cut dual is invalid")
+        hard_positions_host = np.asarray(
+            [cut.cut_id in hard_cut_ids for cut in commitment_cuts],
+            dtype=bool,
+        )
+        if np.any(supplied_cut_dual[hard_positions_host] != 0.0):
+            raise ScopfError(
+                "Hard cardinality cuts cannot also carry Lagrangian multipliers"
+            )
         supplied_cut_scales = (
             np.ones(len(commitment_cuts), dtype=np.float64)
             if commitment_cut_scales is None
@@ -819,19 +833,56 @@ def optimize_lagrangian_bound_cupy(
         ):
             raise ScopfError("GPU Lagrangian commitment-cut scales are invalid")
         cut_scale = cp.asarray(supplied_cut_scales, dtype=cp.float64)
-        z = cp.minimum(cp.asarray(supplied_cut_dual), 0.0)
+        hard_positions = cp.asarray(hard_positions_host, dtype=cp.bool_)
+        z = cp.where(
+            hard_positions,
+            0.0,
+            cp.minimum(cp.asarray(supplied_cut_dual), 0.0),
+        )
     else:
         cut_coefficients = cp.empty((0, generator_count), dtype=cp.float64)
         cut_rhs = cp.empty(0, dtype=cp.float64)
         supplied_cut_scales = np.empty(0, dtype=np.float64)
         cut_scale = cp.empty(0, dtype=cp.float64)
+        hard_positions = cp.empty(0, dtype=cp.bool_)
         z = cp.empty(0, dtype=cp.float64)
+    hard_groups: list[tuple[str, Any, Any, int, int]] = []
+    for cut, support in zip(hard_cardinality_cuts, hard_supports, strict=True):
+        free_support = support[
+            ~(region.fixed_off[support] | region.fixed_on[support])
+        ]
+        fixed_on_support = support[region.fixed_on[support]]
+        fixed_on_count = int(fixed_on_support.size)
+        if cut.branch_side == "at_most":
+            free_limit = int(cut.integer_threshold) - fixed_on_count
+            if free_limit < 0:
+                raise ScopfError("Hard at-most cardinality region is empty")
+            free_limit = min(free_limit, int(free_support.size))
+            required_count = 0
+        else:
+            required_count = max(
+                0, int(cut.integer_threshold) - fixed_on_count
+            )
+            if required_count > int(free_support.size):
+                raise ScopfError("Hard at-least cardinality region is empty")
+            free_limit = int(free_support.size)
+        hard_groups.append(
+            (
+                cut.branch_side,
+                cp.asarray(free_support, dtype=cp.int64),
+                cp.asarray(fixed_on_support, dtype=cp.int64),
+                free_limit,
+                required_count,
+            )
+        )
     target = cp.asarray(float(relaxation_primal_objective), dtype=cp.float64)
     best_q = cp.asarray(-cp.inf, dtype=cp.float64)
     best_y = y.copy()
     best_z = z.copy()
     best_commitment = cp.zeros(generator_count, dtype=cp.int8)
     zero_denominator_iterations = cp.asarray(0, dtype=cp.int64)
+    nonfinite_evaluation_iterations = cp.asarray(0, dtype=cp.int64)
+    nonfinite_update_iterations = cp.asarray(0, dtype=cp.int64)
     for _ in range(iterations + 1):
         effective = -(y @ coefficients)
         adjusted_slopes = slopes + effective[:, None]
@@ -842,13 +893,40 @@ def optimize_lagrangian_bound_cupy(
         commitment = cp.where(
             fixed_off, 0, cp.where(fixed_on | (on_value < 0.0), 1, 0)
         ).astype(cp.int8)
+        for (
+            branch_side,
+            free_device,
+            fixed_on_device,
+            free_limit,
+            required_count,
+        ) in hard_groups:
+            free_values = on_value[free_device]
+            if free_device.size:
+                order = cp.lexsort(
+                    cp.stack(
+                        (free_device.astype(cp.float64), free_values),
+                        axis=0,
+                    )
+                )
+                negative_count = cp.count_nonzero(free_values < 0.0)
+                if branch_side == "at_most":
+                    selected_count = cp.minimum(free_limit, negative_count)
+                else:
+                    selected_count = cp.maximum(required_count, negative_count)
+                commitment[free_device[order]] = (
+                    cp.arange(free_device.size, dtype=cp.int64) < selected_count
+                ).astype(cp.int8)
+            if fixed_on_device.size:
+                commitment[fixed_on_device] = 1
         segment_dispatch = cp.where(
             (commitment[:, None] > 0) & (adjusted_slopes < 0.0), widths, 0.0
         )
         dispatch = commitment * pmin + cp.sum(segment_dispatch, axis=1)
         local_value = cp.where(commitment > 0, on_value, 0.0)
         q = y @ rhs + z @ cut_rhs + cp.sum(local_value)
-        better = q > best_q
+        finite_evaluation = cp.isfinite(q) & cp.all(cp.isfinite(on_value))
+        nonfinite_evaluation_iterations += ~finite_evaluation
+        better = finite_evaluation & (q > best_q)
         best_q = cp.where(better, q, best_q)
         best_y = cp.where(better, y, best_y)
         best_z = cp.where(better, z, best_z)
@@ -856,7 +934,9 @@ def optimize_lagrangian_bound_cupy(
         residual = rhs - coefficients @ dispatch
         cut_residual = cut_rhs - cut_coefficients @ commitment
         projected_active = (~upper) | (y < 0.0) | (residual < 0.0)
-        cut_projected_active = (z < 0.0) | (cut_residual < 0.0)
+        cut_projected_active = (~hard_positions) & (
+            (z < 0.0) | (cut_residual < 0.0)
+        )
         scaled_residual = coupling_scale * residual
         scaled_cut_residual = cut_scale * cut_residual
         denominator = cp.sum(
@@ -870,15 +950,30 @@ def optimize_lagrangian_bound_cupy(
         )
         zero_denominator_iterations += denominator <= 0.0
         step = cp.where(
-            denominator > 0.0,
+            finite_evaluation & cp.isfinite(denominator) & (denominator > 0.0),
             float(polyak_fraction) * cp.maximum(target - q, 0.0) / denominator,
             0.0,
         )
-        y = y + step * coupling_scale * scaled_residual
-        y = cp.where(upper, cp.minimum(y, 0.0), y)
-        z = cp.minimum(z + step * cut_scale * scaled_cut_residual, 0.0)
+        step = cp.where(cp.isfinite(step), step, 0.0)
+        candidate_y = y + step * coupling_scale * scaled_residual
+        candidate_y = cp.where(upper, cp.minimum(candidate_y, 0.0), candidate_y)
+        candidate_z = cp.where(
+            hard_positions,
+            0.0,
+            cp.minimum(z + step * cut_scale * scaled_cut_residual, 0.0),
+        )
+        finite_update = (
+            finite_evaluation
+            & cp.all(cp.isfinite(candidate_y))
+            & cp.all(cp.isfinite(candidate_z))
+        )
+        nonfinite_update_iterations += ~finite_update
+        y = cp.where(finite_update, candidate_y, best_y)
+        z = cp.where(finite_update, candidate_z, best_z)
 
     cp.cuda.get_current_stream().synchronize()
+    if not bool(cp.isfinite(best_q).item()):
+        raise ScopfError("GPU Lagrangian polishing found no finite certificate")
     best_y_host = cp.asnumpy(best_y)
     polished = np.zeros_like(full_dual)
     polished[coupling_indices_host] = best_y_host
@@ -892,6 +987,7 @@ def optimize_lagrangian_bound_cupy(
             if initial_commitment_cut_dual is None
             else initial_commitment_cut_dual
         ),
+        hard_cardinality_cuts=hard_cardinality_cuts,
     )
     return polished, {
         "backend": "cupy_fp64_projected_polyak_supergradient",
@@ -906,6 +1002,9 @@ def optimize_lagrangian_bound_cupy(
         "best_minimizing_commitment": cp.asnumpy(best_commitment),
         "best_commitment_cut_dual": cp.asnumpy(best_z),
         "commitment_feasibility_cut_count": len(commitment_cuts),
+        "hard_cardinality_cut_count": len(hard_cardinality_cuts),
+        "hard_cardinality_cut_ids": sorted(hard_cut_ids),
+        "hard_cardinality_subproblem_reoptimized": bool(hard_cardinality_cuts),
         "diagonal_preconditioning": {
             "enabled": bool(
                 coupling_row_scales is not None
@@ -928,6 +1027,12 @@ def optimize_lagrangian_bound_cupy(
         },
         "zero_projected_subgradient_iterations": int(
             zero_denominator_iterations.item()
+        ),
+        "nonfinite_lagrangian_evaluation_iterations": int(
+            nonfinite_evaluation_iterations.item()
+        ),
+        "nonfinite_projected_update_iterations": int(
+            nonfinite_update_iterations.item()
         ),
         "coupling_row_count": int(coupling_indices_host.size),
         "generator_subproblem_count": int(generator_count),

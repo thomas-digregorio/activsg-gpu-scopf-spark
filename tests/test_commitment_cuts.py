@@ -26,6 +26,7 @@ from activsg_scopf.lagrangian import (
     evaluate_lagrangian_bound,
     evaluate_lagrangian_bound_cupy,
     optimize_commitment_cut_duals_coordinate_numpy,
+    optimize_lagrangian_bound_cupy,
     replay_lagrangian_certificate,
 )
 from activsg_scopf.network import build_network
@@ -523,6 +524,61 @@ def test_gpu_exact_hard_cardinality_subproblem_matches_host_fp64() -> None:
         gpu["minimizing_commitment"], host.minimizing_commitment
     )
     assert gpu["hard_cardinality_cut_ids"] == [cut.cut_id]
+
+
+def test_gpu_hard_cardinality_multiplier_polish_matches_host_fp64() -> None:
+    pytest.importorskip("cupy")
+    case, _table = triangle_case()
+    case.gen[1, 7] = 1.0
+    master = build_reduced_master(case, build_network(case))
+    cut = build_commitment_cardinality_cut(
+        generator_source_rows=master.index.generator_source_rows,
+        subset_positions=np.asarray([0, 1], dtype=np.int64),
+        subset_id="gpu_polish_both_generators",
+        branch_side="at_least",
+        integer_threshold=1,
+    )
+    initial_dual = np.zeros(master.canonical.num_rows, dtype=np.float64)
+    region = RegionMasks.root(2)
+    initial = evaluate_lagrangian_bound(
+        master,
+        initial_dual,
+        region,
+        safety_margin_dollars=0.0,
+        commitment_cuts=(cut,),
+        commitment_cut_dual=np.asarray([0.0]),
+        hard_cardinality_cuts=(cut,),
+    )
+
+    polished_dual, audit = optimize_lagrangian_bound_cupy(
+        master,
+        initial_dual,
+        region,
+        relaxation_primal_objective=1_000.0,
+        iterations=8,
+        polyak_fraction=0.5,
+        commitment_cuts=(cut,),
+        initial_commitment_cut_dual=np.asarray([0.0]),
+        hard_cardinality_cuts=(cut,),
+    )
+    replay = evaluate_lagrangian_bound(
+        master,
+        polished_dual,
+        region,
+        safety_margin_dollars=0.0,
+        commitment_cuts=(cut,),
+        commitment_cut_dual=np.asarray(audit["best_commitment_cut_dual"]),
+        hard_cardinality_cuts=(cut,),
+    )
+
+    assert audit["hard_cardinality_subproblem_reoptimized"] is True
+    assert audit["hard_cardinality_cut_ids"] == [cut.cut_id]
+    assert audit["nonfinite_projected_update_iterations"] == 0
+    assert replay.raw_lower_bound >= initial.raw_lower_bound - 1e-9
+    assert replay.raw_lower_bound == pytest.approx(
+        audit["best_raw_lower_bound"], abs=1e-9
+    )
+    assert float(cut.coefficients @ replay.minimizing_commitment - cut.rhs) <= 0.0
 
 
 def test_commitment_cut_dust_cleanup_is_an_outward_relaxation() -> None:
