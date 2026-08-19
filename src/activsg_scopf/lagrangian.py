@@ -1250,7 +1250,7 @@ def optimize_lagrangian_bound_cupy_adam(
                     free_values.shape,
                 )
                 order = cp.lexsort(
-                    cp.stack((identity_keys, free_values), axis=0), axis=-1
+                    cp.stack((identity_keys, free_values), axis=0)
                 )
                 negative_count = cp.count_nonzero(free_values < 0.0, axis=1)
                 if branch_side == "at_most":
