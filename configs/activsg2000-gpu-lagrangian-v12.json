@@ -64,13 +64,15 @@
     "fixed_commitment_secure_seed_tolerance_fraction": 0.25,
     "frontier_replay_after_every_split": false,
     "compact_lagrangian_certificates": true,
-    "minimum_refinement_launch_seconds": 215.0,
+    "minimum_refinement_launch_seconds": 79.0,
     "split_transaction_margin_seconds": 15.0,
     "lagrangian_diagonal_preconditioning": true,
     "global_feasibility_cuts_in_lagrangian": true,
     "always_run_gpu_primal_heuristics": true,
     "phase_one_precheck_optimality_tolerance": 1e-10,
-    "feasibility_cut_coefficient_zero_tolerance": 1e-8
+    "feasibility_cut_coefficient_zero_tolerance": 1e-8,
+    "maximum_child_phase_one_rounds": 2,
+    "child_cost_dual_seed_seconds": 12.0
   },
   "platforms": {
     "dgx_spark": {
@@ -170,12 +172,13 @@
     "numerical_throughput_fix": {
       "comparison_baseline": "activsg2000-gpu-lagrangian-v11",
       "v11_result_preserved": true,
-      "child_phase_one": "short_phase_one_before_every_cardinality_child_cost_lp_v1",
-      "child_cost_primal_warm_start": "accepted_zero_violation_phase_one_source_primal_v1",
+      "child_phase_one": "bounded_phase_one_security_generation_before_every_cardinality_child_v2",
+      "child_cost_primal_warm_start": "secure_phase_one_primal_preserved_when_cost_pdlp_wanders_v2",
       "child_cost_dual_warm_start": "row_identity_mapped_parent_replayable_cost_certificate_v1",
-      "phase_one_precision": "precheck_optimality_tolerance_1e_10_v1",
+      "child_cost_solve_role": "bounded_cost_pdlp_dual_seed_only_then_gpu_lagrangian_certificate_v1",
+      "phase_one_precision": "all_child_phase_one_optimality_tolerance_1e_10_v2",
       "feasibility_cut_cleanup": "adaptive_coefficient_dust_zeroing_with_outward_rhs_relaxation_v1",
-      "split_preflight": "two_phase_one_plus_two_cost_children_plus_margin_v1",
+      "split_preflight": "two_children_each_two_phase_one_rounds_plus_short_cost_dual_seed_and_margin_v2",
       "exact_source_pmin_changed": false,
       "mathematical_original_integer_optimum_changed": false,
       "cpu_commitment_dispatch_objective_or_bound_seeded": false

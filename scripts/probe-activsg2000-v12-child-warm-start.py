@@ -29,14 +29,12 @@ from activsg_scopf.deadline import Deadline
 from activsg_scopf.fixed_commitment import build_fixed_commitment_projection
 from activsg_scopf.lagrangian import replay_lagrangian_certificate
 from activsg_scopf.lagrangian_experiment import (
-    PrimalCandidatePolicy,
     RegionAttemptRejected,
-    _map_parent_certificate_dual_to_child,
     _masks_from_record,
     _prepare_region_master,
     _region_pmin_pmax_capacity_gate,
     _run_phase_one_attempt,
-    _solve_region,
+    _solve_phase_one_lagrangian_region,
     _validate_prepared_region_master,
 )
 from activsg_scopf.matpower import GEN_STATUS, read_contingency_table, read_matpower_case
@@ -268,7 +266,7 @@ def main() -> None:
         security_pairs=parent_pairs,
         rounds=[],
     )
-    deadline = Deadline(75.0, 0.0, 0.0)
+    deadline = Deadline(45.0, 0.0, 0.0)
     phase = _run_phase_one_attempt(
         region_id=str(failed["off_child_region_id"]),
         masks=parent_masks,
@@ -283,31 +281,17 @@ def main() -> None:
     )
     if phase.record["prune_certified"] or phase.source_native_primal is None:
         raise RuntimeError("v12 child Phase I did not return its expected feasible primal")
-    mapped_parent_dual, mapping = _map_parent_certificate_dual_to_child(
-        parent,
-        child_master,
-        scaling_mode=str(config.raw["platforms"]["dgx_spark"]["native_scaling_mode"]),
-        base_mva=float(case.base_mva),
-    )
-    base_policy = PrimalCandidatePolicy.from_config(config, scope="disjunctive_region")
-    probe_policy = PrimalCandidatePolicy(
-        total_seconds=45.0,
-        maximum_round_seconds=30.0,
-        minimum_round_seconds=base_policy.minimum_round_seconds,
-        stagnation_window_rounds=base_policy.stagnation_window_rounds,
-        minimum_relative_residual_improvement=(base_policy.minimum_relative_residual_improvement),
-        dual_divergence_multiple=base_policy.dual_divergence_multiple,
-        cold_restart_attempts=base_policy.cold_restart_attempts,
-    )
-    child = _solve_region(
+    child, prune = _solve_phase_one_lagrangian_region(
         region_id=str(failed["off_child_region_id"]),
         masks=parent_masks,
+        parent=parent,
+        master=child_master,
+        initial_pairs=parent_pairs,
+        initial_precheck=phase,
         case=case,
         network=network,
-        catalog=catalog,
         config=config,
         deadline=deadline,
-        initial_pairs=parent_pairs,
         screener=ContingencyScreener(
             network,
             catalog,
@@ -315,21 +299,21 @@ def main() -> None:
             chunk_columns=int(config.model["screen_chunk_columns"]),
         ),
         checkpoint=lambda: None,
-        prepared_master=child_master,
-        initial_native_primal=phase.source_native_primal,
-        initial_native_row_dual=mapped_parent_dual,
-        initial_warm_start_origin=(
-            "phase_one_feasible_primal_plus_parent_replayable_certificate_dual_v1"
-        ),
-        candidate_policy=probe_policy,
         commitment_cuts=child_cuts,
     )
+    if prune is not None or child is None:
+        raise RuntimeError("v12 preserved-primal child engine did not return a solved child")
     matrix_data = np.abs(child_master.canonical.matrix_csr().data)
-    warm = child.solve.statistics.get("warm_start", {})
+    cost_summary = child.solve.statistics.get("cost_pdlp_solve", {})
+    warm = cost_summary.get("warm_start", {})
     if not warm.get("initial_primal_submitted") or not warm.get("initial_dual_submitted"):
-        raise RuntimeError("v12 child cost LP did not consume both registered starts")
+        raise RuntimeError("v12 child cost-dual solve did not consume both registered starts")
+    if child.solve.statistics.get("cost_pdlp_returned_primal_used") is not False:
+        raise RuntimeError("v12 child used the non-authoritative cost-PDLP primal")
+    if child.final_screen["new_violated_pairs"] != 0:
+        raise RuntimeError("v12 child did not preserve an exhaustively screened Phase-I primal")
     print(
-        "V12_CHILD_WARM_START_PROBE="
+        "V12_PRESERVED_PHASE_ONE_PROBE="
         + json.dumps(
             {
                 "passed": True,
@@ -353,20 +337,30 @@ def main() -> None:
                         "source_model_residual_pu"
                     ],
                 },
-                "cost_lp": {
+                "preserved_phase_one_primal": {
                     "status": child.solve.status,
-                    "adapter_wall_time_seconds": sum(
-                        float(record.get("adapter_wall_time_seconds", 0.0))
-                        for record in child.rounds
-                    ),
                     "canonical_model_residual_pu": child.master.canonical.max_row_violation(
                         np.asarray(child.solve.values, dtype=np.float64)
                     )
                     / float(case.base_mva),
-                    "warm_start": warm,
-                    "native_log_audit": child.solve.statistics.get("native_log_audit"),
+                    "final_exhaustive_screen": child.final_screen,
+                    "cost_pdlp_returned_primal_used": child.solve.statistics[
+                        "cost_pdlp_returned_primal_used"
+                    ],
                 },
-                "parent_dual_mapping": mapping,
+                "cost_dual_seed": {
+                    "adapter_wall_time_seconds": child.rounds[-1]["cost_dual_seed"][
+                        "adapter_wall_time_seconds"
+                    ],
+                    "dual_seed_eligible": child.rounds[-1]["cost_dual_seed"][
+                        "dual_seed_eligible"
+                    ],
+                    "selected_seed": child.rounds[-1]["cost_dual_seed"]["selected_seed"],
+                    "warm_start": warm,
+                    "native_log_audit": cost_summary.get("native_log_audit"),
+                },
+                "parent_dual_mapping": child.gpu_lagrangian["parent_dual_mapping"],
+                "certificate_bound": child.lagrangian.conservative_lower_bound,
                 "total_probe_wall_time_seconds": time.perf_counter() - started,
             },
             sort_keys=True,

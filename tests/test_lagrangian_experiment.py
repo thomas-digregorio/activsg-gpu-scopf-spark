@@ -421,9 +421,11 @@ def test_registered_activsg2000_v12_numerical_throughput_fix_is_fail_closed() ->
     assert registration["benchmark"]["required_git_tag"] == ("experiment-2000-gpu-lagrangian-v12")
     assert v12.raw["raw_inputs"] == v11.raw["raw_inputs"]
     assert v12.model == v11.model
-    assert v12.runtime["minimum_refinement_launch_seconds"] == 215.0
+    assert v12.runtime["minimum_refinement_launch_seconds"] == 79.0
     assert v12.runtime["phase_one_precheck_optimality_tolerance"] == 1e-10
     assert v12.runtime["feasibility_cut_coefficient_zero_tolerance"] == 1e-8
+    assert v12.runtime["maximum_child_phase_one_rounds"] == 2
+    assert v12.runtime["child_cost_dual_seed_seconds"] == 12.0
     fix = registration["benchmark"]["numerical_throughput_fix"]
     assert fix["v11_result_preserved"] is True
     assert fix["exact_source_pmin_changed"] is False
@@ -432,6 +434,142 @@ def test_registered_activsg2000_v12_numerical_throughput_fix_is_fail_closed() ->
     v12.raw["runtime"]["phase_one_precheck_optimality_tolerance"] = 1e-8
     with pytest.raises(ScopfError, match="runtime policy changed"):
         validate_lagrangian_experiment_config(v12)
+
+
+def test_v12_cost_dual_seed_never_replaces_secure_phase_one_primal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v12.json")
+    case, _table = triangle_case()
+    network = build_network(case)
+    masks = RegionMasks.root(1)
+    master = _prepare_region_master(
+        case=case,
+        network=network,
+        config=config,
+        masks=masks,
+        initial_pairs=(),
+        commitment_cuts=(),
+    )
+    values = np.zeros(master.canonical.num_columns, dtype=np.float64)
+    values[master.index.commitment_by_generator[0]] = 1.0
+    values[master.index.dispatch_by_generator[0]] = 62.0
+    remaining = 37.0
+    for column, width in zip(
+        master.index.segments_by_generator[0],
+        master.costs[0].segment_widths_mw,
+        strict=True,
+    ):
+        if column is not None:
+            values[column] = min(remaining, width)
+            remaining -= values[column]
+    assert master.canonical.max_row_violation(values) == pytest.approx(0.0)
+
+    zero_dual = np.zeros(master.canonical.num_rows, dtype=np.float64)
+    parent_lagrangian = experiment_module.evaluate_lagrangian_bound(
+        master,
+        zero_dual,
+        masks,
+        safety_margin_dollars=float(
+            config.raw["benchmark"]["certificate_safety_margin_dollars"]
+        ),
+    )
+    dummy_solve = ContinuousSolveResult(
+        status="Fixture",
+        optimal=False,
+        primal_objective=float(np.asarray(master.canonical.objective) @ values),
+        dual_objective=None,
+        values=values.copy(),
+        native_primal=values.copy(),
+        native_row_dual=zero_dual.copy(),
+        solve_time_seconds=0.0,
+        statistics={"error_status": "Success"},
+    )
+    parent = experiment_module.SolvedRegion(
+        region_id="parent",
+        masks=masks,
+        master=master,
+        solve=dummy_solve,
+        canonical_row_dual=zero_dual.copy(),
+        lagrangian=parent_lagrangian,
+        commitment=np.asarray([1.0]),
+        security_pairs=(),
+        rounds=[],
+        final_screen={"new_violated_pairs": 0, "maximum_violation_pu": 0.0},
+        gpu_lagrangian={},
+    )
+    phase = experiment_module.PhaseOneAttemptResult(
+        record={},
+        source_native_primal=values.copy(),
+        source_native_row_dual=None,
+        source_values=values.copy(),
+    )
+    solve_calls: list[dict[str, object]] = []
+
+    def fake_cost_solve(model, **kwargs):
+        solve_calls.append(kwargs)
+        wandered = np.zeros(model.num_columns, dtype=np.float64)
+        return ContinuousSolveResult(
+            status="TimeLimit",
+            optimal=False,
+            primal_objective=0.0,
+            dual_objective=0.0,
+            values=wandered,
+            native_primal=wandered.copy(),
+            native_row_dual=np.zeros(model.num_rows, dtype=np.float64),
+            solve_time_seconds=0.01,
+            statistics={
+                "error_status": "Success",
+                "warm_start": {
+                    "initial_primal_submitted": True,
+                    "initial_dual_submitted": True,
+                },
+            },
+        )
+
+    def fake_gpu_polish(inner_master, row_dual, region, **kwargs):
+        evaluation = experiment_module.evaluate_lagrangian_bound(
+            inner_master,
+            row_dual,
+            region,
+            safety_margin_dollars=0.0,
+            commitment_cuts=kwargs["commitment_cuts"],
+            commitment_cut_dual=kwargs["initial_commitment_cut_dual"],
+        )
+        return np.asarray(row_dual), {
+            "backend": "fixture",
+            "best_raw_lower_bound": evaluation.raw_lower_bound,
+            "best_minimizing_commitment": evaluation.minimizing_commitment,
+            "best_commitment_cut_dual": np.asarray(
+                kwargs["initial_commitment_cut_dual"], dtype=np.float64
+            ),
+        }
+
+    monkeypatch.setattr(experiment_module, "solve_cuopt_continuous_pdlp", fake_cost_solve)
+    monkeypatch.setattr(experiment_module, "optimize_lagrangian_bound_cupy", fake_gpu_polish)
+    rounds = [{"phase_one": {"adapter_wall_time_seconds": 0.01}}]
+    child = experiment_module._solve_v12_cost_dual_seeded_region(
+        region_id="child",
+        masks=masks,
+        parent=parent,
+        master=master,
+        secure_phase=phase,
+        security_pairs=(),
+        phase_rounds=rounds,
+        final_screen={"new_violated_pairs": 0, "maximum_violation_pu": 0.0},
+        case=case,
+        config=config,
+        deadline=Deadline(30.0, 0.0, 0.0),
+        commitment_cuts=(),
+    )
+
+    assert len(solve_calls) == 1
+    assert np.array_equal(solve_calls[0]["initial_native_primal"], values)
+    assert solve_calls[0]["initial_native_row_dual"] is not None
+    assert np.array_equal(child.solve.values, values)
+    assert not np.array_equal(child.solve.values, np.zeros_like(values))
+    assert child.solve.statistics["cost_pdlp_returned_primal_used"] is False
+    assert rounds[0]["cost_dual_seed"]["secure_phase_one_primal_preserved"] is True
 
 
 def test_phase_one_native_dual_maps_lower_upper_and_equality_rows() -> None:
