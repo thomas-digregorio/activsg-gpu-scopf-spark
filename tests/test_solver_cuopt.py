@@ -344,11 +344,13 @@ def test_cuopt_native_log_rejects_failed_start_and_records_fallback_warning() ->
         "cuOpt version: 26.6.0\n"
         "Free variable found! Make sure the correct bounds are given.\n"
         "Barrier Solve status A numerical error was encountered.\n"
+        "Warning: input problem contains a large range of coefficients: consider reformulating.\n"
         "Solution objective: 1.0\n"
     )
     assert audit["mip_start_rejection_count"] == 0
     assert audit["free_variable_warning_count"] == 1
     assert audit["barrier_numerical_warning_count"] == 1
+    assert audit["large_coefficient_range_advisory_count"] == 1
 
 
 def test_native_free_column_split_selects_only_free_continuous_columns() -> None:

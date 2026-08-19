@@ -584,6 +584,9 @@ def audit_cuopt_native_log(native_log: str) -> dict[str, object]:
         "barrier_numerical_warning_count": native_log.count(
             BARRIER_NUMERICAL_WARNING
         ),
+        "large_coefficient_range_advisory_count": native_log.count(
+            "input problem contains a large range of coefficients"
+        ),
         "free_variable_warning_count": native_log.count("Free variable found!"),
         "presolve_disabled_message_count": native_log.count(
             "Presolve is disabled, skipping"

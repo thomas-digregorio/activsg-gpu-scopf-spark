@@ -12,6 +12,7 @@ read or used.
 from __future__ import annotations
 
 import json
+import os
 import time
 from pathlib import Path
 from typing import Any
@@ -79,6 +80,9 @@ def _round_summary(round_record: dict[str, Any]) -> dict[str, Any]:
         ),
         "barrier_numerical_warning_count": int(
             audit.get("barrier_numerical_warning_count", 0)
+        ),
+        "large_coefficient_range_advisory_count": int(
+            audit.get("large_coefficient_range_advisory_count", 0)
         ),
         "mip_start_rejection_count": int(audit.get("mip_start_rejection_count", 0)),
         "free_variable_warning_count": int(
@@ -185,71 +189,151 @@ def main() -> None:
         checkpoint=lambda: None,
         commitment_cuts=(),
     )
-    reference = np.asarray(baseline.commitment, dtype=np.float64)
-    if np.any(reference < -1e-7) or np.any(reference > 1.0 + 1e-7):
+    baseline_reference = np.asarray(baseline.commitment, dtype=np.float64)
+    if np.any(baseline_reference < -1e-7) or np.any(
+        baseline_reference > 1.0 + 1e-7
+    ):
         raise RuntimeError("Baseline GPU LP returned invalid commitment values")
-    reference = np.clip(reference, 0.0, 1.0)
-    cover_records: list[dict[str, Any]] = []
-    covers_by_id = {}
-    for parent in parent_cuts:
-        cover, derivation = derive_binary_knapsack_cover_cut(
-            source_cut=parent,
-            generator_source_rows=source_rows + 1,
-            source_commitment=None,
-            separation_reference=reference,
-        )
-        cover_records.append(
-            {
-                "source_cut_id": parent.cut_id,
-                "reference_violation": cover.separation_reference_violation,
-                "selected_for_pdlp": cover.separation_reference_violation > 1e-9,
-                "derivation": derivation,
-            }
-        )
-        if cover.separation_reference_violation > 1e-9:
-            covers_by_id.setdefault(cover.cut_id, cover)
-    covers = tuple(covers_by_id[cut_id] for cut_id in sorted(covers_by_id))
-    if not covers:
-        raise RuntimeError("No valid cover cut separates the baseline GPU LP point")
-
-    strengthened = _solve_region(
-        region_id="v15_cover_strengthened",
-        masks=masks,
-        case=case,
-        network=network,
-        catalog=catalog,
-        config=config,
-        deadline=deadline,
-        initial_pairs=baseline.security_pairs,
-        screener=screener,
-        checkpoint=lambda: None,
-        initial_native_primal=baseline.solve.native_primal,
-        initial_native_row_dual=baseline.solve.native_row_dual,
-        initial_warm_start_origin="same_scaled_gpu_lp_before_appended_cover_rows",
-        commitment_cuts=covers,
-    )
+    baseline_reference = np.clip(baseline_reference, 0.0, 1.0)
+    maximum_cover_rounds = int(os.environ.get("ACTIVSG_MAXIMUM_COVER_ROUNDS", "1"))
+    if maximum_cover_rounds < 1 or maximum_cover_rounds > 16:
+        raise RuntimeError("ACTIVSG_MAXIMUM_COVER_ROUNDS must be in [1, 16]")
     baseline_certificate = baseline.solve.statistics["dual_certificate"]
-    strengthened_certificate = strengthened.solve.statistics["dual_certificate"]
     baseline_bound = float(
         baseline_certificate["conservative_numerical_lower_bound"]
-    )
-    strengthened_bound = float(
-        strengthened_certificate["conservative_numerical_lower_bound"]
     )
     required_bound = float(prior["objective"]) * (
         1.0 - float(config.model["mip_relative_gap_tolerance"])
     )
     required_lift = max(0.0, required_bound - baseline_bound)
+
+    cover_records: list[dict[str, Any]] = []
+    covers_by_id = {}
+    cover_rounds: list[dict[str, Any]] = []
+    solved_regions = [baseline]
+    current = baseline
+    reference = baseline_reference
+    cover_stop_reason = "maximum_cover_rounds_reached"
+    for cover_round in range(1, maximum_cover_rounds + 1):
+        newly_selected = []
+        maximum_reference_violation = 0.0
+        for parent in parent_cuts:
+            cover, derivation = derive_binary_knapsack_cover_cut(
+                source_cut=parent,
+                generator_source_rows=source_rows + 1,
+                source_commitment=None,
+                separation_reference=reference,
+            )
+            maximum_reference_violation = max(
+                maximum_reference_violation,
+                float(cover.separation_reference_violation),
+            )
+            if (
+                cover.separation_reference_violation > 1e-9
+                and cover.cut_id not in covers_by_id
+            ):
+                covers_by_id[cover.cut_id] = cover
+                newly_selected.append(cover)
+                cover_records.append(
+                    {
+                        "cover_round": cover_round,
+                        "source_cut_id": parent.cut_id,
+                        "reference_violation": cover.separation_reference_violation,
+                        "derivation": derivation,
+                    }
+                )
+        round_record: dict[str, Any] = {
+            "cover_round": cover_round,
+            "reference_bound_before": float(
+                current.solve.statistics["dual_certificate"][
+                    "conservative_numerical_lower_bound"
+                ]
+            ),
+            "maximum_candidate_reference_violation": maximum_reference_violation,
+            "new_cover_count": len(newly_selected),
+            "total_cover_count": len(covers_by_id),
+            "new_cover_ids": sorted(cover.cut_id for cover in newly_selected),
+        }
+        if not newly_selected:
+            round_record["status"] = "no_new_violated_cover"
+            cover_rounds.append(round_record)
+            cover_stop_reason = "no_new_violated_cover"
+            break
+        covers = tuple(
+            covers_by_id[cut_id] for cut_id in sorted(covers_by_id)
+        )
+        previous = current
+        current = _solve_region(
+            region_id=f"v15_cover_strengthened_{cover_round:02d}",
+            masks=masks,
+            case=case,
+            network=network,
+            catalog=catalog,
+            config=config,
+            deadline=deadline,
+            initial_pairs=previous.security_pairs,
+            screener=screener,
+            checkpoint=lambda: None,
+            initial_native_primal=previous.solve.native_primal,
+            initial_native_row_dual=previous.solve.native_row_dual,
+            initial_warm_start_origin=(
+                "same_scaled_gpu_lp_before_appended_binary_cover_rows"
+            ),
+            commitment_cuts=covers,
+        )
+        solved_regions.append(current)
+        strengthened_certificate = current.solve.statistics["dual_certificate"]
+        strengthened_bound = float(
+            strengthened_certificate["conservative_numerical_lower_bound"]
+        )
+        if strengthened_bound + 1e-4 < round_record["reference_bound_before"]:
+            raise RuntimeError("Appending valid cover cuts reduced the certified LP bound")
+        round_record.update(
+            {
+                "status": "optimal_exhaustively_screened",
+                "bound_after": strengthened_bound,
+                "bound_lift_dollars": (
+                    strengthened_bound - round_record["reference_bound_before"]
+                ),
+                "fractional_commitment_count": int(
+                    np.count_nonzero(
+                        (current.commitment > 1e-7)
+                        & (current.commitment < 1.0 - 1e-7)
+                    )
+                ),
+                "security_pair_count": len(current.security_pairs),
+                "final_screen": current.final_screen,
+                "rounds": [_round_summary(record) for record in current.rounds],
+            }
+        )
+        cover_rounds.append(round_record)
+        reference = np.clip(
+            np.asarray(current.commitment, dtype=np.float64), 0.0, 1.0
+        )
+        if strengthened_bound >= required_bound:
+            cover_stop_reason = "requested_gpu_incumbent_gap_certified"
+            break
+    if len(solved_regions) == 1:
+        raise RuntimeError("No valid cover cut separates the baseline GPU LP point")
+    strengthened = current
+    strengthened_certificate = strengthened.solve.statistics["dual_certificate"]
+    strengthened_bound = float(
+        strengthened_certificate["conservative_numerical_lower_bound"]
+    )
     achieved_lift = strengthened_bound - baseline_bound
     native_audits = [
         record["solve"].get("native_log_audit", {})
-        for region in (baseline, strengthened)
+        for region in solved_regions
         for record in region.rounds
     ]
     numerical_failure_count = sum(
         int(audit.get("barrier_numerical_warning_count", 0))
         + int(audit.get("mip_start_rejection_count", 0))
         + int(audit.get("free_variable_warning_count", 0))
+        for audit in native_audits
+    )
+    coefficient_range_advisory_count = sum(
+        int(audit.get("large_coefficient_range_advisory_count", 0))
         for audit in native_audits
     )
     output = {
@@ -269,14 +353,20 @@ def main() -> None:
             "strengthened_cleanup_audit": strengthened.master.coefficient_cleanup_audit,
         },
         "parent_cut_count": len(parent_cuts),
-        "derived_cover_count": len(cover_records),
-        "selected_cover_count": len(covers),
+        "maximum_cover_rounds": maximum_cover_rounds,
+        "cover_stop_reason": cover_stop_reason,
+        "derived_selected_cover_count": len(cover_records),
+        "selected_cover_count": len(covers_by_id),
         "cover_derivations": cover_records,
+        "cover_rounds": cover_rounds,
         "baseline": {
             "bound": baseline_bound,
             "lp_objective": float(baseline.solve.primal_objective),
             "fractional_commitment_count": int(
-                np.count_nonzero((reference > 1e-7) & (reference < 1.0 - 1e-7))
+                np.count_nonzero(
+                    (baseline_reference > 1e-7)
+                    & (baseline_reference < 1.0 - 1e-7)
+                )
             ),
             "security_pair_count": len(baseline.security_pairs),
             "final_screen": baseline.final_screen,
@@ -309,6 +399,7 @@ def main() -> None:
             else "immaterial"
         ),
         "numerical_failure_count": numerical_failure_count,
+        "coefficient_range_advisory_count": coefficient_range_advisory_count,
         "total_wall_time_seconds": time.perf_counter() - started,
     }
     print("V15_COVER_PDLP_PROBE=" + json.dumps(output, sort_keys=True))
