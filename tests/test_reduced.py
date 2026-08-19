@@ -186,6 +186,22 @@ def test_delta_multiplier_candidate_is_box_clipped_and_sign_valid() -> None:
             assert candidate_row_dual[row.row_index] <= 0.0
 
 
+def test_delta_multiplier_search_can_include_every_coupling_row() -> None:
+    case, _ = triangle_case()
+    master = build_reduced_master(case, build_network(case))
+    search = build_lagrangian_multiplier_delta_search_model(
+        master,
+        np.zeros(master.canonical.num_rows, dtype=np.float64),
+        RegionMasks.root(1),
+        maximum_new_violated_coupling_rows=0,
+        include_all_coupling_rows=True,
+    )
+
+    assert search.selected_coupling_positions.size == len(master.coupling_rows)
+    assert search.audit["include_all_coupling_rows"] is True
+    assert search.canonical.max_row_violation(search.initial_values) <= 1e-12
+
+
 def test_injection_elimination_matches_explicit_dc_solve() -> None:
     case, _ = triangle_case()
     network = build_network(case)

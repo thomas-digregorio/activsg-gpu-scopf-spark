@@ -177,6 +177,7 @@ def main() -> None:
                     "centered_dual_search_objective_zero_tolerance", 0.0
                 )
             ),
+            include_all_coupling_rows=True,
         )
         build_wall = time.perf_counter() - search_started
         solve_started = time.perf_counter()

@@ -1710,6 +1710,7 @@ def build_lagrangian_multiplier_delta_search_model(
     commitment_cut_trust_radius: float = 10_000.0,
     search_coefficient_zero_tolerance: float = 1e-8,
     search_objective_zero_tolerance: float = 0.0,
+    include_all_coupling_rows: bool = False,
 ) -> LagrangianMultiplierDeltaSearchModel:
     """Build a numerically scaled local LP for multiplier proposals.
 
@@ -1821,12 +1822,17 @@ def build_lagrangian_multiplier_delta_search_model(
             coupling_rows[position].row_name,
         ),
     )
-    selected_mask = mandatory.copy()
-    selected_mask[
-        np.asarray(
-            ranked_violated[:maximum_new_violated_coupling_rows], dtype=np.int64
-        )
-    ] = True
+    selected_mask = (
+        np.ones(len(coupling_rows), dtype=bool)
+        if include_all_coupling_rows
+        else mandatory.copy()
+    )
+    if not include_all_coupling_rows:
+        selected_mask[
+            np.asarray(
+                ranked_violated[:maximum_new_violated_coupling_rows], dtype=np.int64
+            )
+        ] = True
     selected = np.flatnonzero(selected_mask).astype(np.int64)
     if not selected.size:
         raise ScopfError("Delta multiplier search selected no coupling rows")
@@ -2097,6 +2103,7 @@ def build_lagrangian_multiplier_delta_search_model(
             "maximum_new_violated_coupling_rows": int(
                 maximum_new_violated_coupling_rows
             ),
+            "include_all_coupling_rows": bool(include_all_coupling_rows),
             "commitment_cut_count": len(commitment_cuts),
             "generator_state_row_count": state_row_count,
             "duplicate_generator_state_count": duplicate_state_count,
