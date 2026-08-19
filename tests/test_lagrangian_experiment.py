@@ -857,6 +857,8 @@ def test_registered_activsg2000_v25_gpu_dual_search_is_fail_closed() -> None:
     assert v25.raw["raw_inputs"] == v24.raw["raw_inputs"]
     assert v25.model == v24.model
     assert v25.runtime == ACTIVSG2000_V25_RUNTIME
+    assert v25.runtime["minimum_refinement_launch_seconds"] == 50.0
+    assert v25.runtime["hard_cardinality_adam_split_budget_seconds"] == 12.0
     assert registration["benchmark"]["cupy_lexsort_fix"] == (
         ACTIVSG2000_V24_CUPY_LEXSORT_FIX
     )

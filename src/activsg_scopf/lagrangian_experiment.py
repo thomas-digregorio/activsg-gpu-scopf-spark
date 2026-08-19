@@ -1210,6 +1210,8 @@ ACTIVSG2000_V23_RUNTIME = {
 ACTIVSG2000_V24_RUNTIME = dict(ACTIVSG2000_V23_RUNTIME)
 ACTIVSG2000_V25_RUNTIME = {
     **ACTIVSG2000_V24_RUNTIME,
+    "minimum_refinement_launch_seconds": 50.0,
+    "hard_cardinality_adam_split_budget_seconds": 12.0,
     "hard_cardinality_adam_iterations": 128,
     "hard_cardinality_adam_learning_rates": [
         0.003,
@@ -1800,6 +1802,17 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
             )
         if int(config.runtime.get("hard_cardinality_adam_iterations", -1)) != 128:
             raise ScopfError("ACTIVSg2000 v25 Adam iteration budget changed")
+        if (
+            float(
+                config.runtime.get(
+                    "hard_cardinality_adam_split_budget_seconds", -1.0
+                )
+            )
+            != 12.0
+        ):
+            raise ScopfError("ACTIVSg2000 v25 Adam split-time budget changed")
+        if float(config.runtime["minimum_refinement_launch_seconds"]) != 50.0:
+            raise ScopfError("ACTIVSg2000 v25 refinement launch budget changed")
         if config.runtime.get("hard_cardinality_adam_learning_rates") != [
             0.003,
             0.01,
@@ -9592,6 +9605,7 @@ def run_gpu_lagrangian_experiment(
         maximum_regions = int(config.runtime["maximum_frontier_regions"])
         if config.benchmark_id in ACTIVSG2000_V11_PLUS_EXPERIMENT_IDS:
             centered_dual_search_budget = 0.0
+            hard_cardinality_dual_search_budget = 0.0
             if (
                 config.benchmark_id
                 in ACTIVSG2000_HARD_CARDINALITY_CHILD_EXPERIMENT_IDS
@@ -9606,9 +9620,16 @@ def run_gpu_lagrangian_experiment(
                 )
                 cost_dual_seed_budget = 0.0
                 ordinary_cost_lp_budget = 0.0
+                if config.benchmark_id == ACTIVSG2000_V25_EXPERIMENT_ID:
+                    hard_cardinality_dual_search_budget = float(
+                        config.runtime[
+                            "hard_cardinality_adam_split_budget_seconds"
+                        ]
+                    )
                 maximum_seconds_per_child = (
                     phase_one_rounds_per_child
                     * float(config.runtime["precheck_phase_one_time_limit_seconds"])
+                    + 0.5 * hard_cardinality_dual_search_budget
                 )
             elif config.benchmark_id in ACTIVSG2000_COST_DUAL_CHILD_EXPERIMENT_IDS:
                 phase_one_rounds_per_child = int(
@@ -9668,6 +9689,7 @@ def run_gpu_lagrangian_experiment(
                 phase_one_budget
                 + cost_dual_seed_budget
                 + centered_dual_search_budget
+                + hard_cardinality_dual_search_budget
                 + ordinary_cost_lp_budget
                 + float(config.runtime["split_transaction_margin_seconds"])
             )
@@ -9683,6 +9705,9 @@ def run_gpu_lagrangian_experiment(
                 "cost_dual_seed_seconds_for_two_children": cost_dual_seed_budget,
                 "centered_dual_search_seconds_for_two_children": (
                     centered_dual_search_budget
+                ),
+                "hard_cardinality_dual_search_seconds_for_two_children": (
+                    hard_cardinality_dual_search_budget
                 ),
                 "ordinary_cost_lp_seconds_for_two_children": ordinary_cost_lp_budget,
                 "controller_margin_seconds": float(
