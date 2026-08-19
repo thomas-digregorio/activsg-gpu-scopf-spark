@@ -290,6 +290,31 @@ def test_hard_cardinality_delta_search_exactly_embeds_center() -> None:
     )
 
 
+def test_hard_cardinality_delta_search_accepts_empty_at_most_pattern() -> None:
+    case, _ = triangle_case()
+    case.gen[1, 7] = 1.0
+    master = build_reduced_master(case, build_network(case))
+    hard_cut = build_commitment_cardinality_cut(
+        generator_source_rows=master.index.generator_source_rows + 1,
+        subset_positions=np.asarray([0, 1], dtype=np.int64),
+        subset_id="tiny_pair_empty",
+        branch_side="at_most",
+        integer_threshold=1,
+    )
+    search = build_hard_cardinality_multiplier_delta_search_model(
+        master,
+        np.zeros(master.canonical.num_rows, dtype=np.float64),
+        RegionMasks.root(2),
+        commitment_cuts=(hard_cut,),
+        commitment_cut_dual=np.zeros(1, dtype=np.float64),
+        hard_cardinality_cuts=(hard_cut,),
+        maximum_new_violated_coupling_rows=2,
+    )
+
+    assert search.audit["hard_group_configuration_count"] == 3
+    assert search.canonical.max_row_violation(search.initial_values) <= 1e-12
+
+
 def test_injection_elimination_matches_explicit_dc_solve() -> None:
     case, _ = triangle_case()
     network = build_network(case)

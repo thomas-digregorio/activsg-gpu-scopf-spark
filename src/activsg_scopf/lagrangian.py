@@ -2737,8 +2737,7 @@ def build_hard_cardinality_multiplier_delta_search_model(
                 for generator in configuration
             ]
             maximum_coefficient = max(
-                group_scale,
-                *(float(spec["scale"]) for spec in member_specs),
+                (group_scale, *(float(spec["scale"]) for spec in member_specs))
             )
             row_scale = max(1.0, abs(rhs_value), maximum_coefficient)
             row_scale_minimum = min(row_scale_minimum, row_scale)
