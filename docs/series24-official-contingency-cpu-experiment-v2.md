@@ -78,3 +78,12 @@ is nevertheless launched once as requested so its full registered result is
 preserved; the remaining scenarios are not consumed if Case 1 fails the
 required feasibility gate. The compact diagnostic evidence is preserved in
 `reports/texas2k-series24-official-preflight-v2.json`.
+
+## Recorded outcome
+
+The one official Case 1 replacement ended `infeasible_restricted_master` in
+9.365810 seconds. Round 1 met the requested gap, the mapped screen added 510
+pairs, and HiGHS declared round 2 infeasible in presolve with more than 1,656
+seconds of solver budget remaining. Cases 2 through 6 were not started. See
+`reports/texas2k-series24-official-cpu-v2/README.md` for the result table and
+evidence hashes.

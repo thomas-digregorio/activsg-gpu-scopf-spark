@@ -1,0 +1,76 @@
+{
+  "schema_version": "1.0.0",
+  "suite_id": "texas2k-series24-official-cpu-v2",
+  "frozen_identity": {
+    "commit": "010b969f81cb221050bc892d4471bca6bcfa5c2a",
+    "tag": "experiment-texas2k-series24-official-cpu-v2",
+    "case1_config_sha256": "9bbf871176aeba782773c09245ec12edff319001451541f144464047be4b5f0b"
+  },
+  "source_identity": {
+    "target_case_sha256": "4eb378bb7c5abeba02a1be61752983d90a17dcaac3460ea2bb0c4986d5aa00b2",
+    "reference_case_sha256": "8d00618de8fd10bf35a599f59d2deebfecd0d86e28fcff73219ad7c4ebab860b",
+    "reference_contingency_sha256": "198b39f0381925a4ddacbe2148973cb1d93ddfe220303829cf87b16d45190bba",
+    "branch_mapping_method": "endpoint_parameter_assignment_v1",
+    "branch_mapping_records_sha256": "baa975888732857db7134850b65fb01915d51e621938a5d8afa4d0aabb16c331"
+  },
+  "runs": [
+    {
+      "scenario_ordinal": 1,
+      "scenario_name": "2016 summer peak",
+      "started": true,
+      "official_attempts": 1,
+      "status": "infeasible_restricted_master",
+      "solver_status": "Infeasible",
+      "total_wall_time_seconds": 9.36581049999222,
+      "raw_result_sha256": "71a7a35c191276b3082637a2dff0f43504b097d3aa4bcbc77be8bba4eb0cf0a6",
+      "rounds": 2,
+      "round_1": {
+        "objective": 1104090.04437519,
+        "bound": 1103560.12734206,
+        "mip_gap": 0.00047995816629624,
+        "solve_time_seconds": 7.42639619999682,
+        "added_security_pairs": 510,
+        "maximum_screen_violation_pu": 2.20768265855073
+      },
+      "round_2": {
+        "status": "Infeasible",
+        "solve_time_seconds": 0.0129222999967169,
+        "adapter_wall_time_seconds": 0.0190042999747675,
+        "solver_budget_seconds": 1656.3083724
+      },
+      "valid_non_islanding_outages": 2740,
+      "independent_security_verification": "not_reached",
+      "independent_farkas_certificate": false
+    },
+    {
+      "scenario_ordinal": 2,
+      "scenario_name": "2016 low load",
+      "started": false,
+      "reason": "Case 1 failed the required feasibility gate"
+    },
+    {
+      "scenario_ordinal": 3,
+      "scenario_name": "2024 summer peak",
+      "started": false,
+      "reason": "Case 1 failed the required feasibility gate"
+    },
+    {
+      "scenario_ordinal": 4,
+      "scenario_name": "2024 low load",
+      "started": false,
+      "reason": "Case 1 failed the required feasibility gate"
+    },
+    {
+      "scenario_ordinal": 5,
+      "scenario_name": "2024 high renewables",
+      "started": false,
+      "reason": "Case 1 failed the required feasibility gate"
+    },
+    {
+      "scenario_ordinal": 6,
+      "scenario_name": "2024 low load with grid-forming inverters",
+      "started": false,
+      "reason": "Case 1 failed the required feasibility gate"
+    }
+  ]
+}
