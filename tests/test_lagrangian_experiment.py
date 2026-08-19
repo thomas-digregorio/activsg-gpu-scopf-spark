@@ -421,10 +421,10 @@ def test_registered_activsg2000_v12_numerical_throughput_fix_is_fail_closed() ->
     assert registration["benchmark"]["required_git_tag"] == ("experiment-2000-gpu-lagrangian-v12")
     assert v12.raw["raw_inputs"] == v11.raw["raw_inputs"]
     assert v12.model == v11.model
-    assert v12.runtime["minimum_refinement_launch_seconds"] == 79.0
+    assert v12.runtime["minimum_refinement_launch_seconds"] == 99.0
     assert v12.runtime["phase_one_precheck_optimality_tolerance"] == 1e-10
     assert v12.runtime["feasibility_cut_coefficient_zero_tolerance"] == 1e-8
-    assert v12.runtime["maximum_child_phase_one_rounds"] == 2
+    assert v12.runtime["maximum_child_phase_one_rounds"] == 3
     assert v12.runtime["child_cost_dual_seed_seconds"] == 12.0
     fix = registration["benchmark"]["numerical_throughput_fix"]
     assert fix["v11_result_preserved"] is True
@@ -570,6 +570,113 @@ def test_v12_cost_dual_seed_never_replaces_secure_phase_one_primal(
     assert not np.array_equal(child.solve.values, np.zeros_like(values))
     assert child.solve.statistics["cost_pdlp_returned_primal_used"] is False
     assert rounds[0]["cost_dual_seed"]["secure_phase_one_primal_preserved"] is True
+
+
+def test_phase_one_round_limit_never_launches_an_unscreened_terminal_solve(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v12.json")
+    config.raw["runtime"]["maximum_child_phase_one_rounds"] = 2
+    case, table = triangle_case()
+    network = build_network(case)
+    catalog = build_contingency_catalog(case, network, table)
+    masks = RegionMasks.root(1)
+    master = _prepare_region_master(
+        case=case,
+        network=network,
+        config=config,
+        masks=masks,
+        initial_pairs=(),
+        commitment_cuts=(),
+    )
+    values = np.zeros(master.canonical.num_columns, dtype=np.float64)
+    values[master.index.commitment_by_generator[0]] = 1.0
+    values[master.index.dispatch_by_generator[0]] = 62.0
+    remaining = 37.0
+    for column, width in zip(
+        master.index.segments_by_generator[0],
+        master.costs[0].segment_widths_mw,
+        strict=True,
+    ):
+        if column is not None:
+            values[column] = min(remaining, width)
+            remaining -= values[column]
+
+    def phase_result(kind: str) -> experiment_module.PhaseOneAttemptResult:
+        return experiment_module.PhaseOneAttemptResult(
+            record={
+                "region_id": "child",
+                "phase_one_attempt_kind": kind,
+                "phase_one_model": {"columns": master.canonical.num_columns + 1},
+                "solver_budget_seconds": 1.0,
+                "adapter_wall_time_seconds": 0.01,
+                "preparation_wall_time_seconds": 0.0,
+                "total_attempt_wall_time_seconds": 0.01,
+                "solve": {"status": "Optimal"},
+                "prune_certified": False,
+                "source_feasible_warm_start": {"eligible": True},
+                "security_pairs": [],
+            },
+            source_native_primal=values.copy(),
+            source_native_row_dual=None,
+            source_values=values.copy(),
+        )
+
+    pairs = []
+    for outage_column, monitored_active_index in ((0, 1), (1, 0)):
+        outage = catalog.valid[outage_column]
+        pairs.append(
+            SecurityPair(
+                outage.contingency_label,
+                int(network.active_branch_source_rows[monitored_active_index]) + 1,
+                "upper",
+                outage_column,
+                monitored_active_index,
+                outage.active_branch_index,
+                float(catalog.lodf[monitored_active_index, outage_column]),
+            )
+        )
+
+    class TwoViolationScreens:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def screen(self, *_args, **_kwargs):
+            pair = pairs[self.calls]
+            self.calls += 1
+            return ScreenResult((pair,), 0.1, pair.pair_id, 1)
+
+    phase_solve_calls = 0
+
+    def fake_phase_solve(**kwargs):
+        nonlocal phase_solve_calls
+        phase_solve_calls += 1
+        return phase_result(str(kwargs["attempt_kind"]))
+
+    monkeypatch.setattr(experiment_module, "_run_phase_one_attempt", fake_phase_solve)
+    screener = TwoViolationScreens()
+    with pytest.raises(
+        RegionAttemptRejected,
+        match="exhausted Phase-I security-generation rounds",
+    ):
+        experiment_module._solve_phase_one_lagrangian_region(
+            region_id="child",
+            masks=masks,
+            parent=None,  # type: ignore[arg-type]
+            master=master,
+            initial_pairs=(),
+            initial_precheck=phase_result("pre_cost_lp"),
+            case=case,
+            network=network,
+            config=config,
+            deadline=Deadline(30.0, 0.0, 0.0),
+            screener=screener,  # type: ignore[arg-type]
+            checkpoint=lambda: None,
+            commitment_cuts=(),
+        )
+
+    assert screener.calls == 2
+    assert phase_solve_calls == 1
 
 
 def test_phase_one_native_dual_maps_lower_upper_and_equality_rows() -> None:

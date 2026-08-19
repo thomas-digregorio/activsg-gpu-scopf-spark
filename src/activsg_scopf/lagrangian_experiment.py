@@ -537,8 +537,9 @@ ACTIVSG2000_V12_NUMERICAL_THROUGHPUT_FIX = {
     "phase_one_precision": "all_child_phase_one_optimality_tolerance_1e_10_v2",
     "feasibility_cut_cleanup": ("adaptive_coefficient_dust_zeroing_with_outward_rhs_relaxation_v1"),
     "split_preflight": (
-        "two_children_each_two_phase_one_rounds_plus_short_cost_dual_seed_and_margin_v2"
+        "two_children_each_three_phase_one_rounds_plus_short_cost_dual_seed_and_margin_v3"
     ),
+    "phase_one_round_controller": "never_solve_an_unscreened_terminal_round_v1",
     "exact_source_pmin_changed": False,
     "mathematical_original_integer_optimum_changed": False,
     "cpu_commitment_dispatch_objective_or_bound_seeded": False,
@@ -626,10 +627,10 @@ ACTIVSG2000_V11_RUNTIME = {
 }
 ACTIVSG2000_V12_RUNTIME = {
     **ACTIVSG2000_V11_RUNTIME,
-    "minimum_refinement_launch_seconds": 79.0,
+    "minimum_refinement_launch_seconds": 99.0,
     "phase_one_precheck_optimality_tolerance": 1e-10,
     "feasibility_cut_coefficient_zero_tolerance": 1e-8,
-    "maximum_child_phase_one_rounds": 2,
+    "maximum_child_phase_one_rounds": 3,
     "child_cost_dual_seed_seconds": 12.0,
 }
 
@@ -4328,6 +4329,8 @@ def _solve_phase_one_lagrangian_region(
             security_pairs=tuple(sorted(pairs_by_id.values())),
             rounds=rounds,
         )
+        if round_number >= maximum_rounds:
+            break
         current = _run_phase_one_attempt(
             region_id=region_id,
             masks=masks,
