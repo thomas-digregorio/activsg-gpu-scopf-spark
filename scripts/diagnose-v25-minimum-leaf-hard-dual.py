@@ -14,6 +14,7 @@ from activsg_scopf.commitment_cuts import (
     commitment_upper_cut_from_record,
 )
 from activsg_scopf.config import load_config
+from activsg_scopf.errors import ScopfError
 from activsg_scopf.lagrangian import (
     build_hard_cardinality_multiplier_delta_search_model,
     evaluate_lagrangian_bound,
@@ -42,6 +43,7 @@ def main() -> None:
     parser.add_argument("--result", type=Path, required=True)
     parser.add_argument("--seconds-per-pass", type=float, default=5.0)
     parser.add_argument("--maximum-passes", type=int, default=3)
+    parser.add_argument("--test-one-binary-split", action="store_true")
     args = parser.parse_args()
     if args.seconds_per_pass <= 0.0 or args.maximum_passes < 1:
         raise ValueError("Diagnostic budgets must be positive")
@@ -239,6 +241,146 @@ def main() -> None:
             cut_dual = candidate_cut_dual
         passes.append(pass_record)
 
+    binary_split: dict[str, object] | None = None
+    if args.test_one_binary_split:
+        free_positions = np.flatnonzero(~(masks.fixed_off | masks.fixed_on))
+        ranked_positions = sorted(
+            (int(position) for position in free_positions),
+            key=lambda position: (
+                abs(float(current.on_subproblem_values[position])),
+                int(source_rows[position]),
+            ),
+        )
+        selected_position: int | None = None
+        selected_masks = None
+        for position in ranked_positions:
+            off_masks, on_masks = masks.split(position)
+            try:
+                for child_masks in (off_masks, on_masks):
+                    evaluate_lagrangian_bound(
+                        master,
+                        row_dual,
+                        child_masks,
+                        safety_margin_dollars=float(
+                            config.raw["benchmark"][
+                                "certificate_safety_margin_dollars"
+                            ]
+                        ),
+                        commitment_cuts=cuts,
+                        commitment_cut_dual=cut_dual,
+                        hard_cardinality_cuts=hard_cuts,
+                    )
+            except ScopfError:
+                continue
+            selected_position = position
+            selected_masks = (off_masks, on_masks)
+            break
+        if selected_position is None or selected_masks is None:
+            raise RuntimeError("No two-sided feasible binary split remained")
+        child_records: list[dict[str, object]] = []
+        for side, child_masks in zip(("off", "on"), selected_masks, strict=True):
+            child_center = evaluate_lagrangian_bound(
+                master,
+                row_dual,
+                child_masks,
+                safety_margin_dollars=float(
+                    config.raw["benchmark"]["certificate_safety_margin_dollars"]
+                ),
+                commitment_cuts=cuts,
+                commitment_cut_dual=cut_dual,
+                hard_cardinality_cuts=hard_cuts,
+            )
+            search = build_hard_cardinality_multiplier_delta_search_model(
+                master,
+                row_dual,
+                child_masks,
+                commitment_cuts=cuts,
+                commitment_cut_dual=cut_dual,
+                hard_cardinality_cuts=hard_cuts,
+                maximum_new_violated_coupling_rows=int(
+                    config.runtime["centered_dual_maximum_new_coupling_rows"]
+                ),
+                coupling_trust_radius=10.0,
+                commitment_cut_trust_radius=1_000.0,
+                search_coefficient_zero_tolerance=float(
+                    config.runtime["centered_dual_search_coefficient_zero_tolerance"]
+                ),
+                search_objective_zero_tolerance=float(
+                    config.runtime.get(
+                        "centered_dual_search_objective_zero_tolerance", 0.0
+                    )
+                ),
+            )
+            child_solve = solve_cuopt_continuous_pdlp(
+                search.canonical,
+                time_limit_seconds=float(args.seconds_per_pass),
+                optimality_tolerance=float(
+                    config.runtime["centered_dual_optimality_tolerance"]
+                ),
+                primal_feasibility_tolerance=float(
+                    config.runtime["centered_dual_primal_feasibility_tolerance"]
+                ),
+                certificate_residual_tolerance=float(
+                    config.runtime["centered_dual_certificate_residual_tolerance"]
+                ),
+                native_scaling_mode="none",
+                native_base_mva=float(case.base_mva),
+                log_to_console=True,
+                per_constraint_residual=True,
+                presolve=0,
+                initial_native_primal=search.initial_values,
+                pdlp_solver_mode=int(profile.get("pdlp_solver_mode_native", 1)),
+            )
+            child_best = child_center
+            if child_solve.values is not None and np.all(
+                np.isfinite(child_solve.values)
+            ):
+                candidate_row, candidate_cut, _ = (
+                    expand_lagrangian_multiplier_delta_candidate(
+                        master, search, child_solve.values
+                    )
+                )
+                candidate = evaluate_lagrangian_bound(
+                    master,
+                    candidate_row,
+                    child_masks,
+                    safety_margin_dollars=float(
+                        config.raw["benchmark"][
+                            "certificate_safety_margin_dollars"
+                        ]
+                    ),
+                    commitment_cuts=cuts,
+                    commitment_cut_dual=candidate_cut,
+                    hard_cardinality_cuts=hard_cuts,
+                )
+                if candidate.conservative_lower_bound > (
+                    child_best.conservative_lower_bound
+                ):
+                    child_best = candidate
+            child_records.append(
+                {
+                    "side": side,
+                    "center_exact_bound": child_center.conservative_lower_bound,
+                    "polished_exact_bound": child_best.conservative_lower_bound,
+                    "lift_over_parent_dollars": (
+                        child_best.conservative_lower_bound
+                        - current.conservative_lower_bound
+                    ),
+                    "search_model": search.audit,
+                    "search_solve": _solve_summary(child_solve),
+                }
+            )
+        binary_split = {
+            "generator_position": selected_position,
+            "generator_source_row": int(source_rows[selected_position]),
+            "selection": "minimum_absolute_current_lagrangian_on_value_v1",
+            "parent_exact_bound": current.conservative_lower_bound,
+            "children": child_records,
+            "post_split_global_bound": min(
+                float(child["polished_exact_bound"]) for child in child_records
+            ),
+        }
+
     print(
         "V25_HARD_CARDINALITY_DUAL="
         + json.dumps(
@@ -252,6 +394,7 @@ def main() -> None:
                     current.conservative_lower_bound - initial_bound
                 ),
                 "passes": passes,
+                "binary_split": binary_split,
                 "total_wall_time_seconds": time.perf_counter() - started,
                 "cpu_solution_data_used": False,
             },
