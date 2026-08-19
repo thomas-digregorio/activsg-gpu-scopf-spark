@@ -1,0 +1,115 @@
+{
+  "schema_version": "1.0.0",
+  "benchmark_id": "activsg2000-gpu-lagrangian-v12",
+  "frozen_identity": {
+    "commit": "3e74ee5684b7c9439263e82bd86079d9e2920d9e",
+    "tag": "experiment-2000-gpu-lagrangian-v12",
+    "config_sha256": "fa482a28fe2d88da357317828aeeb3b29a6062badc8a65c185c63cb58ea189ac"
+  },
+  "source_identity": {
+    "case_file": "case_ACTIVSg2000.m",
+    "case_sha256": "8d00618de8fd10bf35a599f59d2deebfecd0d86e28fcff73219ad7c4ebab860b",
+    "contingency_file": "contab_ACTIVSg2000.m",
+    "contingency_sha256": "198b39f0381925a4ddacbe2148973cb1d93ddfe220303829cf87b16d45190bba"
+  },
+  "raw_artifacts": {
+    "result_path": "/home/dgxsparktd/activsg-gpu-scopf-spark/results/experiments/activsg2000-gpu-lagrangian-v12-dgx-spark.json",
+    "result_bytes": 22403487,
+    "result_sha256": "6b7b7254eb0f0d6b32081684e1b1fd33d3ae223e54257bb0dc88ec90e46cc24f",
+    "run_registry_sha256": "49c80bcb6f0bfdce70573eb4b9b0222eaee8e8c83c032688ae8045a986301df9",
+    "launcher_log_sha256": "e1439cf62dedced3f6338d194cc0e9d9e3ec02fe6414d74e1e7901e1b2f42d7f",
+    "worker_console_log_sha256": "899ffe86585a9b8f12930399a65e5777a84d89b45ba57cdad8d2e95a0223f211",
+    "failed_probe_log_sha256": "a889d2850449dda7fe88d81638d3c95dd194f656eefc956b3eeec76054b6e4fa",
+    "passing_probe_log_sha256": "a42bddf83753fe5870e8e58868a60cbbd6e599ae25de9ecdd8e7e15c1eaf5d00"
+  },
+  "outcome": {
+    "status": "incomplete_refinement_budget_reserve_reached",
+    "elapsed_seconds": 874.5146877819934,
+    "total_wall_time_seconds": 876.0529307219986,
+    "objective": 1142133.3767435683,
+    "bound": 1128529.212256944,
+    "bound_status": "independently_replayed_current_frontier",
+    "relative_gap": 0.011911187225271595,
+    "requested_relative_gap": 0.001,
+    "commitment_count": 331,
+    "secure_primal": true,
+    "gap_certified": false,
+    "success_gate_passed": false
+  },
+  "verification": {
+    "passed": true,
+    "checked_valid_outages": 2740,
+    "checked_security_sides": 17563400,
+    "maximum_model_residual_pu": 2.3442225938197226e-12,
+    "maximum_security_violation_pu": 3.489135451673064e-9,
+    "maximum_integrality_violation": 0.0,
+    "objective_difference": 1.6298145055770874e-9
+  },
+  "lower_bound_verification": {
+    "passed": true,
+    "frontier_region_count": 13,
+    "validated_global_feasibility_cut_count": 5,
+    "recorded_global_lower_bound": 1128529.212256944,
+    "replayed_global_lower_bound": 1128529.212256944,
+    "global_bound_difference_dollars": 0.0,
+    "maximum_region_replay_difference_dollars": 0.0
+  },
+  "work_counts": {
+    "successful_disjunctive_splits": 12,
+    "rolled_back_disjunctive_splits": 0,
+    "solved_regions": 25,
+    "frontier_regions": 13,
+    "phase_one_prechecks": 24,
+    "global_feasibility_cuts": 5
+  },
+  "preserved_phase_one_controller": {
+    "failed_split_count": 0,
+    "cost_dual_seed_attempts": 24,
+    "cost_dual_seed_selected": 11,
+    "mapped_parent_seed_selected": 13,
+    "cost_dual_seed_wall_seconds": 314.14615181903355,
+    "cost_pdlp_returned_primal_used": false,
+    "passing_probe_final_security_violation_pu": 0.0,
+    "passing_probe_canonical_residual_pu": 9.496579878032208e-10,
+    "passing_probe_certificate_bound": 1128774.605717426
+  },
+  "mip_start": {
+    "contract_passed": true,
+    "submitted_canonical_columns": 9220,
+    "submitted_native_columns": 9215,
+    "presolve_parameter_readback": 0,
+    "native_translated_vector_readback": true,
+    "native_rejection_detected": false,
+    "maximum_native_row_violation": 3.489137867518366e-9
+  },
+  "timings_seconds": {
+    "network_and_reduced_model_build": 1.4079538530058926,
+    "root_and_relaxation_pdlp_adapter_wall": 198.17140211399237,
+    "child_cost_dual_seed_adapter_wall": 314.14615181903355,
+    "phase_one_pdlp_adapter_wall": 42.16950163898582,
+    "cupy_lagrangian_evaluation_wall": 14.458973636981682,
+    "gpu_primal_heuristics_adapter_wall": 104.9271718399832,
+    "fixed_commitment_pdlp_adapter_wall": 10.762330922996625,
+    "root_certificate_replay": 1.4818035440111998,
+    "final_frontier_certificate_replay": 26.30013730400242,
+    "independent_primal_verification": 0.392545071998029,
+    "result_serialization": 0.09469470698968507,
+    "attributed_total": 714.60763348396,
+    "remaining_controller_and_checkpoint_overhead": 161.445297238039
+  },
+  "lower_bound_diagnostic": {
+    "frontier_leaf_count_at_root_bound": 2,
+    "same_minimizing_commitment_in_both_root_bound_leaves": true,
+    "root_bound_leaf_cost_pdlp_candidates_were_weaker_than_parent": true,
+    "root_bound_leaf_best_commitment_cut_duals_all_zero": true,
+    "interpretation": "the remaining bottleneck is commitment-cut dual optimization, not numerical feasibility"
+  },
+  "cpu_boundary": {
+    "comparison_performed_only_after_gpu_status_was_final": true,
+    "laptop_end_to_end_seconds": 1007.3702709000063,
+    "laptop_relative_gap": 0.0007763998859633739,
+    "gpu_seconds_less_than_cpu": 131.3173401780077,
+    "gpu_percent_less_wall_time": 13.0356576892711,
+    "comparable_successful_solution": false
+  }
+}
