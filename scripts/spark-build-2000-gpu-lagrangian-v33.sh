@@ -18,4 +18,3 @@ docker build \
   --tag "$image" \
   --file Dockerfile.spark \
   .
-
