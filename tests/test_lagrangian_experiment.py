@@ -30,6 +30,9 @@ from activsg_scopf.lagrangian_experiment import (
     ACTIVSG2000_V16_BENDERS_COVER_FIX,
     ACTIVSG2000_V16_EXPERIMENT_ID,
     ACTIVSG2000_V16_RUNTIME,
+    ACTIVSG2000_V17_EXPERIMENT_ID,
+    ACTIVSG2000_V17_PRIMAL_DIVERSIFICATION_FIX,
+    ACTIVSG2000_V17_RUNTIME,
     EXPERIMENT_ID,
     EXPERIMENT_TAG,
     PrimalCandidatePolicy,
@@ -552,6 +555,35 @@ def test_registered_activsg2000_v16_benders_cover_fix_is_fail_closed() -> None:
     v16.raw["runtime"]["benders_feasibility_cover_enabled"] = False
     with pytest.raises(ScopfError, match="runtime policy changed"):
         validate_lagrangian_experiment_config(v16)
+
+
+def test_registered_activsg2000_v17_primal_diversification_is_fail_closed() -> None:
+    v16 = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v16.json")
+    v17 = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v17.json")
+    registration = validate_lagrangian_experiment_config(v17)
+
+    assert v17.benchmark_id == ACTIVSG2000_V17_EXPERIMENT_ID
+    assert registration["benchmark"]["required_git_tag"] == (
+        "experiment-2000-gpu-lagrangian-v17"
+    )
+    assert v17.raw["raw_inputs"] == v16.raw["raw_inputs"]
+    assert v17.model == v16.model
+    assert v17.runtime == ACTIVSG2000_V17_RUNTIME
+    assert v17.runtime["deadline_seconds"] == 900.0
+    assert v17.runtime["alternative_primal_candidate_maximum_attempts"] == 18
+    assert v17.runtime["alternative_primal_candidate_wall_seconds"] == 120.0
+    assert v17.runtime[
+        "alternative_primal_candidate_minimum_remaining_solver_seconds"
+    ] == 420.0
+    assert registration["benchmark"]["primal_diversification_fix"] == (
+        ACTIVSG2000_V17_PRIMAL_DIVERSIFICATION_FIX
+    )
+    assert registration["benchmark"]["primal_diversification_fix"][
+        "candidate_selection_uses_cpu_solution_data"
+    ] is False
+    v17.raw["runtime"]["alternative_primal_candidate_maximum_attempts"] = 19
+    with pytest.raises(ScopfError, match="runtime policy changed"):
+        validate_lagrangian_experiment_config(v17)
 
 
 def test_gpu_lagrangian_timing_accepts_centered_and_legacy_audits() -> None:
