@@ -241,6 +241,18 @@ bash scripts/spark-build-2000-gpu-lagrangian-v23.sh
 bash scripts/spark-run-2000-gpu-lagrangian-v23.sh
 ```
 
+The tagged v23 revision was stopped during its GPU component preflight before
+any full benchmark launch: CuPy requires `lexsort` keys as one stacked array,
+whereas NumPy accepts the tuple used by v23. The v24 bugfix preserves that
+evidence, uses stacked FP64 value/source-position keys, and requires the GPU
+minimizer and bound to replay exactly on the independent host evaluator before
+use. Run the corrected one-shot revision with:
+
+```bash
+bash scripts/spark-build-2000-gpu-lagrangian-v24.sh
+bash scripts/spark-run-2000-gpu-lagrangian-v24.sh
+```
+
 ## MIP-gap sensitivity experiments
 
 The separately registered `activsg10k-gap-sensitivity-v2` experiment runs the

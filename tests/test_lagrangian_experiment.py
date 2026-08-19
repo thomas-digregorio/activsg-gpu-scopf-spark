@@ -61,6 +61,9 @@ from activsg_scopf.lagrangian_experiment import (
     ACTIVSG2000_V23_EXPERIMENT_ID,
     ACTIVSG2000_V23_NUMERICAL_HARD_CARDINALITY_FIX,
     ACTIVSG2000_V23_RUNTIME,
+    ACTIVSG2000_V24_CUPY_LEXSORT_FIX,
+    ACTIVSG2000_V24_EXPERIMENT_ID,
+    ACTIVSG2000_V24_RUNTIME,
     EXPERIMENT_ID,
     EXPERIMENT_TAG,
     PrimalCandidatePolicy,
@@ -799,7 +802,7 @@ def test_registered_activsg2000_v23_numerical_hard_cardinality_is_fail_closed() 
     assert registration["benchmark"]["numerical_hard_cardinality_fix"] == (
         ACTIVSG2000_V23_NUMERICAL_HARD_CARDINALITY_FIX
     )
-    assert ACTIVSG2000_EXPERIMENT_ID_SEQUENCE[-1] == ACTIVSG2000_V23_EXPERIMENT_ID
+    assert ACTIVSG2000_V23_EXPERIMENT_ID in ACTIVSG2000_EXPERIMENT_ID_SEQUENCE
     assert all(
         _activsg2000_solver_path_registration(ACTIVSG2000_V23_EXPERIMENT_ID).values()
     )
@@ -808,6 +811,35 @@ def test_registered_activsg2000_v23_numerical_hard_cardinality_is_fail_closed() 
     ] = False
     with pytest.raises(ScopfError, match="numerical/hard-cardinality identity changed"):
         validate_lagrangian_experiment_config(v23)
+
+
+def test_registered_activsg2000_v24_cupy_lexsort_fix_is_fail_closed() -> None:
+    v23 = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v23.json")
+    v24 = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v24.json")
+    registration = validate_lagrangian_experiment_config(v24)
+
+    assert v24.benchmark_id == ACTIVSG2000_V24_EXPERIMENT_ID
+    assert registration["benchmark"]["required_git_tag"] == (
+        "experiment-2000-gpu-lagrangian-v24"
+    )
+    assert v24.raw["raw_inputs"] == v23.raw["raw_inputs"]
+    assert v24.model == v23.model
+    assert v24.runtime == ACTIVSG2000_V24_RUNTIME
+    assert registration["benchmark"]["numerical_hard_cardinality_fix"] == (
+        ACTIVSG2000_V23_NUMERICAL_HARD_CARDINALITY_FIX
+    )
+    assert registration["benchmark"]["cupy_lexsort_fix"] == (
+        ACTIVSG2000_V24_CUPY_LEXSORT_FIX
+    )
+    assert ACTIVSG2000_EXPERIMENT_ID_SEQUENCE[-1] == ACTIVSG2000_V24_EXPERIMENT_ID
+    assert all(
+        _activsg2000_solver_path_registration(ACTIVSG2000_V24_EXPERIMENT_ID).values()
+    )
+    v24.raw["benchmark"]["cupy_lexsort_fix"]["gpu_host_exact_commitment_replay_required"] = (
+        False
+    )
+    with pytest.raises(ScopfError, match="CuPy-lexsort identity changed"):
+        validate_lagrangian_experiment_config(v24)
 
 
 def test_gpu_lagrangian_timing_accepts_centered_and_legacy_audits() -> None:
@@ -1006,10 +1038,10 @@ def test_v12_cost_dual_seed_never_replaces_secure_phase_one_primal(
     assert rounds[0]["cost_dual_seed"]["secure_phase_one_primal_preserved"] is True
 
 
-def test_v23_hard_cardinality_child_preserves_secure_primal_without_cost_lp(
+def test_v24_hard_cardinality_child_preserves_secure_primal_without_cost_lp(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    config = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v23.json")
+    config = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v24.json")
     case, _table = triangle_case()
     case.gen[1, GEN_STATUS] = 1.0
     network = build_network(case)

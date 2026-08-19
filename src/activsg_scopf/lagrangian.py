@@ -332,7 +332,12 @@ def evaluate_lagrangian_bound_cupy(
             free_limit = int(free_support.size)
         free_device = cp.asarray(free_support, dtype=cp.int64)
         free_values = on_value[free_device]
-        order = cp.lexsort((free_device, free_values))
+        # NumPy accepts a tuple of keys, whereas CuPy requires one stacked
+        # two-dimensional array.  Cast the source-position tiebreaker to FP64;
+        # generator positions are small exact integers in that format.
+        order = cp.lexsort(
+            cp.stack((free_device.astype(cp.float64), free_values), axis=0)
+        )
         negative_count = int(cp.count_nonzero(free_values < 0.0).item())
         selected_count = (
             min(free_limit, negative_count)

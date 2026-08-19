@@ -147,6 +147,7 @@ ACTIVSG2000_V20_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v20"
 ACTIVSG2000_V21_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v21"
 ACTIVSG2000_V22_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v22"
 ACTIVSG2000_V23_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v23"
+ACTIVSG2000_V24_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v24"
 ACTIVSG2000_EXPERIMENT_ID_SEQUENCE = (
     ACTIVSG2000_EXPERIMENT_ID,
     ACTIVSG2000_V2_EXPERIMENT_ID,
@@ -171,6 +172,7 @@ ACTIVSG2000_EXPERIMENT_ID_SEQUENCE = (
     ACTIVSG2000_V21_EXPERIMENT_ID,
     ACTIVSG2000_V22_EXPERIMENT_ID,
     ACTIVSG2000_V23_EXPERIMENT_ID,
+    ACTIVSG2000_V24_EXPERIMENT_ID,
 )
 
 
@@ -216,7 +218,7 @@ ACTIVSG2000_PHASE_ONE_CHILD_EXPERIMENT_IDS = frozenset(
     }
 )
 ACTIVSG2000_HARD_CARDINALITY_CHILD_EXPERIMENT_IDS = frozenset(
-    {ACTIVSG2000_V23_EXPERIMENT_ID}
+    ACTIVSG2000_V23_PLUS_EXPERIMENT_IDS
 )
 ACTIVSG2000_PHASE_ONE_FIRST_EXPERIMENT_IDS = frozenset(
     ACTIVSG2000_ALL_EXPERIMENT_IDS
@@ -439,6 +441,14 @@ REGISTERED_EXPERIMENTS = {
         "policy": (
             "gpu_certified_two_sided_scaling_plus_exact_disjoint_hard_"
             "cardinality_lagrangian_activsg2000_v23"
+        ),
+    },
+    ACTIVSG2000_V24_EXPERIMENT_ID: {
+        "case_name": "ACTIVSg2000",
+        "tag": "experiment-2000-gpu-lagrangian-v24",
+        "policy": (
+            "gpu_cupy_stacked_lexsort_exact_disjoint_hard_cardinality_"
+            "activsg2000_v24"
         ),
     },
 }
@@ -978,6 +988,21 @@ ACTIVSG2000_V23_NUMERICAL_HARD_CARDINALITY_FIX = {
     "exact_source_pmin_changed": False,
     "mathematical_original_integer_feasible_set_changed": False,
 }
+ACTIVSG2000_V24_CUPY_LEXSORT_FIX = {
+    "comparison_baseline": "activsg2000-gpu-lagrangian-v23",
+    "v23_tagged_preflight_preserved": True,
+    "v23_preflight_commit": "f8c4aaf1e9614961d5ee686d0a14079814a0fad2",
+    "v23_full_benchmark_launched": False,
+    "v23_result_path_consumed": False,
+    "v23_gpu_component_failure": (
+        "cupy_lexsort_tuple_keys_attribute_error_before_full_run_v1"
+    ),
+    "gpu_lexsort_fix": "stacked_fp64_value_and_exact_generator_position_keys_v1",
+    "gpu_host_exact_commitment_replay_required": True,
+    "cpu_solution_data_used": False,
+    "exact_source_pmin_changed": False,
+    "mathematical_original_integer_feasible_set_changed": False,
+}
 ACTIVSG2000_V1_RUNTIME = {
     "deadline_seconds": 1800.0,
     "verification_reserve_seconds": 120.0,
@@ -1148,6 +1173,7 @@ ACTIVSG2000_V23_RUNTIME = {
     "post_cut_root_cost_dual_seconds": 0.0,
     "post_cut_root_cost_dual_minimum_remaining_solver_seconds": 0.0,
 }
+ACTIVSG2000_V24_RUNTIME = dict(ACTIVSG2000_V23_RUNTIME)
 ACTIVSG2000_RUNTIME_BY_EXPERIMENT_ID = dict(
     zip(
         ACTIVSG2000_EXPERIMENT_ID_SEQUENCE,
@@ -1175,6 +1201,7 @@ ACTIVSG2000_RUNTIME_BY_EXPERIMENT_ID = dict(
             ACTIVSG2000_V21_RUNTIME,
             ACTIVSG2000_V22_RUNTIME,
             ACTIVSG2000_V23_RUNTIME,
+            ACTIVSG2000_V24_RUNTIME,
         ),
         strict=True,
     )
@@ -1390,7 +1417,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
         config.benchmark_id in ACTIVSG2000_V21_PLUS_EXPERIMENT_IDS
     )
     is_activsg2000_v22 = config.benchmark_id == ACTIVSG2000_V22_EXPERIMENT_ID
-    is_activsg2000_v23 = config.benchmark_id == ACTIVSG2000_V23_EXPERIMENT_ID
+    is_activsg2000_v24 = config.benchmark_id == ACTIVSG2000_V24_EXPERIMENT_ID
     is_activsg2000_v16_plus = (
         config.benchmark_id in ACTIVSG2000_V16_PLUS_EXPERIMENT_IDS
     )
@@ -1436,6 +1463,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
                 "-v21",
                 "-v22",
                 "-v23",
+                "-v24",
             )
         )
         or is_activsg2000
@@ -1695,13 +1723,21 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
                 f"expected={ACTIVSG2000_V22_LOWER_BOUND_THROUGHPUT_FIX}, "
                 f"observed={observed_change}"
             )
-    if is_activsg2000_v23:
+    if config.benchmark_id in ACTIVSG2000_V23_PLUS_EXPERIMENT_IDS:
         observed_change = benchmark.get("numerical_hard_cardinality_fix")
         if observed_change != ACTIVSG2000_V23_NUMERICAL_HARD_CARDINALITY_FIX:
             raise ScopfError(
                 "ACTIVSg2000 GPU Lagrangian v23 numerical/hard-cardinality "
                 "identity changed: "
                 f"expected={ACTIVSG2000_V23_NUMERICAL_HARD_CARDINALITY_FIX}, "
+                f"observed={observed_change}"
+            )
+    if is_activsg2000_v24:
+        observed_change = benchmark.get("cupy_lexsort_fix")
+        if observed_change != ACTIVSG2000_V24_CUPY_LEXSORT_FIX:
+            raise ScopfError(
+                "ACTIVSg2000 GPU Lagrangian v24 CuPy-lexsort identity changed: "
+                f"expected={ACTIVSG2000_V24_CUPY_LEXSORT_FIX}, "
                 f"observed={observed_change}"
             )
     profile = config.raw["platforms"].get("dgx_spark", {})
@@ -1712,7 +1748,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
         "pdlp_precision": "fp64",
         "native_scaling_mode": (
             POWER_SYSTEM_CERTIFIED_EQUILIBRATED_SCALING
-            if is_activsg2000_v23
+            if config.benchmark_id in ACTIVSG2000_V23_PLUS_EXPERIMENT_IDS
             else "power_system_equilibrated_safe_v3"
             if (
                 is_activsg2000_v5
@@ -1873,7 +1909,11 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
         ):
             expected_precheck = (
                 5.0
-                if (is_activsg2000_v22 or is_activsg2000_v23)
+                if (
+                    is_activsg2000_v22
+                    or config.benchmark_id
+                    in ACTIVSG2000_V23_PLUS_EXPERIMENT_IDS
+                )
                 else (10.0 if is_activsg2000 else 2.0)
             )
             if float(runtime.get("precheck_phase_one_time_limit_seconds", -1.0)) != (
