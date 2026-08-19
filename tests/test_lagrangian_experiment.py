@@ -89,6 +89,9 @@ from activsg_scopf.lagrangian_experiment import (
     ACTIVSG2000_V32_EXPERIMENT_ID,
     ACTIVSG2000_V32_NUMERICAL_AND_BATCH_THROUGHPUT_FIX,
     ACTIVSG2000_V32_RUNTIME,
+    ACTIVSG2000_V33_EXPERIMENT_ID,
+    ACTIVSG2000_V33_POST_NORMALIZATION_BOUND_FIX,
+    ACTIVSG2000_V33_RUNTIME,
     EXPERIMENT_ID,
     EXPERIMENT_TAG,
     PrimalCandidatePolicy,
@@ -1101,11 +1104,43 @@ def test_registered_activsg2000_v32_numerical_and_batch_fix_is_fail_closed() -> 
     assert registration["benchmark"]["numerical_and_batch_throughput_fix"] == (
         ACTIVSG2000_V32_NUMERICAL_AND_BATCH_THROUGHPUT_FIX
     )
-    assert ACTIVSG2000_EXPERIMENT_ID_SEQUENCE[-1] == ACTIVSG2000_V32_EXPERIMENT_ID
+    assert ACTIVSG2000_V32_EXPERIMENT_ID in ACTIVSG2000_EXPERIMENT_ID_SEQUENCE
     assert all(_activsg2000_solver_path_registration(ACTIVSG2000_V32_EXPERIMENT_ID).values())
     v32.raw["benchmark"]["numerical_and_batch_throughput_fix"]["proposal_batching"] = "changed"
     with pytest.raises(ScopfError, match="v32 numerical/batch throughput identity"):
         validate_lagrangian_experiment_config(v32)
+
+
+def test_registered_activsg2000_v33_post_normalization_bound_fix_is_fail_closed() -> None:
+    v32 = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v32.json")
+    v33 = load_config(ROOT / "configs" / "activsg2000-gpu-lagrangian-v33.json")
+    registration = validate_lagrangian_experiment_config(v33)
+
+    assert v33.benchmark_id == ACTIVSG2000_V33_EXPERIMENT_ID
+    assert registration["benchmark"]["required_git_tag"] == (
+        "experiment-2000-gpu-lagrangian-v33"
+    )
+    assert v33.raw["raw_inputs"] == v32.raw["raw_inputs"]
+    assert v33.model == v32.model
+    assert v33.runtime == ACTIVSG2000_V33_RUNTIME
+    assert v33.runtime["alternative_primal_candidate_maximum_attempts"] == 36
+    assert v33.runtime["alternative_primal_candidate_wall_seconds"] == 120.0
+    assert (
+        v33.runtime["alternative_primal_candidate_minimum_remaining_solver_seconds"]
+        == 380.0
+    )
+    assert registration["benchmark"]["post_normalization_bound_fix"] == (
+        ACTIVSG2000_V33_POST_NORMALIZATION_BOUND_FIX
+    )
+    assert ACTIVSG2000_EXPERIMENT_ID_SEQUENCE[-1] == ACTIVSG2000_V33_EXPERIMENT_ID
+    assert all(
+        _activsg2000_solver_path_registration(ACTIVSG2000_V33_EXPERIMENT_ID).values()
+    )
+    v33.raw["benchmark"]["post_normalization_bound_fix"]["bound_cleanup"] = (
+        "changed"
+    )
+    with pytest.raises(ScopfError, match="v33 post-normalization bound-fix identity"):
+        validate_lagrangian_experiment_config(v33)
 
 
 

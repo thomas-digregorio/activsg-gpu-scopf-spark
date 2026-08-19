@@ -2493,6 +2493,8 @@ def build_hard_cardinality_multiplier_delta_search_model(
             }
         )
 
+    post_normalization_snapped_bounds: list[dict[str, float | str]] = []
+
     def normalize_component_column(spec: dict[str, Any]) -> None:
         """Apply an exact diagonal change of variable to one epigraph column."""
 
@@ -2500,11 +2502,32 @@ def build_hard_cardinality_multiplier_delta_search_model(
         upper_bound = float(spec["upper"])
         factor = max(1.0, abs(lower), abs(upper_bound))
         original_scale = float(spec["scale"])
+        normalized_lower = lower / factor
+        normalized_upper = upper_bound / factor
+        for side, normalized in (
+            ("lower", normalized_lower),
+            ("upper", normalized_upper),
+        ):
+            if 0.0 < abs(normalized) < search_coefficient_zero_tolerance:
+                post_normalization_snapped_bounds.append(
+                    {
+                        "side": side,
+                        "normalized_absolute": abs(normalized),
+                        "physical_absolute": abs(
+                            original_scale
+                            * (lower if side == "lower" else upper_bound)
+                        ),
+                    }
+                )
+                if side == "lower":
+                    normalized_lower = 0.0
+                else:
+                    normalized_upper = 0.0
         spec["unscaled_component_scale"] = original_scale
         spec["column_scale_factor"] = factor
         spec["scale"] = original_scale * factor
-        spec["lower"] = lower / factor
-        spec["upper"] = upper_bound / factor
+        spec["lower"] = normalized_lower
+        spec["upper"] = normalized_upper
 
     for spec in value_specs:
         normalize_component_column(spec)
@@ -2921,6 +2944,26 @@ def build_hard_cardinality_multiplier_delta_search_model(
                     float(spec["column_scale_factor"])
                     for spec in (*value_specs, *group_specs)
                 )
+            ),
+            "post_normalization_epigraph_bound_cleanup_policy": (
+                "snap_abs_below_search_floor_to_zero_in_proposal_box_only_v1"
+            ),
+            "post_normalization_snapped_epigraph_bound_count": len(
+                post_normalization_snapped_bounds
+            ),
+            "post_normalization_maximum_snapped_bound_absolute": max(
+                (
+                    float(record["normalized_absolute"])
+                    for record in post_normalization_snapped_bounds
+                ),
+                default=0.0,
+            ),
+            "post_normalization_maximum_snapped_physical_absolute": max(
+                (
+                    float(record["physical_absolute"])
+                    for record in post_normalization_snapped_bounds
+                ),
+                default=0.0,
             ),
             "search_coefficient_zero_tolerance": float(
                 search_coefficient_zero_tolerance

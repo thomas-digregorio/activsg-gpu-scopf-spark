@@ -281,6 +281,13 @@ def test_hard_cardinality_delta_search_exactly_embeds_center() -> None:
         "exact_positive_diagonal_max_abs_bound_normalization_v1"
     )
     assert search.audit["finite_column_bound_maximum_absolute"] <= 1.0
+    assert (
+        search.audit["finite_column_bound_minimum_nonzero_absolute"]
+        >= search.audit["search_coefficient_zero_tolerance"]
+    )
+    assert search.audit["post_normalization_epigraph_bound_cleanup_policy"] == (
+        "snap_abs_below_search_floor_to_zero_in_proposal_box_only_v1"
+    )
 
     solved = solve_highs(
         search.canonical,

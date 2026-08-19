@@ -163,6 +163,7 @@ ACTIVSG2000_V29_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v29"
 ACTIVSG2000_V30_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v30"
 ACTIVSG2000_V31_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v31"
 ACTIVSG2000_V32_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v32"
+ACTIVSG2000_V33_EXPERIMENT_ID = "activsg2000-gpu-lagrangian-v33"
 ACTIVSG2000_EXPERIMENT_ID_SEQUENCE = (
     ACTIVSG2000_EXPERIMENT_ID,
     ACTIVSG2000_V2_EXPERIMENT_ID,
@@ -196,6 +197,7 @@ ACTIVSG2000_EXPERIMENT_ID_SEQUENCE = (
     ACTIVSG2000_V30_EXPERIMENT_ID,
     ACTIVSG2000_V31_EXPERIMENT_ID,
     ACTIVSG2000_V32_EXPERIMENT_ID,
+    ACTIVSG2000_V33_EXPERIMENT_ID,
 )
 
 
@@ -229,6 +231,7 @@ ACTIVSG2000_V26_PLUS_EXPERIMENT_IDS = _activsg2000_version_ids_from(26)
 ACTIVSG2000_V27_PLUS_EXPERIMENT_IDS = _activsg2000_version_ids_from(27)
 ACTIVSG2000_V28_PLUS_EXPERIMENT_IDS = _activsg2000_version_ids_from(28)
 ACTIVSG2000_V29_PLUS_EXPERIMENT_IDS = _activsg2000_version_ids_from(29)
+ACTIVSG2000_V32_PLUS_EXPERIMENT_IDS = _activsg2000_version_ids_from(32)
 ACTIVSG2000_COST_DUAL_CHILD_EXPERIMENT_IDS = frozenset(
     {
         ACTIVSG2000_V12_EXPERIMENT_ID,
@@ -544,6 +547,14 @@ REGISTERED_EXPERIMENTS = {
         "policy": (
             "gpu_exact_epigraph_scaling_diversified_type_placement_and_"
             "block_diagonal_sibling_pdlp_activsg2000_v32"
+        ),
+    },
+    ACTIVSG2000_V33_EXPERIMENT_ID: {
+        "case_name": "ACTIVSg2000",
+        "tag": "experiment-2000-gpu-lagrangian-v33",
+        "policy": (
+            "gpu_post_normalization_bound_cleanup_block_diagonal_sibling_"
+            "pdlp_and_bounded_diversified_primal_activsg2000_v33"
         ),
     },
 }
@@ -1278,6 +1289,28 @@ ACTIVSG2000_V32_NUMERICAL_AND_BATCH_THROUGHPUT_FIX = {
     "exact_source_pmin_changed": False,
     "mathematical_original_integer_feasible_set_changed": False,
 }
+ACTIVSG2000_V33_POST_NORMALIZATION_BOUND_FIX = {
+    "comparison_baseline": "activsg2000-gpu-lagrangian-v32",
+    "failed_v32_result_preserved": True,
+    "v32_failure_stage": "first_block_diagonal_proof_pair_preparation_v1",
+    "v32_failure": (
+        "post_normalization_asymmetric_epigraph_bound_below_registered_floor_v1"
+    ),
+    "bound_cleanup": (
+        "snap_post_normalization_abs_below_1e_4_to_zero_in_proposal_box_only_v1"
+    ),
+    "center_feasibility": "exact_zero_delta_certificate_remains_in_every_box_v1",
+    "proposal_role": "never_bound_authority_exact_fp64_replay_still_required_v1",
+    "v32_primal_beam_wall_seconds": 241.86151393302134,
+    "v32_primal_beam_objective_improvement_dollars": 0.0,
+    "replacement_primal_beam": "one_hundred_twenty_second_registered_cap_v1",
+    "failed_state_preflight": (
+        "rebuild_v32_root_gpu_certificate_and_hard_cardinality_pair_before_launch_v1"
+    ),
+    "cpu_solution_data_used": False,
+    "exact_source_pmin_changed": False,
+    "mathematical_original_integer_feasible_set_changed": False,
+}
 ACTIVSG2000_V1_RUNTIME = {
     "deadline_seconds": 1800.0,
     "verification_reserve_seconds": 120.0,
@@ -1532,6 +1565,12 @@ ACTIVSG2000_V32_RUNTIME = {
     "balanced_type_rounding_diversified_target_offsets": [0],
     "minimizer_feasibility_cut_enabled": False,
 }
+ACTIVSG2000_V33_RUNTIME = {
+    **ACTIVSG2000_V32_RUNTIME,
+    "alternative_primal_candidate_maximum_attempts": 36,
+    "alternative_primal_candidate_wall_seconds": 120.0,
+    "alternative_primal_candidate_minimum_remaining_solver_seconds": 380.0,
+}
 ACTIVSG2000_RUNTIME_BY_EXPERIMENT_ID = dict(
     zip(
         ACTIVSG2000_EXPERIMENT_ID_SEQUENCE,
@@ -1568,6 +1607,7 @@ ACTIVSG2000_RUNTIME_BY_EXPERIMENT_ID = dict(
             ACTIVSG2000_V30_RUNTIME,
             ACTIVSG2000_V31_RUNTIME,
             ACTIVSG2000_V32_RUNTIME,
+            ACTIVSG2000_V33_RUNTIME,
         ),
         strict=True,
     )
@@ -1892,6 +1932,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
     is_activsg2000_v30 = config.benchmark_id == ACTIVSG2000_V30_EXPERIMENT_ID
     is_activsg2000_v31 = config.benchmark_id == ACTIVSG2000_V31_EXPERIMENT_ID
     is_activsg2000_v32 = config.benchmark_id == ACTIVSG2000_V32_EXPERIMENT_ID
+    is_activsg2000_v33 = config.benchmark_id == ACTIVSG2000_V33_EXPERIMENT_ID
     is_activsg2000_v26_plus = (
         config.benchmark_id in ACTIVSG2000_V26_PLUS_EXPERIMENT_IDS
     )
@@ -2317,7 +2358,7 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
                 "full_mip_start_polish_optimality_tolerance": 1e-10,
                 "full_mip_start_polish_primal_feasibility_tolerance": 1e-8,
             }
-            if (is_activsg2000_v31 or is_activsg2000_v32)
+            if (is_activsg2000_v31 or is_activsg2000_v32 or is_activsg2000_v33)
             else {
                 "minimum_refinement_launch_seconds": 19.0,
                 "proof_only_hard_cardinality_pdlp_seconds_per_child": 2.0,
@@ -2343,6 +2384,15 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
                     "alternative_primal_candidate_maximum_attempts": 72,
                     "alternative_primal_candidate_wall_seconds": 240.0,
                     "alternative_primal_candidate_minimum_remaining_solver_seconds": 260.0,
+                }
+            )
+        elif is_activsg2000_v33:
+            required_v27_runtime.update(
+                {
+                    "proof_only_checkpoint_interval_splits": 24,
+                    "alternative_primal_candidate_maximum_attempts": 36,
+                    "alternative_primal_candidate_wall_seconds": 120.0,
+                    "alternative_primal_candidate_minimum_remaining_solver_seconds": 380.0,
                 }
             )
         observed_v27_runtime = {
@@ -2403,13 +2453,22 @@ def validate_lagrangian_experiment_config(config: RunConfig) -> dict[str, Any]:
                 f"expected={ACTIVSG2000_V31_PRIMAL_AND_PROOF_THROUGHPUT_FIX}, "
                 f"observed={observed_change}"
             )
-    if is_activsg2000_v32:
+    if config.benchmark_id in ACTIVSG2000_V32_PLUS_EXPERIMENT_IDS:
         observed_change = benchmark.get("numerical_and_batch_throughput_fix")
         if observed_change != ACTIVSG2000_V32_NUMERICAL_AND_BATCH_THROUGHPUT_FIX:
             raise ScopfError(
                 "ACTIVSg2000 GPU Lagrangian v32 numerical/batch throughput "
                 "identity changed: "
                 f"expected={ACTIVSG2000_V32_NUMERICAL_AND_BATCH_THROUGHPUT_FIX}, "
+                f"observed={observed_change}"
+            )
+    if is_activsg2000_v33:
+        observed_change = benchmark.get("post_normalization_bound_fix")
+        if observed_change != ACTIVSG2000_V33_POST_NORMALIZATION_BOUND_FIX:
+            raise ScopfError(
+                "ACTIVSg2000 GPU Lagrangian v33 post-normalization bound-fix "
+                "identity changed: "
+                f"expected={ACTIVSG2000_V33_POST_NORMALIZATION_BOUND_FIX}, "
                 f"observed={observed_change}"
             )
     profile = config.raw["platforms"].get("dgx_spark", {})
@@ -6897,8 +6956,10 @@ def _prepare_v32_proof_only_hard_cardinality_child(
 ) -> PreparedProofOnlyChild:
     """Build one conditioned child proposal without launching a solver."""
 
-    if config.benchmark_id != ACTIVSG2000_V32_EXPERIMENT_ID:
-        raise ScopfError("The block-diagonal proof preparation is registered only for v32")
+    if config.benchmark_id not in ACTIVSG2000_V32_PLUS_EXPERIMENT_IDS:
+        raise ScopfError(
+            "The block-diagonal proof preparation is registered only for v32+"
+        )
     started = time.perf_counter()
     master = parent.master
     hard_cuts = tuple(cut for cut in commitment_cuts if isinstance(cut, CommitmentCardinalityCut))
@@ -7315,8 +7376,10 @@ def _solve_v32_proof_only_hard_cardinality_pair(
 ) -> tuple[dict[str, SolvedRegion], dict[str, Any]]:
     """Advance both disjunctive children in one GPU-resident PDLP launch."""
 
-    if config.benchmark_id != ACTIVSG2000_V32_EXPERIMENT_ID:
-        raise ScopfError("The block-diagonal proof pair engine is registered only for v32")
+    if config.benchmark_id not in ACTIVSG2000_V32_PLUS_EXPERIMENT_IDS:
+        raise ScopfError(
+            "The block-diagonal proof pair engine is registered only for v32+"
+        )
     if int(config.runtime["proof_only_hard_cardinality_pdlp_maximum_passes"]) != 1:
         raise ScopfError("v32 block-diagonal proof pairs require exactly one proposal pass")
     deadline.require("v32 block-diagonal proof-only sibling pair")
@@ -10145,7 +10208,7 @@ def run_gpu_lagrangian_experiment(
                         [0],
                     )
                 )
-                if config.benchmark_id == ACTIVSG2000_V32_EXPERIMENT_ID:
+                if config.benchmark_id in ACTIVSG2000_V32_PLUS_EXPERIMENT_IDS:
                     expected_placement_variants = (
                         "lp_descending",
                         "source_ascending",
@@ -10213,7 +10276,7 @@ def run_gpu_lagrangian_experiment(
                 "policy": (
                     "best_first_phase_one_violation_with_diversified_exact_type_"
                     "placements_v3"
-                    if config.benchmark_id == ACTIVSG2000_V32_EXPERIMENT_ID
+                    if config.benchmark_id in ACTIVSG2000_V32_PLUS_EXPERIMENT_IDS
                     else "best_first_phase_one_violation_with_balanced_type_seeds_v2"
                     if use_best_first_repair
                     else "breadth_first_pending_repairs_then_root_thresholds_v1"
@@ -11175,7 +11238,7 @@ def run_gpu_lagrangian_experiment(
             and best_primal is not None
             and not bool(config.runtime["minimizer_feasibility_cut_enabled"])
         ):
-            if config.benchmark_id != ACTIVSG2000_V32_EXPERIMENT_ID:
+            if config.benchmark_id not in ACTIVSG2000_V32_PLUS_EXPERIMENT_IDS:
                 raise ScopfError("v15 exact-minimizer separation was disabled")
             payload["minimizer_feasibility_cut_policy"] = {
                 "enabled": False,
@@ -11987,7 +12050,7 @@ def run_gpu_lagrangian_experiment(
                     config.benchmark_id
                     in ACTIVSG2000_PROOF_ONLY_HARD_CARDINALITY_EXPERIMENT_IDS
                 ):
-                    if config.benchmark_id == ACTIVSG2000_V32_EXPERIMENT_ID:
+                    if config.benchmark_id in ACTIVSG2000_V32_PLUS_EXPERIMENT_IDS:
                         proof_only_pair_specs.append(
                             (child_id, child_masks, child_cuts)
                         )
