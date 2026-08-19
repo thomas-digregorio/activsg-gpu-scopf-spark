@@ -249,7 +249,7 @@ def _coordinate_ascent_commitment_cut_arrays(
     fixed_off: Any,
     fixed_on: Any,
     cycles: int,
-) -> tuple[Any, Any, Any, Any, Any]:
+) -> tuple[Any, Any, Any, Any, Any, Any]:
     """Maximize each commitment-cut multiplier over its exact breakpoints.
 
     With the network-coupling multipliers fixed, the Lagrangian dual is a
@@ -295,6 +295,7 @@ def _coordinate_ascent_commitment_cut_arrays(
     initial_raw, _initial_on, _initial_commitment = state()
     cycle_raw = xp.empty(cycles + 1, dtype=xp.float64)
     cycle_raw[0] = initial_raw
+    maximum_tie_tolerance = xp.asarray(0.0, dtype=xp.float64)
     for cycle in range(cycles):
         for cut_index in range(cut_count):
             coefficients = cut_coefficients[cut_index]
@@ -352,18 +353,30 @@ def _coordinate_ascent_commitment_cut_arrays(
             # small but decisive improvements to FP64 cancellation, which can
             # leave a strongly violated cut at multiplier zero.  The constant
             # network and other-cut terms cancel analytically.
-            candidate_delta = (
-                (candidates - z[cut_index]) * cut_rhs[cut_index]
-                + xp.sum(
-                    local_values(candidate_on)
-                    - local_values(current_on)[None, :],
-                    axis=1,
-                )
+            linear_delta = (candidates - z[cut_index]) * cut_rhs[cut_index]
+            local_delta_terms = (
+                local_values(candidate_on) - local_values(current_on)[None, :]
             )
+            candidate_delta = linear_delta + xp.sum(local_delta_terms, axis=1)
             candidate_delta = xp.where(
                 xp.isfinite(candidate_delta), candidate_delta, -xp.inf
             )
             maximum_delta = xp.max(candidate_delta)
+            # Bound ordinary FP64 summation noise in the algebraically zero
+            # move across a degenerate kink.  The current candidate guarantees
+            # maximum_delta >= 0; only candidates within this forward-error
+            # envelope may use the feasibility-oriented tie break.
+            delta_absolute_scale = xp.abs(linear_delta) + xp.sum(
+                xp.abs(local_delta_terms), axis=1
+            )
+            tie_tolerance = (
+                64.0
+                * np.finfo(np.float64).eps
+                * xp.maximum(1.0, xp.max(delta_absolute_scale))
+            )
+            maximum_tie_tolerance = xp.maximum(
+                maximum_tie_tolerance, tie_tolerance
+            )
             candidate_commitment = xp.where(
                 fixed_off[None, :],
                 0,
@@ -373,14 +386,21 @@ def _coordinate_ascent_commitment_cut_arrays(
                 candidate_commitment @ coefficients - cut_rhs[cut_index]
             )
             tie_score = xp.where(
-                candidate_delta == maximum_delta,
+                candidate_delta >= maximum_delta - tie_tolerance,
                 xp.abs(candidate_violation),
                 xp.inf,
             )
             z[cut_index] = candidates[xp.argmin(tie_score)]
         cycle_raw[cycle + 1] = state()[0]
     final_raw, final_on, final_commitment = state()
-    return z, final_raw, final_on, final_commitment, cycle_raw
+    return (
+        z,
+        final_raw,
+        final_on,
+        final_commitment,
+        cycle_raw,
+        maximum_tie_tolerance,
+    )
 
 
 def optimize_commitment_cut_duals_coordinate_numpy(
@@ -421,7 +441,8 @@ def optimize_commitment_cut_duals_coordinate_numpy(
         else np.empty((0, generator_count), dtype=np.float64)
     )
     rhs = np.asarray([cut.rhs for cut in commitment_cuts], dtype=np.float64)
-    z, raw, on_values, commitment, cycle_raw = _coordinate_ascent_commitment_cut_arrays(
+    z, raw, on_values, commitment, cycle_raw, tie_tolerance = (
+        _coordinate_ascent_commitment_cut_arrays(
         xp=np,
         base_on_values=np.asarray(base.on_subproblem_values, dtype=np.float64),
         coupling_constant=np.asarray(coupling_constant, dtype=np.float64),
@@ -430,7 +451,8 @@ def optimize_commitment_cut_duals_coordinate_numpy(
         initial_cut_dual=initial,
         fixed_off=region.fixed_off,
         fixed_on=region.fixed_on,
-        cycles=cycles,
+            cycles=cycles,
+        )
     )
     if not np.all(np.diff(cycle_raw) >= -1e-8):
         raise ScopfError("Commitment-cut coordinate ascent weakened a completed cycle")
@@ -445,6 +467,7 @@ def optimize_commitment_cut_duals_coordinate_numpy(
         "best_minimizing_commitment": np.asarray(commitment, dtype=np.int8),
         "best_on_subproblem_values": np.asarray(on_values, dtype=np.float64),
         "best_commitment_cut_dual": np.asarray(z, dtype=np.float64),
+        "maximum_roundoff_tie_tolerance_dollars": float(tie_tolerance),
     }
 
 
@@ -518,7 +541,8 @@ def optimize_commitment_cut_duals_coordinate_cupy(
         else cp.empty((0, generator_count), dtype=cp.float64)
     )
     cut_rhs = cp.asarray([cut.rhs for cut in commitment_cuts], dtype=cp.float64)
-    z, raw, on_values, commitment, cycle_raw = _coordinate_ascent_commitment_cut_arrays(
+    z, raw, on_values, commitment, cycle_raw, tie_tolerance = (
+        _coordinate_ascent_commitment_cut_arrays(
         xp=cp,
         base_on_values=base_on,
         coupling_constant=coupling_dual @ coupling_rhs,
@@ -527,7 +551,8 @@ def optimize_commitment_cut_duals_coordinate_cupy(
         initial_cut_dual=cp.asarray(initial, dtype=cp.float64),
         fixed_off=cp.asarray(region.fixed_off),
         fixed_on=cp.asarray(region.fixed_on),
-        cycles=cycles,
+            cycles=cycles,
+        )
     )
     cp.cuda.get_current_stream().synchronize()
     cycle_host = cp.asnumpy(cycle_raw)
@@ -548,10 +573,11 @@ def optimize_commitment_cut_duals_coordinate_cupy(
         "best_minimizing_commitment": cp.asnumpy(commitment).astype(np.int8),
         "best_on_subproblem_values": cp.asnumpy(on_values),
         "best_commitment_cut_dual": cp.asnumpy(z),
+        "maximum_roundoff_tie_tolerance_dollars": float(tie_tolerance.item()),
         "device_state_persistent_across_coordinates": True,
         "host_transfer_during_coordinates": False,
         "coordinate_policy": (
-            "stable_local_delta_exact_breakpoints_with_adjacent_fp64_tie_break_v3"
+            "stable_local_delta_roundoff_envelope_feasibility_tie_break_v4"
         ),
         "device_id": int(cp.cuda.Device().id),
     }

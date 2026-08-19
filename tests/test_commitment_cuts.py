@@ -27,7 +27,7 @@ from .helpers import triangle_case
 
 
 def test_cut_coordinate_uses_local_delta_below_absolute_objective_ulp() -> None:
-    dual, raw, _on_values, commitment, cycle_raw = (
+    dual, raw, _on_values, commitment, cycle_raw, tie_tolerance = (
         _coordinate_ascent_commitment_cut_arrays(
             xp=np,
             base_on_values=np.asarray([1e-4]),
@@ -47,6 +47,7 @@ def test_cut_coordinate_uses_local_delta_below_absolute_objective_ulp() -> None:
     assert dual[0] < -1e-4
     assert commitment[0] == 1
     assert raw == 1e15
+    assert tie_tolerance > 0.0
     np.testing.assert_array_equal(cycle_raw, np.asarray([1e15, 1e15]))
 
 
