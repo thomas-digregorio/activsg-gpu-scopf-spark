@@ -1,0 +1,70 @@
+{
+  "$schema": "../schemas/config.schema.json",
+  "schema_version": "1.0.0",
+  "case_name": "Texas2kSeries24Case6",
+  "raw_inputs": {
+    "case_file": "data/raw/series24/extracted/Texas2k_series24_case6_2024lowloadwithgfm/Texas2k_series24_case6_2024lowloadwithgfm.m",
+    "case_sha256": "8710b40e9eafb38463d9a1135a59e70f14fbad38c99ca90af598928a5d0e7b86",
+    "contingency_mode": "mapped_reference_branch_table",
+    "reference_case_file": "data/raw/matpower-8.1/case_ACTIVSg2000.m",
+    "reference_case_sha256": "8d00618de8fd10bf35a599f59d2deebfecd0d86e28fcff73219ad7c4ebab860b",
+    "reference_contingency_file": "data/raw/matpower-8.1/contab_ACTIVSg2000.m",
+    "reference_contingency_sha256": "198b39f0381925a4ddacbe2148973cb1d93ddfe220303829cf87b16d45190bba",
+    "branch_mapping_method": "endpoint_parameter_assignment_v1",
+    "source_archive_file": "data/raw/series24/Texas2k_series24_cases_with_dynamics.zip",
+    "source_archive_sha256": "954c515a55c186bf1d987efdde0e2873b4a694bc4bf3522c47bb2b1ab58a0fb9"
+  },
+  "model": {
+    "interval_hours": 1.0,
+    "pwl_segments": 10,
+    "mip_relative_gap_tolerance": 1e-3,
+    "model_residual_tolerance_pu": 1e-6,
+    "security_violation_tolerance_pu": 1e-5,
+    "lodf_validation_tolerance_pu": 1e-9,
+    "lodf_validation_columns": 3,
+    "lodf_build_chunk_columns": 256,
+    "screen_chunk_columns": 256
+  },
+  "runtime": {
+    "deadline_seconds": 1800.0,
+    "verification_reserve_seconds": 120.0,
+    "serialization_reserve_seconds": 15.0,
+    "maximum_constraint_generation_rounds": 100
+  },
+  "platforms": {
+    "laptop_cpu": {
+      "solver": "highs",
+      "screening": "numpy",
+      "solver_threads": 0,
+      "solver_session": "persistent_incremental",
+      "diagnostics": {
+        "enabled": true,
+        "mip_logging_interval_seconds": 10.0
+      }
+    }
+  },
+  "benchmark": {
+    "id": "texas2k-series24-official-case6-v2-1e-3",
+    "required_git_tag": "experiment-texas2k-series24-official-cpu-v2",
+    "official": true,
+    "kind": "series24_scenario_experiment",
+    "experiment_suite_id": "texas2k-series24-official-cpu-v2",
+    "scenario_ordinal": 6,
+    "scenario_name": "2024 low load with grid-forming inverters",
+    "gap_label": "1e-3",
+    "initialization": {
+      "cross_scenario_mip_start": false,
+      "round_1": "cold",
+      "later_rounds": "prior_round_commitment_within_same_scenario"
+    },
+    "contingency_profile": {
+      "source": "TAMU MATPOWER contab_ACTIVSg2000.m",
+      "target_only_branches_as_outages": false,
+      "target_only_branches_remain_monitored": true
+    },
+    "pricing": {
+      "enabled": false,
+      "maximum_constraint_generation_rounds": 100
+    }
+  }
+}

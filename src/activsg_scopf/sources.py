@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .config import RunConfig
+from .contingency_mapping import map_reference_branch_contingencies
 from .errors import ProvenanceError
 from .matpower import (
     ContingencyTable,
@@ -48,6 +49,21 @@ def load_registered_inputs(config: RunConfig) -> LoadedInputs:
         )
     elif config.contingency_mode == "enumerate_in_service_branches":
         contingencies = enumerate_in_service_branch_contingencies(case)
+    elif config.contingency_mode == "mapped_reference_branch_table":
+        reference_case = read_matpower_case(
+            config.reference_case_path,
+            expected_sha256=inputs["reference_case_sha256"],
+        )
+        reference_table = read_contingency_table(
+            config.reference_contingency_path,
+            expected_sha256=inputs["reference_contingency_sha256"],
+        )
+        contingencies = map_reference_branch_contingencies(
+            reference_case,
+            case,
+            reference_table,
+            method=str(inputs["branch_mapping_method"]),
+        )
     else:
         raise ProvenanceError(
             f"Unsupported contingency mode {config.contingency_mode!r}"

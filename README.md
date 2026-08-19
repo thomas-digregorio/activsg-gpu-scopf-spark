@@ -22,10 +22,12 @@ the Spark uses NVIDIA cuOpt with CuPy. No custom CUDA kernels are present.
 - Source polynomial production-cost curves become ten equal-MW chord segments
   over exact `[PMIN, PMAX]`. They are not submitted market offers.
 - Version 1 includes source-listed, in-service, non-islanding branch outages
-  for the classic cases. Because Series24 has no MATPOWER contingency table,
-  it deterministically enumerates every source branch row and retains each
-  in-service, non-islanding outage. Generator outages and corrective
-  redispatch are deferred.
+  for the classic cases. The preserved first Series24 attempt enumerated every
+  eligible branch because its archive has no contingency table. The replacement
+  Series24 profile maps the earlier official `contab_ACTIVSg2000.m` branch set
+  into each revised topology by endpoints and physical parameters; new
+  Series24 branches remain monitored but are not outage candidates. Generator
+  outages and corrective redispatch are deferred.
 - There is no load shedding, generation spillage, overload slack, or feasibility
   repair.
 - Raw cases, factor caches, solver artifacts, environments, and detailed results
@@ -64,6 +66,9 @@ The separately frozen
 uses all six official MATPOWER scenario files, exact scenario PMIN values, a
 `1e-3` MIP gap, and one cold laptop HiGHS run of at most 1,800 seconds per
 scenario. No solution or solver session is shared between scenarios.
+The authorized replacement
+[`mapped-official-contingency experiment`](docs/series24-official-contingency-cpu-experiment-v2.md)
+preserves that failed all-eligible-branch attempt and uses new benchmark IDs.
 
 ## Laptop setup
 

@@ -1,0 +1,37 @@
+{
+  "schema_version": "1.0.0",
+  "status": "diagnostic_lp_relaxation_infeasible",
+  "official_benchmark": false,
+  "purpose": "Check whether replacing all-eligible outages with the mapped official ACTIVSg2000 contingency profile removes the preserved Case 1 round-2 infeasibility.",
+  "target_case": "Texas2kSeries24Case1",
+  "target_scenario": "2016 summer peak",
+  "contingency_mode": "mapped_reference_branch_table",
+  "reference_case_sha256": "8d00618de8fd10bf35a599f59d2deebfecd0d86e28fcff73219ad7c4ebab860b",
+  "reference_contingency_sha256": "198b39f0381925a4ddacbe2148973cb1d93ddfe220303829cf87b16d45190bba",
+  "target_case_sha256": "4eb378bb7c5abeba02a1be61752983d90a17dcaac3460ea2bb0c4986d5aa00b2",
+  "preserved_all_eligible_result_sha256": "d78cf38314ad5378bcb8c9ede7f99d66ea726242056dd6452a729550b0a9fb1c",
+  "mapping": {
+    "method": "endpoint_parameter_assignment_v1",
+    "reference_branches_mapped": 3206,
+    "official_unique_branch_contingencies": 3190,
+    "exact_parameter_matches": 3082,
+    "updated_parameter_matches": 124,
+    "target_additions_not_outage_candidates": 14,
+    "valid_non_islanding_outages": 2740,
+    "excluded_islanding_bridges": 450
+  },
+  "screen_of_preserved_round_1_incumbent": {
+    "new_violated_pairs": 510,
+    "maximum_pair_id": "c1525_m1544_lower",
+    "maximum_violation_pu": 2.2076826585507296
+  },
+  "cold_continuous_relaxation": {
+    "model": "base master plus all 510 mapped-profile rows violated by the preserved round-1 incumbent",
+    "solver": "HiGHS 1.15.1",
+    "status": "Infeasible",
+    "has_incumbent": false,
+    "wall_time_seconds": 0.020694300008472055,
+    "independently_checked_farkas_certificate": false
+  },
+  "interpretation": "The mapped official outage selection does not remove the Case 1 restricted-master infeasibility. This diagnostic does not replace the separately registered one-shot benchmark requested by the user."
+}

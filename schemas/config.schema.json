@@ -34,7 +34,24 @@
         "contingency_file": {"type": "string", "pattern": "ACTIVSg(500|2000|10k)"},
         "contingency_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
         "contingency_mode": {
-          "enum": ["source_table", "enumerate_in_service_branches"]
+          "enum": [
+            "source_table",
+            "enumerate_in_service_branches",
+            "mapped_reference_branch_table"
+          ]
+        },
+        "reference_case_file": {"type": "string", "pattern": "ACTIVSg2000"},
+        "reference_case_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "reference_contingency_file": {
+          "type": "string",
+          "pattern": "ACTIVSg2000"
+        },
+        "reference_contingency_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "branch_mapping_method": {
+          "const": "endpoint_parameter_assignment_v1"
         },
         "source_archive_file": {"type": "string"},
         "source_archive_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}

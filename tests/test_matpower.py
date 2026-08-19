@@ -1,5 +1,12 @@
+from dataclasses import replace
 from pathlib import Path
 
+import numpy as np
+
+from activsg_scopf.contingency_mapping import (
+    BRANCH_MAPPING_METHOD,
+    map_reference_branch_contingencies,
+)
 from activsg_scopf.matpower import (
     GEN_STATUS,
     PMIN,
@@ -67,3 +74,45 @@ def test_topology_derived_contingencies_preserve_every_branch_row() -> None:
     assert table.sha256 is None
     assert [change.element_row for change in table.changes] == [1, 2, 3]
     assert [change.source_row for change in table.changes] == [1, 2, 3]
+
+
+def test_reference_contingencies_map_by_identity_not_source_row() -> None:
+    reference_case, reference_table = triangle_case()
+    extra_parallel = reference_case.branch[0].copy()
+    extra_parallel[3] = 0.3
+    target_case = replace(
+        reference_case,
+        case_name="Texas2kSeries24Case1",
+        source_path=Path("Texas2k_series24_case1_2016summerPeak.m"),
+        sha256="target-fixture",
+        branch=np.stack(
+            (
+                reference_case.branch[2],
+                extra_parallel,
+                reference_case.branch[1],
+                reference_case.branch[0],
+            )
+        ),
+    )
+    mapped = map_reference_branch_contingencies(
+        reference_case,
+        target_case,
+        reference_table,
+        method=BRANCH_MAPPING_METHOD,
+    )
+    assert mapped.mode == "mapped_reference_branch_table"
+    assert [change.element_row for change in mapped.changes[:3]] == [4, 3, 1]
+    assert mapped.changes[3].table == "CT_TGEN"
+    assert mapped.changes[3].element_row == 1
+    assert mapped.derivation is not None
+    assert mapped.derivation["mapped_unique_reference_branches"] == 3
+    assert mapped.derivation["exact_parameter_matches"] == 3
+    assert mapped.derivation["target_only_branches_not_outage_candidates"] == 1
+    assert mapped.derivation["target_only_branch_records"] == [
+        {
+            "target_branch_source_row": 2,
+            "from_bus": 1,
+            "to_bus": 2,
+        }
+    ]
+    assert len(mapped.derivation["branch_mapping_records_sha256"]) == 64

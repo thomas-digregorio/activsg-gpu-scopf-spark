@@ -18,9 +18,19 @@ class CaseRegistration:
     expected_generators: int
     expected_branches: int
     contingency_mode: str = "source_table"
+    additional_contingency_modes: tuple[str, ...] = ()
     text_encoding: str = "utf-8"
     source_archive_file: str | None = None
     source_archive_sha256: str | None = None
+    reference_case_file: str | None = None
+    reference_case_sha256: str | None = None
+    reference_contingency_file: str | None = None
+    reference_contingency_sha256: str | None = None
+    branch_mapping_method: str | None = None
+
+    @property
+    def accepted_contingency_modes(self) -> tuple[str, ...]:
+        return (self.contingency_mode, *self.additional_contingency_modes)
 
 
 CASE_REGISTRY: dict[str, CaseRegistration] = {
@@ -70,11 +80,21 @@ CASE_REGISTRY: dict[str, CaseRegistration] = {
         expected_generators=544,
         expected_branches=3_220,
         contingency_mode="enumerate_in_service_branches",
+        additional_contingency_modes=("mapped_reference_branch_table",),
         text_encoding="cp1252",
         source_archive_file="Texas2k_series24_cases_with_dynamics.zip",
         source_archive_sha256=(
             "954c515a55c186bf1d987efdde0e2873b4a694bc4bf3522c47bb2b1ab58a0fb9"
         ),
+        reference_case_file="case_ACTIVSg2000.m",
+        reference_case_sha256=(
+            "8d00618de8fd10bf35a599f59d2deebfecd0d86e28fcff73219ad7c4ebab860b"
+        ),
+        reference_contingency_file="contab_ACTIVSg2000.m",
+        reference_contingency_sha256=(
+            "198b39f0381925a4ddacbe2148973cb1d93ddfe220303829cf87b16d45190bba"
+        ),
+        branch_mapping_method="endpoint_parameter_assignment_v1",
     ),
     "Texas2kSeries24Case2": CaseRegistration(
         case_name="Texas2kSeries24Case2",
@@ -86,11 +106,21 @@ CASE_REGISTRY: dict[str, CaseRegistration] = {
         expected_generators=544,
         expected_branches=3_220,
         contingency_mode="enumerate_in_service_branches",
+        additional_contingency_modes=("mapped_reference_branch_table",),
         text_encoding="cp1252",
         source_archive_file="Texas2k_series24_cases_with_dynamics.zip",
         source_archive_sha256=(
             "954c515a55c186bf1d987efdde0e2873b4a694bc4bf3522c47bb2b1ab58a0fb9"
         ),
+        reference_case_file="case_ACTIVSg2000.m",
+        reference_case_sha256=(
+            "8d00618de8fd10bf35a599f59d2deebfecd0d86e28fcff73219ad7c4ebab860b"
+        ),
+        reference_contingency_file="contab_ACTIVSg2000.m",
+        reference_contingency_sha256=(
+            "198b39f0381925a4ddacbe2148973cb1d93ddfe220303829cf87b16d45190bba"
+        ),
+        branch_mapping_method="endpoint_parameter_assignment_v1",
     ),
     "Texas2kSeries24Case3": CaseRegistration(
         case_name="Texas2kSeries24Case3",
@@ -102,11 +132,21 @@ CASE_REGISTRY: dict[str, CaseRegistration] = {
         expected_generators=743,
         expected_branches=3_911,
         contingency_mode="enumerate_in_service_branches",
+        additional_contingency_modes=("mapped_reference_branch_table",),
         text_encoding="cp1252",
         source_archive_file="Texas2k_series24_cases_with_dynamics.zip",
         source_archive_sha256=(
             "954c515a55c186bf1d987efdde0e2873b4a694bc4bf3522c47bb2b1ab58a0fb9"
         ),
+        reference_case_file="case_ACTIVSg2000.m",
+        reference_case_sha256=(
+            "8d00618de8fd10bf35a599f59d2deebfecd0d86e28fcff73219ad7c4ebab860b"
+        ),
+        reference_contingency_file="contab_ACTIVSg2000.m",
+        reference_contingency_sha256=(
+            "198b39f0381925a4ddacbe2148973cb1d93ddfe220303829cf87b16d45190bba"
+        ),
+        branch_mapping_method="endpoint_parameter_assignment_v1",
     ),
     "Texas2kSeries24Case4": CaseRegistration(
         case_name="Texas2kSeries24Case4",
@@ -118,11 +158,21 @@ CASE_REGISTRY: dict[str, CaseRegistration] = {
         expected_generators=743,
         expected_branches=3_913,
         contingency_mode="enumerate_in_service_branches",
+        additional_contingency_modes=("mapped_reference_branch_table",),
         text_encoding="cp1252",
         source_archive_file="Texas2k_series24_cases_with_dynamics.zip",
         source_archive_sha256=(
             "954c515a55c186bf1d987efdde0e2873b4a694bc4bf3522c47bb2b1ab58a0fb9"
         ),
+        reference_case_file="case_ACTIVSg2000.m",
+        reference_case_sha256=(
+            "8d00618de8fd10bf35a599f59d2deebfecd0d86e28fcff73219ad7c4ebab860b"
+        ),
+        reference_contingency_file="contab_ACTIVSg2000.m",
+        reference_contingency_sha256=(
+            "198b39f0381925a4ddacbe2148973cb1d93ddfe220303829cf87b16d45190bba"
+        ),
+        branch_mapping_method="endpoint_parameter_assignment_v1",
     ),
     "Texas2kSeries24Case5": CaseRegistration(
         case_name="Texas2kSeries24Case5",
@@ -134,11 +184,21 @@ CASE_REGISTRY: dict[str, CaseRegistration] = {
         expected_generators=743,
         expected_branches=3_663,
         contingency_mode="enumerate_in_service_branches",
+        additional_contingency_modes=("mapped_reference_branch_table",),
         text_encoding="cp1252",
         source_archive_file="Texas2k_series24_cases_with_dynamics.zip",
         source_archive_sha256=(
             "954c515a55c186bf1d987efdde0e2873b4a694bc4bf3522c47bb2b1ab58a0fb9"
         ),
+        reference_case_file="case_ACTIVSg2000.m",
+        reference_case_sha256=(
+            "8d00618de8fd10bf35a599f59d2deebfecd0d86e28fcff73219ad7c4ebab860b"
+        ),
+        reference_contingency_file="contab_ACTIVSg2000.m",
+        reference_contingency_sha256=(
+            "198b39f0381925a4ddacbe2148973cb1d93ddfe220303829cf87b16d45190bba"
+        ),
+        branch_mapping_method="endpoint_parameter_assignment_v1",
     ),
     "Texas2kSeries24Case6": CaseRegistration(
         case_name="Texas2kSeries24Case6",
@@ -150,11 +210,21 @@ CASE_REGISTRY: dict[str, CaseRegistration] = {
         expected_generators=748,
         expected_branches=3_913,
         contingency_mode="enumerate_in_service_branches",
+        additional_contingency_modes=("mapped_reference_branch_table",),
         text_encoding="cp1252",
         source_archive_file="Texas2k_series24_cases_with_dynamics.zip",
         source_archive_sha256=(
             "954c515a55c186bf1d987efdde0e2873b4a694bc4bf3522c47bb2b1ab58a0fb9"
         ),
+        reference_case_file="case_ACTIVSg2000.m",
+        reference_case_sha256=(
+            "8d00618de8fd10bf35a599f59d2deebfecd0d86e28fcff73219ad7c4ebab860b"
+        ),
+        reference_contingency_file="contab_ACTIVSg2000.m",
+        reference_contingency_sha256=(
+            "198b39f0381925a4ddacbe2148973cb1d93ddfe220303829cf87b16d45190bba"
+        ),
+        branch_mapping_method="endpoint_parameter_assignment_v1",
     ),
 }
 

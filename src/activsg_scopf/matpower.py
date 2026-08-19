@@ -26,8 +26,12 @@ PMAX = 8
 PMIN = 9
 F_BUS = 0
 T_BUS = 1
+BR_R = 2
 BR_X = 3
+BR_B = 4
 RATE_A = 5
+RATE_B = 6
+RATE_C = 7
 TAP = 8
 SHIFT = 9
 BR_STATUS = 10
@@ -74,6 +78,7 @@ class ContingencyTable:
     sha256: str | None
     changes: tuple[ContingencyChange, ...]
     mode: str = "source_table"
+    derivation: dict[str, object] | None = None
 
 
 def sha256_file(path: Path) -> str:

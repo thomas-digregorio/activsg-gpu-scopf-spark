@@ -390,7 +390,16 @@ def run_end_to_end(
                 }
             )
             if not last_solve.has_incumbent or last_solve.values is None:
-                payload["status"] = "incomplete_no_incumbent"
+                if "infeasible" in last_solve.status.casefold():
+                    payload["status"] = "infeasible_restricted_master"
+                    payload["infeasibility"] = {
+                        "constraint_generation_round": round_number,
+                        "solver_status": last_solve.status,
+                        "solver_declared_infeasible": True,
+                        "independent_infeasibility_certificate_checked": False,
+                    }
+                else:
+                    payload["status"] = "incomplete_no_incumbent"
                 save_checkpoint()
                 break
             payload["solution"] = serialize_solution(

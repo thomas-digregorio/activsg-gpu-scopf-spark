@@ -47,6 +47,22 @@ class RunConfig:
         return None if value is None else guard_input_path(self.root / value)
 
     @property
+    def reference_case_path(self) -> Path:
+        value = self.raw["raw_inputs"].get("reference_case_file")
+        if value is None:
+            raise ProvenanceError("Mapped contingencies require a reference case file")
+        return guard_input_path(self.root / value)
+
+    @property
+    def reference_contingency_path(self) -> Path:
+        value = self.raw["raw_inputs"].get("reference_contingency_file")
+        if value is None:
+            raise ProvenanceError(
+                "Mapped contingencies require a reference contingency file"
+            )
+        return guard_input_path(self.root / value)
+
+    @property
     def model(self) -> dict[str, Any]:
         return self.raw["model"]
 
@@ -87,11 +103,11 @@ def load_config(path: str | Path) -> RunConfig:
     if inputs.get("case_sha256") != registration.case_sha256:
         raise ProvenanceError("Configuration case hash is not the registered source hash")
     observed_contingency_mode = str(inputs.get("contingency_mode", "source_table"))
-    if observed_contingency_mode != registration.contingency_mode:
+    if observed_contingency_mode not in registration.accepted_contingency_modes:
         raise ProvenanceError(
             "Configuration contingency mode is not registered for case_name"
         )
-    if registration.contingency_mode == "source_table":
+    if observed_contingency_mode == "source_table":
         if (
             Path(str(inputs.get("contingency_file", ""))).name
             != registration.contingency_file
@@ -101,14 +117,36 @@ def load_config(path: str | Path) -> RunConfig:
             )
         if inputs.get("contingency_sha256") != registration.contingency_sha256:
             raise ProvenanceError("Configuration contingency hash is not registered")
-    elif registration.contingency_mode == "enumerate_in_service_branches":
+    elif observed_contingency_mode == "enumerate_in_service_branches":
         if "contingency_file" in inputs or "contingency_sha256" in inputs:
             raise ProvenanceError(
                 "Topology-derived contingency configurations cannot name a contingency file"
             )
+    elif observed_contingency_mode == "mapped_reference_branch_table":
+        expected_reference_fields = {
+            "reference_case_file": registration.reference_case_file,
+            "reference_case_sha256": registration.reference_case_sha256,
+            "reference_contingency_file": registration.reference_contingency_file,
+            "reference_contingency_sha256": (
+                registration.reference_contingency_sha256
+            ),
+            "branch_mapping_method": registration.branch_mapping_method,
+        }
+        for field, expected in expected_reference_fields.items():
+            observed = inputs.get(field)
+            if field.endswith("_file"):
+                observed = Path(str(observed)).name
+            if observed != expected:
+                raise ProvenanceError(
+                    f"Configuration {field} is not registered for {registration.case_name}"
+                )
+        if "contingency_file" in inputs or "contingency_sha256" in inputs:
+            raise ProvenanceError(
+                "Mapped contingency configurations must use reference contingency fields"
+            )
     else:
         raise ProvenanceError(
-            f"Unsupported registered contingency mode {registration.contingency_mode!r}"
+            f"Unsupported registered contingency mode {observed_contingency_mode!r}"
         )
     if registration.source_archive_file is not None:
         if (

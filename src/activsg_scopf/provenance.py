@@ -38,7 +38,8 @@ def build_source_manifest(
             "branch": "branch-row-NNNN is the immutable one-based mpc.branch source row",
             "contingency_change": (
                 "source_row is the immutable one-based chgtab row"
-                if contingencies.mode == "source_table"
+                if contingencies.mode
+                in {"source_table", "mapped_reference_branch_table"}
                 else "source_row equals the immutable one-based mpc.branch source row"
             ),
         },
@@ -61,6 +62,8 @@ def build_source_manifest(
                 ),
             }
         )
+    if contingencies.derivation is not None:
+        source_identity["contingency_derivation"] = contingencies.derivation
     if source_archive_path is not None:
         source_identity.update(
             {

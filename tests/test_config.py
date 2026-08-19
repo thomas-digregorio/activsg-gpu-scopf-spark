@@ -62,6 +62,31 @@ def test_series24_configs_are_cold_bounded_cpu_scenarios() -> None:
         assert config.raw["platforms"]["laptop_cpu"]["solver"] == "highs"
 
 
+def test_series24_replacement_configs_use_mapped_official_contingencies() -> None:
+    for ordinal in range(1, 7):
+        config = load_config(
+            ROOT
+            / "configs"
+            / f"texas2k-series24-official-case{ordinal}-1e-3.json"
+        )
+        inputs = config.raw["raw_inputs"]
+        assert config.contingency_mode == "mapped_reference_branch_table"
+        assert Path(inputs["reference_case_file"]).name == "case_ACTIVSg2000.m"
+        assert (
+            Path(inputs["reference_contingency_file"]).name
+            == "contab_ACTIVSg2000.m"
+        )
+        assert inputs["branch_mapping_method"] == (
+            "endpoint_parameter_assignment_v1"
+        )
+        assert config.raw["benchmark"]["required_git_tag"] == (
+            "experiment-texas2k-series24-official-cpu-v2"
+        )
+        assert config.raw["benchmark"]["initialization"][
+            "cross_scenario_mip_start"
+        ] is False
+
+
 def test_activsg10k_v2_changes_runtime_identity_not_mathematical_contract() -> None:
     v1 = load_config(ROOT / "configs" / "activsg10k.json")
     v2 = load_config(ROOT / "configs" / "activsg10k-v2.json")
